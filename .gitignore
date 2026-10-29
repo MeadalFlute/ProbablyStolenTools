@@ -1,0 +1,52 @@
+﻿# build output
+bin/
+obj/
+*.dll
+*.pdb
+*.nupkg
+
+# local working data (large, not needed for the repo)
+out/
+dump/
+decompiled/
+cpp2il_cs/
+cpp2il_isil/
+cpp2il_out/
+backup_save/
+archive/
+
+# IDE
+.vs/
+.idea/
+*.user
+*.suo
+
+# local logs
+*.log
+
+# vendored third-party tool archives
+tools/*.zip
+tools/bepinex/
+tools/Il2CppDumper/
+tools/Cpp2IL/
+tools/bepinex.zip
+# 本机路径与构建覆盖（不入库）
+local.props
+
+# IDE
+.vscode/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# 测试/构建产物
+TestResults/
+*.trx
+*.coverage
+
+# 运行时数据
+*.log
+*.es3
+PSTools.settings.xml*
+PSTools_Checkpoints/

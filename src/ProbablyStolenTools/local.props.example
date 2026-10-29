@@ -1,0 +1,6 @@
+﻿<!-- 复制为 local.props 并填写自己的游戏路径（local.props 不入库）。 -->
+<Project>
+  <PropertyGroup>
+    <GameDir>C:\Program Files (x86)\Steam\steamapps\common\Probably Stolen</GameDir>
+  </PropertyGroup>
+</Project>

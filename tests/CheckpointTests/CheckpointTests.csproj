@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <MelonDir>$(MSBuildThisFileDirectory)..\..\out\melonloader-0.7.3\package\MelonLoader\net6</MelonDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/ProbablyStolenTools/StateGraph.cs" Link="StateGraph.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/CheckpointHistory.cs" Link="CheckpointHistory.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/PanelModel.cs" Link="PanelModel.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/SaveMetadata.cs" Link="SaveMetadata.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/InspectionChecks.cs" Link="InspectionChecks.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/ModConfig.cs" Link="ModConfig.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/ManagedStateAccess.cs" Link="ManagedStateAccess.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/ManagedRuntime.cs" Link="ManagedRuntime.cs" />
+    <Reference Include="MelonLoader">
+      <HintPath>$(MelonDir)\MelonLoader.dll</HintPath>
+    </Reference>
+    <Reference Include="Tomlet">
+      <HintPath>$(MelonDir)\Tomlet.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

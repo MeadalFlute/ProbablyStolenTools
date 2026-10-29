@@ -1,0 +1,98 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 本机路径不要提交：把 GameDir 写进同目录的 local.props（已在 .gitignore 中） -->
+  <Import Project="local.props" Condition="Exists('local.props')" />
+
+  <PropertyGroup>
+    <GameRuntime Condition="'$(GameRuntime)' == ''">Mono</GameRuntime>
+    <TargetFramework Condition="'$(GameRuntime)' != 'Mono'">net6.0</TargetFramework>
+    <TargetFramework Condition="'$(GameRuntime)' == 'Mono'">netstandard2.1</TargetFramework>
+    <AssemblyName>ProbablyStolenTools</AssemblyName>
+    <RootNamespace>ProbablyStolenTools</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS0436;CS0618</NoWarn>
+    <GameDir Condition="'$(GameDir)' == '' and '$(GameRuntime)' == 'Mono'">$(PROBABLY_STOLEN_FULL_DIR)</GameDir>
+    <GameDir Condition="'$(GameDir)' == ''">$(PROBABLY_STOLEN_DEMO_DIR)</GameDir>
+    <MelonDir>$(MSBuildThisFileDirectory)..\..\out\melonloader-0.7.3\package\MelonLoader\net6</MelonDir>
+    <Interop>$(GameDir)\MelonLoader\Il2CppAssemblies</Interop>
+    <DefineConstants Condition="'$(GameRuntime)' == 'Mono'">$(DefineConstants);MONO</DefineConstants>
+    <OutputPath Condition="'$(GameRuntime)' == 'Mono'">bin\$(Configuration)\Mono\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(GameRuntime)' == 'Mono'">
+    <Compile Remove="NativeStateAccess.cs;ModConfig.cs" />
+    <Reference Include="Assembly-CSharp" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="Assembly-CSharp-firstpass" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Assembly-CSharp-firstpass.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(GameDir)\Probably Stolen_Data\Managed\0Harmony.dll" Private="false" />
+    <Reference Include="$(GameDir)\Probably Stolen_Data\Managed\UnityEngine*.dll" Private="false" />
+    <Reference Include="Unity.TextMeshPro" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Unity.TextMeshPro.dll" Private="false" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(GameRuntime)' != 'Mono'">
+    <Compile Remove="ManagedStateAccess.cs;ManagedRuntime.cs;MonoModConfig.cs" />
+    <Reference Include="MelonLoader">
+      <HintPath>$(MelonDir)\MelonLoader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(MelonDir)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(MelonDir)\Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppInterop.Common">
+      <HintPath>$(MelonDir)\Il2CppInterop.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>$(Interop)\Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(Interop)\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2Cppmscorlib">
+      <HintPath>$(Interop)\Il2Cppmscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppSystem">
+      <HintPath>$(Interop)\Il2CppSystem.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(Interop)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(Interop)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(Interop)\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(Interop)\UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(Interop)\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(Interop)\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(Interop)\Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

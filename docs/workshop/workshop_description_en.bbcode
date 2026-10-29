@@ -1,0 +1,106 @@
+[h1]QuickSL[/h1]
+Made a bad deal? Found something great you couldn't afford? Regret it the moment the customer walks out?
+[b]QuickSL[/b] lets you rewind the whole pawnshop a few minutes into the past — shelves, cash, offers and customers, all of it.
+
+[hr][/hr]
+
+[h2]◆ Core Features[/h2]
+
+[list]
+[*][b]Customer Checkpoints[/b] — a full snapshot is captured automatically when each customer arrives. Double-click a checkpoint to jump back to the moment they walked in.
+[*][b]Back to Today's Opening[/b] — redo the entire day from the opening. As long as you don't touch the window display, your customer queue stays intact.
+[*][b]Back to Previous Day[/b] — returns to the start of the previous day. The save slot is overwritten when the day ends.
+[*][b]In-game Panel[/b] — double-click a checkpoint to rewind, no hotkeys to memorise. Regret the rewind? You can undo it until the next customer arrives.
+[/list]
+
+[hr][/hr]
+
+[h2]◆ Extras[/h2]
+
+[list]
+[*][b]Quick Appraisal[/b] — the inspection screen lists authenticity, issues and a suggested price directly. Auto-submit can be enabled in Settings.
+[*][b]Water Quality Labels[/b] — water quality labels are checked live and turn red when the label doesn't match the real quality.
+[*][b]Double-click for the Magnifier[/b] — double-click an inspectable item to use the magnifier you already own, saving a drag every time.
+[*][b]Dialogue Fast-Forward[/b] — small talk from ordinary customers advances automatically, and stops for choices, SEC and important dialogue.
+[/list]
+
+Every one of these can be toggled individually in the panel's [b]Settings[/b].
+
+[hr][/hr]
+
+[h2]◆ How to Use[/h2]
+
+[list]
+[*][b]1.[/b] Enable [b]QuickSL[/b] in [b]Mods[/b] and restart when the game asks.
+[*][b]2.[/b] Load into your shop and press [b]F8[/b] to open the panel (press again to collapse).
+[*][b]3.[/b] A list of customer checkpoints appears — [b]double-click any entry[/b] to rewind to that moment. Note that checkpoints are created after the customer finishes talking, so quickly calling in the next customer can skip one.
+[*][b]4.[/b] For whole-day rewinds, use the "Back to Opening" / "Back to Previous Day" buttons in the panel (or F7 / F5).
+[/list]
+
+The panel can be dragged, resized and collapsed; its position and settings persist between sessions.
+
+[hr][/hr]
+
+[h2]◆ Good to Know[/h2]
+
+[list]
+[*]Checkpoints live in memory and are [b]same shop, same day only[/b]. Leaving the shop, crossing midnight or changing scenes releases them — this keeps a broken state from ever being written to your save.
+[*]"Back to Opening" / "Back to Previous Day" [b]writes the current save slot[/b] and keeps a [i].pre_restore[/i] backup before overwriting. Saving manually first is still recommended.
+[*]The mod [b]never calls the game's save on its own[/b], and won't touch save files while you're not using it.
+[*]If anything looks wrong after a rewind, quit to the main menu and load your save again.
+[/list]
+
+[hr][/hr]
+
+[h2]◆ FAQ[/h2]
+
+[b]Q: The customer disappeared after I rewound.[/b]
+A: Make sure you rewound to a checkpoint taken [b]before[/b] that customer arrived. Checkpoints are created once the dialogue ends, so they may already be in the trading phase.
+
+[b]Q: Why is my checkpoint list shorter?[/b]
+A: Serving the next customer truncates the abandoned future branch; leaving the shop or crossing midnight also frees in-memory checkpoints. Rewinding across scenes may cause unexpected bugs.
+
+[b]Q: Will this corrupt my save?[/b]
+A: Files are only written when you actively trigger a rewind, and a backup is kept first. The game itself also keeps daily save history, so even a bad save is easy to restore. Still, back up important progress manually.
+
+[hr][/hr]
+
+[h2]◆ Compatibility[/h2]
+
+[list]
+[*]For the full release of Probably Stolen, using the game's built-in mod loader.
+[*]Requires the [b]files[/b] and [b]reflection-external[/b] capabilities. No network access.
+[*]Generally compatible with mods that don't modify the same UI.
+[/list]
+
+[hr][/hr]
+
+[h2]◆ Source & Adapting[/h2]
+
+This project is fully open source: [url=https://github.com/MeadalFlute/ProbablyStolenTools]github.com/MeadalFlute/ProbablyStolenTools[/url]
+
+There is no shared modding framework for this game, and every mod is built its own way, so hand-writing compatibility for each one is not realistic. That is why the source and the handoff docs are public:
+
+[list]
+[*][b]AGENT.md[/b] in the repo documents the project layout, Harmony hook points, snapshot field constraints, build and deploy steps.
+[*]If another mod conflicts with this one, [b]you do not have to wait for me[/b] — hand the repo and that mod to your own AI assistant and ask it to read AGENT.md and produce an adapted build.
+[*]Compatibility patches are welcome as pull requests, together with logs and reproduction steps.
+[/list]
+
+I have not finished the vanilla game myself, so I will not be proactively adapting this to every third-party mod. This route hands the cost to whoever actually needs it.
+
+[hr][/hr]
+
+[h2]◆ Feedback[/h2]
+
+If something goes wrong, please tell us [b]what you were doing[/b] and [b]whether you had rewound[/b], and attach the log file:
+
+[code]C:\Users\<your username>\AppData\LocalLow\Questing Goose Studio\Probably Stolen\PSTools.log[/code]
+
+With the log we can almost always pinpoint the cause. You can also open a [url=https://github.com/MeadalFlute/ProbablyStolenTools/issues]GitHub issue[/url] — attachments are easier to keep track of there.
+
+[hr][/hr]
+
+[b]If QuickSL helps you out, a like and a favourite go a long way — they help other players find it too.[/b]
+
+[b]Happy trading.[/b]

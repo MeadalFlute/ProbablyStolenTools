@@ -1,0 +1,56 @@
+﻿name: Bug report
+description: Something in QuickSL / Workshop Uploader is broken
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Logs make fixes much faster — please attach them instead of pasting screenshots.
+  - type: input
+    id: mod-version
+    attributes:
+      label: Mod version
+      description: Shown in the in-game Mod list (for example 0.6.0)
+    validations:
+      required: true
+  - type: input
+    id: game-build
+    attributes:
+      label: Game version / platform
+      placeholder: full release, Windows, Steam
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what actually happened.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Attach these files (drag & drop):
+        - `%LOCALAPPDATA%Low\Questing Goose Studio\Probably Stolen\Player.log`
+        - `...\PSTools.log`
+        - `...\PSTools_history.log`
+  - type: dropdown
+    id: other-mods
+    attributes:
+      label: Are other mods installed?
+      options:
+        - "No, only this mod"
+        - "Yes (list them below)"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Other mods, modified builds, save-slot details, etc.
