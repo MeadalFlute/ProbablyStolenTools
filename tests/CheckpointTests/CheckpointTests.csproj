@@ -8,6 +8,7 @@
     <MelonDir>$(MSBuildThisFileDirectory)..\..\out\melonloader-0.7.3\package\MelonLoader\net6</MelonDir>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../SnapshotFixtures/SnapshotFixtures.csproj" />
     <Compile Include="../../src/ProbablyStolenTools/StateGraph.cs" Link="StateGraph.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CheckpointHistory.cs" Link="CheckpointHistory.cs" />
     <Compile Include="../../src/ProbablyStolenTools/PanelModel.cs" Link="PanelModel.cs" />
@@ -16,6 +17,7 @@
     <Compile Include="../../src/ProbablyStolenTools/ModConfig.cs" Link="ModConfig.cs" />
     <Compile Include="../../src/ProbablyStolenTools/ManagedStateAccess.cs" Link="ManagedStateAccess.cs" />
     <Compile Include="../../src/ProbablyStolenTools/ManagedRuntime.cs" Link="ManagedRuntime.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/SnapshotCoverage.cs" Link="SnapshotCoverage.cs" />
     <Reference Include="MelonLoader">
       <HintPath>$(MelonDir)\MelonLoader.dll</HintPath>
     </Reference>

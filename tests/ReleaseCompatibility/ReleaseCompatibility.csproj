@@ -5,8 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <MelonDir Condition="'$(MelonDir)' == ''">$(MSBuildThisFileDirectory)..\..\out\melonloader-0.7.3\package\MelonLoader\net6</MelonDir>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Tomlet" HintPath="..\..\out\melonloader-0.7.3\package\MelonLoader\net6\Tomlet.dll" />
+    <Reference Include="Tomlet" HintPath="$(MelonDir)\Tomlet.dll" />
   </ItemGroup>
 </Project>

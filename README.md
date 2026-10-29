@@ -1,5 +1,12 @@
 # Probably Stolen Tools
 
+本分支是 **0.7.0-beta.1 通用快照兼容测试版**，基于已提交的 0.6.0。
+自动扩展第三方可达数据和闭包的捕获，不包含逐 Mod 适配。
+独立静态状态、异步任务和自定义库存/视图仍不保证兼容，尚待游戏内测试。
+安装、回滚与验收见 [测试版说明](docs/beta/README.zh-CN.md)，
+改动与验证见 [发布说明](docs/beta/RELEASE_NOTES.md)。
+测试通过前不合并到 `main`；下方是稳定基线说明。
+
 《深空当铺 / Probably Stolen》的自研辅助 mod，正式版适配版本 **0.6.0**。
 正式版为 Unity 2021.3.45f2 / Mono / x64，使用游戏自带的 **IMod / Harmony**，无需额外加载器。
 

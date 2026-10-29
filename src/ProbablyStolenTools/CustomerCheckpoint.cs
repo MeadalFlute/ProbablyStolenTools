@@ -51,6 +51,7 @@ namespace ProbablyStolenTools
             internal IntPtr Store, Client;
             internal DateTime At;
             internal StateGraph Graph;
+            internal SnapshotCoverage Coverage { get; set; }
             internal readonly Dictionary<IntPtr, GameItemElement> Items = new();
             internal readonly Dictionary<IntPtr, GameItemElement> RenderedItems = new();
             internal readonly Dictionary<IntPtr, PixelWindow> Windows = new();
@@ -335,6 +336,9 @@ namespace ProbablyStolenTools
                     Cash = store.GetCash(), At = DateTime.Now, Random = RNG.random
                 };
                 candidate.Graph = StateGraph.Capture(access, roots);
+#if MONO
+                candidate.Coverage = access.Coverage;
+#endif
                 candidate.Customer = new CustomerVisual();
                 candidate.Shop = new ShopPhaseVisual();
                 if (candidate.Graph.SlotCount == 0) throw new InvalidOperationException("Empty business-state graph.");
@@ -395,6 +399,12 @@ namespace ProbablyStolenTools
                     $"objects={_active.Graph.ObjectCount} slots={_active.Graph.SlotCount} bytes={_active.Graph.ByteCount} " +
                     $"items={_active.Items.Count} renderedItems={_active.RenderedItems.Count} windows={_active.Windows.Count} " +
                     $"after={(Time.unscaledTime - _arrivedAt):0.00}s");
+                if (_active.Coverage != null)
+                {
+                    EventLog.Write($"[Snapshot] COVERAGE id={_active.Id} {_active.Coverage.Summary}");
+                    foreach (string detail in _active.Coverage.Details)
+                        EventLog.Write("[Snapshot] SKIPPED " + detail);
+                }
                 TraceBargain("CAPTURE");
             }
             catch (Exception e)
@@ -563,7 +573,9 @@ namespace ProbablyStolenTools
                 catch (Exception e) { Plugin.LogSource.LogWarning("[Recorder] refresh failed: " + e.Message); }
                 Status = "Restored checkpoint: " + Name(target);
                 PanelNotice.Show("已回溯至 " + Name(target));
-                EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/10 diff={diff.Count}");
+                EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/10 " +
+                    $"diff={diff.Count} coverage=recorded-fields-only" +
+                    (target.Coverage == null ? "" : " " + target.Coverage.Summary));
                 TraceBargain("AFTER RESTORE");
             }
             catch (Exception e)

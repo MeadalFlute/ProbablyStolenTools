@@ -6,7 +6,7 @@ using MelonLoader;
 using UnityEngine;
 
 #if !MONO
-[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "Probably Stolen Tools", "0.6.0", "Probably Stolen Tools contributors")]
+[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "Probably Stolen Tools", "0.7.0-beta.1", "Probably Stolen Tools contributors")]
 [assembly: MelonLoader.HarmonyDontPatchAll]
 #endif
 
@@ -20,7 +20,7 @@ namespace ProbablyStolenTools
 #endif
     {
         public const string Guid = "dsh.probablystolen.tools";
-        public const string Version = "0.6.0";
+        public const string Version = "0.7.0-beta.1";
 
         internal static ModLogger LogSource;
         internal static Plugin Instance;

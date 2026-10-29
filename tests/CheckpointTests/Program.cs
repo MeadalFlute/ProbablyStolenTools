@@ -8,6 +8,7 @@ void Test(string name, Action action)
 void Check(bool condition) { if (!condition) throw new Exception("Assertion failed"); }
 
 ManagedSnapshotTests.Run(Test, Check);
+ModSnapshotTests.Run(Test, Check);
 
 Test("cycle and shared object keep original identity", () =>
 {

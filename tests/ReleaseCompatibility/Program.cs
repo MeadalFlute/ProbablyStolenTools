@@ -130,6 +130,8 @@ foreach (var field in resultType.GetFields(BindingFlags.Public | BindingFlags.In
 if ((bool)resultType.GetProperty("Refused").GetValue(result))
     throw new Exception("Official scanner refused the mod.");
 var manifest = XDocument.Load(args[2]).Root;
+if (plugin.GetField("Version").GetRawConstantValue()?.ToString() != manifest.Element("ModVersion")?.Value)
+    throw new Exception("Plugin and manifest versions differ.");
 var declared = manifest.Element("Capabilities").Elements("Capability").Select(e => e.Value).ToHashSet();
 var detected = ((System.Collections.IEnumerable)resultType.GetField("Capabilities").GetValue(result)).Cast<string>();
 foreach (string capability in detected)

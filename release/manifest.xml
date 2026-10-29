@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Mod>
   <ID>dsh.probablystolen.tools</ID>
-  <Name>Probably Stolen Tools</Name>
+  <Name>QuickSL (Generic Snapshot Beta)</Name>
   <Author>Probably Stolen Tools contributors</Author>
-  <ModVersion>0.6.0</ModVersion>
-  <Description>Customer checkpoints, rewind history, inspection helpers and dialogue settings.</Description>
+  <ModVersion>0.7.0-beta.1</ModVersion>
+  <Description>Experimental reachable mod-data and closure snapshots. Independent mod statics and background jobs are not covered. Use instead of the stable QuickSL, never alongside it.</Description>
   <GameVersions />
   <Assemblies>
     <Assembly>ProbablyStolenTools.dll</Assembly>
