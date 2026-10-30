@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using HarmonyLib;
@@ -279,8 +279,8 @@ namespace ProbablyStolenTools
             }
 
             string other = action == WholeDayAction.DayStart
-                ? Plugin.CfgKeyPrevDay.Value.ToString()
-                : Plugin.CfgKeyDay.Value.ToString();
+                ? Plugin.KeyName(Plugin.CfgKeyPrevDay.Value)
+                : Plugin.KeyName(Plugin.CfgKeyDay.Value);
             string what = action == WholeDayAction.DayStart ? "回到本日开业前" : "回到上一天";
             string body = $"{what} 会覆盖当前存档槽位（覆盖前会保留一份 .pre_restore 备份）。\n\n" +
                           $"点击下方按钮确认，或直接再按一次 {other} 确认。";

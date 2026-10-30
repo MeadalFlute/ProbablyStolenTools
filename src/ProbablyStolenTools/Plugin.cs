@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using HarmonyLib;
 #if !MONO
@@ -71,7 +71,7 @@ namespace ProbablyStolenTools
         {
             switch (key)
             {
-                case KeyCode.None: return "未设置";
+                case KeyCode.None: return "<未设置>";
                 case KeyCode.Escape: return "Esc";
                 case KeyCode.Return: return "Enter";
                 case KeyCode.LeftShift: return "L-Shift";
@@ -104,6 +104,13 @@ namespace ProbablyStolenTools
             if (self == null) return;
 
             KeyCode previous = target.Value;
+            if (key == KeyCode.None)
+            {
+                target.Value = KeyCode.None;
+                Instance.Config.Save();
+                LogSource?.LogInfo($"[Keys] {self.Label} disabled (no hotkey bound)");
+                return;
+            }
             if (clash != null)
             {
                 clash.Config.Value = previous;
@@ -123,6 +130,7 @@ namespace ProbablyStolenTools
 
         internal static bool HotkeyInUse(KeyCode key, ConfigEntry<KeyCode> except)
         {
+            if (key == KeyCode.None) return false;
             foreach (var binding in Hotkeys)
                 if (binding.Config != except && binding.Config.Value == key) return true;
             return false;
@@ -258,7 +266,12 @@ namespace ProbablyStolenTools
 
         internal static bool Down(ConfigEntry<KeyCode> entry)
         {
-            try { return Input.GetKeyDown(entry.Value); } catch { return false; }
+            try
+            {
+                if (entry.Value == KeyCode.None) return false;   // 已禁用：不响应任何按键
+                return Input.GetKeyDown(entry.Value);
+            }
+            catch { return false; }
         }
 
         /// <summary>

@@ -327,7 +327,9 @@ namespace ProbablyStolenTools
         // ---------------- 快捷键改键 ----------------
 
         private string HotkeyText(Plugin.HotkeyBinding binding)
-            => binding.Label + "   [" + Plugin.KeyName(binding.Config.Value) + "]";
+            => binding.Label + "   [" + (binding.Config.Value == KeyCode.None
+                ? InspectionLocale.Text("已停用", "disabled")
+                : Plugin.KeyName(binding.Config.Value)) + "]";
 
 #if !MONO
         [HideFromIl2Cpp]
@@ -347,8 +349,8 @@ namespace ProbablyStolenTools
             var row = _keyRows.Find(r => r.Binding == binding);
             if (row.Element != null && row.Element.text != null)
                 row.Element.SetText(InspectionLocale.Text(
-                    "按下新的按键…（Esc 取消，Backspace 恢复默认）",
-                    "Press a new key… (Esc cancels, Backspace resets)"));
+                    "按下新的按键…（Esc 取消，Backspace 恢复默认，Delete 清除）",
+                    "Press a new key… (Esc cancels, Backspace resets, Delete clears)"));
         }
 
         private void CaptureStep()
@@ -356,11 +358,12 @@ namespace ProbablyStolenTools
             try
             {
                 if (Input.GetKeyDown(KeyCode.Escape)) { EndCapture(null); return; }
-                if (Input.GetKeyDown(KeyCode.Backspace) || Input.GetKeyDown(KeyCode.Delete))
+                if (Input.GetKeyDown(KeyCode.Backspace))
                 {
                     EndCapture(_captureTarget != null ? _captureTarget.Default : (KeyCode?)null);
                     return;
                 }
+                if (Input.GetKeyDown(KeyCode.Delete)) { EndCapture(KeyCode.None); return; }
                 for (int i = 0; i < AllKeys.Length; i++)
                 {
                     var key = AllKeys[i];
@@ -380,12 +383,26 @@ namespace ProbablyStolenTools
             var binding = _captureTarget;
             _captureTarget = null;
             CapturingKey = false;
-            if (binding != null && key.HasValue && key.Value != KeyCode.None)
+            if (binding != null && key.HasValue)
             {
-                if (key.Value != binding.Config.Value) Plugin.SetHotkey(binding.Config, key.Value);
-                PanelNotice.Show(InspectionLocale.Text(
-                    $"{binding.Label} 已改为 {Plugin.KeyName(key.Value)}",
-                    $"{binding.Label} is now {Plugin.KeyName(key.Value)}"));
+                if (key.Value == KeyCode.None && binding.Id == "panel")
+                {
+                    // 面板键不能清空：没有它就没有任何入口再打开设置。
+                    PanelNotice.Show(InspectionLocale.Text(
+                        "面板快捷键不能设为空，否则无法再打开设置",
+                        "The panel hotkey cannot be disabled - it is the only way back into settings"));
+                }
+                else
+                {
+                    if (key.Value != binding.Config.Value) Plugin.SetHotkey(binding.Config, key.Value);
+                    PanelNotice.Show(InspectionLocale.Text(
+                        key.Value == KeyCode.None
+                            ? $"{binding.Label} 已停用"
+                            : $"{binding.Label} 已改为 {Plugin.KeyName(key.Value)}",
+                        key.Value == KeyCode.None
+                            ? $"{binding.Label} disabled"
+                            : $"{binding.Label} is now {Plugin.KeyName(key.Value)}"));
+                }
             }
             RefreshKeyLabels();
         }
