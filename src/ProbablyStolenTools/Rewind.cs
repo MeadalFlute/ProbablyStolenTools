@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using HarmonyLib;
@@ -621,6 +621,7 @@ namespace ProbablyStolenTools
             }
 
             if (_inputBroken) return;
+            if (CheckpointPanel.CapturingKey) return;   // 正在改键：这一帧的所有热键都让路
             try
             {
                 if (Plugin.Down(Plugin.CfgKeyPrev))

@@ -91,6 +91,61 @@ namespace ProbablyStolenTools
             if (!Enabled) { if (History.Items.Count > 0 || ClosedNode?.Graph != null) Clear("已禁用"); return; }
             if (_armed) TryCapture();
             if (_closeArmed) TryCaptureClosed();
+            ShutterWatchdog();
+        }
+
+        // ---------- 卷帘门锁看门狗 ----------
+        // 正式版里闭店按钮的提示由 StoreShutterButton.GetTooltip 决定：
+        // storeState == 1 且 lockShutterButtonFlag != 0 时显示“请稍候”。
+        // 这个计数由游戏在对话/转场里自增自减，一旦某条中断路径漏了递减，
+        // 玩家就会永远闭不了店。这里只在“没有任何正当理由”时兜底清零。
+        private static float _shutterSince, _shutterLogAt;
+        private static int _shutterRepairs;
+
+        private static void ShutterWatchdog()
+        {
+            var store = Plugin.Store();
+            if (store == null || (int)store.storeState != 1 || store.lockShutterButtonFlag == 0)
+            {
+                _shutterSince = 0;
+                return;
+            }
+
+            var dialog = DialogUIManager.Instance;
+            var mono = StoreClientMono.Instance;
+            var ui = StoreUIManager.Instance;
+            bool legitimatelyBusy = (dialog != null && (dialog.currentDialog != null || dialog.isConversationActiveFlag != 0))
+                || (mono != null && mono.IsMoving())
+                || store.isHandlingShootout || store.isClientBeingArrested || store.isGeneScannerScanning
+                || (ui != null && (ui.isAboutToStartMainDialog || ui.isShootingMode))
+                || (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem)
+                || GameFields.PhoneBusy(PhoneUIManager.Instance);
+            if (legitimatelyBusy)
+            {
+                _shutterSince = 0;
+                return;
+            }
+
+            if (_shutterSince == 0) { _shutterSince = Time.unscaledTime; return; }
+            float held = Time.unscaledTime - _shutterSince;
+
+            // 每 3 秒留一条证据，方便报告者直接把这个数字发回来。
+            if (held >= 3f && Time.unscaledTime - _shutterLogAt >= 3f)
+            {
+                _shutterLogAt = Time.unscaledTime;
+                EventLog.Write($"[Shutter] still locked lockShutterButtonFlag={store.lockShutterButtonFlag} " +
+                               $"held={held:0.0}s state={(int)store.storeState} " +
+                               $"client={(store.currentClientInstance != null ? 1 : 0)}");
+            }
+
+            if (held < 10f) return;
+            if (!Plugin.CfgRepairStuckShutter.Value) return;
+
+            int before = store.lockShutterButtonFlag;
+            store.lockShutterButtonFlag = 0;
+            _shutterSince = 0;
+            _shutterRepairs++;
+            EventLog.Write($"[Shutter] cleared stale lock after {held:0.0}s (was {before}, repairs={_shutterRepairs})");
         }
 
         private static void Observe()

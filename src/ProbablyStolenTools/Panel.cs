@@ -40,6 +40,12 @@ namespace ProbablyStolenTools
         private RectTransform _settingsButton, _foldButton, _headerControls;
         private bool _settingsOpen;
         private readonly List<(RectTransform Rect, Toggle Toggle, ConfigEntry<bool> Config)> _settings = new();
+        private readonly List<(CustomUIElement Element, Plugin.HotkeyBinding Binding)> _keyRows = new();
+        private Plugin.HotkeyBinding _captureTarget;
+        private static readonly KeyCode[] AllKeys = (KeyCode[])Enum.GetValues(typeof(KeyCode));
+
+        /// <summary>正在等待玩家按新键：此时所有 mod 热键都必须让路。</summary>
+        internal static bool CapturingKey { get; private set; }
         private RectTransform _canvasRect, _panelRect, _viewport, _content;
         private RawImage _resize;
         private TextMeshProUGUI _title, _hint, _fold, _empty, _toastText;
@@ -96,6 +102,7 @@ namespace ProbablyStolenTools
 
         private void Update()
         {
+            if (CapturingKey) { CaptureStep(); return; }
             try
             {
                 bool inGame = IsInGame();
@@ -237,6 +244,11 @@ namespace ProbablyStolenTools
             NewSetting(InspectionLocale.Text("双击物品快速鉴定", "Double-click to inspect"), Plugin.CfgDoubleClickInspection);
             NewSetting(InspectionLocale.Text("显示快速鉴定摘要", "Show quick inspection summary"), Plugin.CfgQuickInspection);
             NewSetting(InspectionLocale.Text("整日回退需确认", "Confirm whole-day rewind"), Plugin.CfgConfirmWholeDay);
+            _keyRows.Clear();
+            foreach (var binding in Plugin.Hotkeys) NewHotkeyRow(binding);
+            var resetKeys = NativeButton(_settingsContent, InspectionLocale.Text("恢复默认快捷键", "Reset hotkeys"),
+                () => { Plugin.ResetHotkeys(); RefreshKeyLabels(); });
+            resetKeys.root.name = "hotkey-reset";
             _resize = Raw("resize", _panelGo.transform, new Color(1, 1, 1, 0.04f), true);
             var grip = Text("grip", _resize.transform, 16, new Color(0.6f, 0.68f, 0.7f), TextAlignmentOptions.Center);
             grip.text = "\u25E2";
@@ -311,6 +323,85 @@ namespace ProbablyStolenTools
             var element = builder.Last;
             _settings.Add((element.Rect, element.toggle, config));
         }
+
+        // ---------------- 快捷键改键 ----------------
+
+        private string HotkeyText(Plugin.HotkeyBinding binding)
+            => binding.Label + "   [" + Plugin.KeyName(binding.Config.Value) + "]";
+
+#if !MONO
+        [HideFromIl2Cpp]
+#endif
+        private void NewHotkeyRow(Plugin.HotkeyBinding binding)
+        {
+            var element = NativeButton(_settingsContent, HotkeyText(binding), () => BeginCapture(binding));
+            element.root.name = "hotkey-" + binding.Id;
+            _keyRows.Add((element, binding));
+        }
+
+        private void BeginCapture(Plugin.HotkeyBinding binding)
+        {
+            if (binding == null) return;
+            _captureTarget = binding;
+            CapturingKey = true;
+            var row = _keyRows.Find(r => r.Binding == binding);
+            if (row.Element != null && row.Element.text != null)
+                row.Element.SetText(InspectionLocale.Text(
+                    "按下新的按键…（Esc 取消，Backspace 恢复默认）",
+                    "Press a new key… (Esc cancels, Backspace resets)"));
+        }
+
+        private void CaptureStep()
+        {
+            try
+            {
+                if (Input.GetKeyDown(KeyCode.Escape)) { EndCapture(null); return; }
+                if (Input.GetKeyDown(KeyCode.Backspace) || Input.GetKeyDown(KeyCode.Delete))
+                {
+                    EndCapture(_captureTarget != null ? _captureTarget.Default : (KeyCode?)null);
+                    return;
+                }
+                for (int i = 0; i < AllKeys.Length; i++)
+                {
+                    var key = AllKeys[i];
+                    if (key == KeyCode.None || IsMouseKey(key)) continue;
+                    if (Input.GetKeyDown(key)) { EndCapture(key); return; }
+                }
+            }
+            catch (Exception e)
+            {
+                Plugin.LogSource?.LogWarning("[Keys] capture failed: " + e.Message);
+                EndCapture(null);
+            }
+        }
+
+        private void EndCapture(KeyCode? key)
+        {
+            var binding = _captureTarget;
+            _captureTarget = null;
+            CapturingKey = false;
+            if (binding != null && key.HasValue && key.Value != KeyCode.None)
+            {
+                if (key.Value != binding.Config.Value) Plugin.SetHotkey(binding.Config, key.Value);
+                PanelNotice.Show(InspectionLocale.Text(
+                    $"{binding.Label} 已改为 {Plugin.KeyName(key.Value)}",
+                    $"{binding.Label} is now {Plugin.KeyName(key.Value)}"));
+            }
+            RefreshKeyLabels();
+        }
+
+        private void RefreshKeyLabels()
+        {
+            for (int i = 0; i < _keyRows.Count; i++)
+            {
+                var row = _keyRows[i];
+                if (row.Element != null && row.Element.text != null)
+                    row.Element.SetText(HotkeyText(row.Binding));
+            }
+        }
+
+        private static bool IsMouseKey(KeyCode key)
+            => key >= KeyCode.Mouse0 && key <= KeyCode.Mouse6;
 
 #if !MONO
         [HideFromIl2Cpp]

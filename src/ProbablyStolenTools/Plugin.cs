@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using HarmonyLib;
 #if !MONO
 using MelonLoader;
@@ -20,7 +21,7 @@ namespace ProbablyStolenTools
 #endif
     {
         public const string Guid = "dsh.probablystolen.tools";
-        public const string Version = "0.6.0";
+        public const string Version = "0.7.0";
 
         internal static ModLogger LogSource;
         internal static Plugin Instance;
@@ -42,12 +43,91 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<KeyCode> CfgKeyDay;
         internal static ConfigEntry<KeyCode> CfgKeyPrevDay;
         internal static ConfigEntry<bool> CfgConfirmWholeDay;
+        internal static ConfigEntry<bool> CfgRepairStuckShutter;
         internal static ConfigEntry<KeyCode> CfgKeyPanel;
         internal static ConfigEntry<string> CfgRestoreMode;
         internal static ConfigEntry<bool> CfgAllowOpen;
         internal static ConfigEntry<bool> CfgQueueRebuild;
         internal static ConfigEntry<bool> CfgCaptureMidDay;
         internal static ConfigEntry<bool> CfgAutoOpenAfterRestore;
+
+        // ---- hotkeys ----
+        internal sealed class HotkeyBinding
+        {
+            internal readonly string Id;
+            internal readonly string Label;
+            internal readonly ConfigEntry<KeyCode> Config;
+            internal readonly KeyCode Default;
+
+            internal HotkeyBinding(string id, string label, ConfigEntry<KeyCode> config, KeyCode fallback)
+            {
+                Id = id; Label = label; Config = config; Default = fallback;
+            }
+        }
+
+        internal static List<HotkeyBinding> Hotkeys = new();
+
+        internal static string KeyName(KeyCode key)
+        {
+            switch (key)
+            {
+                case KeyCode.None: return "未设置";
+                case KeyCode.Escape: return "Esc";
+                case KeyCode.Return: return "Enter";
+                case KeyCode.LeftShift: return "L-Shift";
+                case KeyCode.RightShift: return "R-Shift";
+                case KeyCode.LeftControl: return "L-Ctrl";
+                case KeyCode.RightControl: return "R-Ctrl";
+                case KeyCode.LeftAlt: return "L-Alt";
+                case KeyCode.RightAlt: return "R-Alt";
+                case KeyCode.BackQuote: return "`";
+                case KeyCode.Space: return "Space";
+            }
+
+            string name = key.ToString();
+            if (name.StartsWith("Alpha", StringComparison.Ordinal)) return name.Substring(5);
+            if (name.StartsWith("Keypad", StringComparison.Ordinal)) return "Num" + name.Substring(6);
+            if (name.StartsWith("Joystick", StringComparison.Ordinal)) return "Pad";
+            return name;
+        }
+
+        /// <summary>改键：若目标键已被本 mod 的另一动作占用，两者交换，避免两个功能共用一键。</summary>
+        internal static void SetHotkey(ConfigEntry<KeyCode> target, KeyCode key)
+        {
+            HotkeyBinding self = null;
+            HotkeyBinding clash = null;
+            foreach (var binding in Hotkeys)
+            {
+                if (binding.Config == target) { self = binding; continue; }
+                if (binding.Config.Value == key) clash = binding;
+            }
+            if (self == null) return;
+
+            KeyCode previous = target.Value;
+            if (clash != null)
+            {
+                clash.Config.Value = previous;
+                LogSource?.LogInfo($"[Keys] {clash.Label} swapped to {KeyName(previous)}");
+            }
+            target.Value = key;
+            Instance.Config.Save();
+            LogSource?.LogInfo($"[Keys] {self.Label} -> {KeyName(key)}");
+        }
+
+        internal static void ResetHotkeys()
+        {
+            foreach (var binding in Hotkeys) binding.Config.Value = binding.Default;
+            Instance.Config.Save();
+            LogSource?.LogInfo("[Keys] all hotkeys reset to defaults");
+        }
+
+        internal static bool HotkeyInUse(KeyCode key, ConfigEntry<KeyCode> except)
+        {
+            foreach (var binding in Hotkeys)
+                if (binding.Config != except && binding.Config.Value == key) return true;
+            return false;
+        }
+
 
         // ---- diagnostics ----
         internal static ConfigEntry<bool> CfgDiag;
@@ -104,8 +184,18 @@ namespace ProbablyStolenTools
                 "回到上一天 / back to previous day");
             CfgConfirmWholeDay = Config.Bind("Rewind", "ConfirmWholeDayRewind", true,
                 "Ask for confirmation before the whole-day rewinds (F5 / F7), since they overwrite the current save slot.");
+            CfgRepairStuckShutter = Config.Bind("Rewind", "RepairStuckShutter", true,
+                "If the shutter stays locked for 10s with no dialog, movement or shootout in progress, clear the lock so the shop can be closed again.");
             CfgKeyPanel = Config.Bind("Rewind", "KeyTogglePanel", KeyCode.F8,
                 "Show / hide the checkpoint panel.");
+
+            Hotkeys = new List<HotkeyBinding>
+            {
+                new HotkeyBinding("prev", "回到本顾客到店", CfgKeyPrev, KeyCode.F6),
+                new HotkeyBinding("day", "回到本日开业前", CfgKeyDay, KeyCode.F7),
+                new HotkeyBinding("prevday", "回到上一天", CfgKeyPrevDay, KeyCode.F5),
+                new HotkeyBinding("panel", "显示 / 隐藏面板", CfgKeyPanel, KeyCode.F8),
+            };
 
             CfgRestoreMode = Config.Bind("Rewind", "RestoreMode", "menu",
                 "How to apply a checkpoint: menu | auto | loadgame | scene. 'menu' (default) writes the slot, returns to the main menu and auto-loads it - the only path proven to work in this build.");
@@ -134,7 +224,7 @@ namespace ProbablyStolenTools
             CfgPanelHeight = Config.Bind("Panel", "Height", 400f, "Expanded panel height in reference canvas units.");
             CfgPanelFolded = Config.Bind("Panel", "Folded", false, "Remember panel collapsed state.");
             Config.SaveOnConfigSet = true;
-            Config.Save();
+            Instance.Config.Save();
 
             LogSource.LogInfo($"Probably Stolen Tools {Version} loading...");
             LogSource.LogInfo($"persistentDataPath = {Application.persistentDataPath}");
