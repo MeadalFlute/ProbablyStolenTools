@@ -249,6 +249,7 @@ namespace ProbablyStolenTools
             var resetKeys = NativeButton(_settingsContent, InspectionLocale.Text("恢复默认快捷键", "Reset hotkeys"),
                 () => { Plugin.ResetHotkeys(); RefreshKeyLabels(); });
             resetKeys.root.name = "hotkey-reset";
+            StackSettingsRow(resetKeys.Rect, 28f);
             _resize = Raw("resize", _panelGo.transform, new Color(1, 1, 1, 0.04f), true);
             var grip = Text("grip", _resize.transform, 16, new Color(0.6f, 0.68f, 0.7f), TextAlignmentOptions.Center);
             grip.text = "\u25E2";
@@ -259,6 +260,16 @@ namespace ProbablyStolenTools
             builder.Show();
             _built = true;
             Refresh(CurrentDay());
+            try
+            {
+                var parts = new List<string>();
+                foreach (var row in _keyRows)
+                    if (row.Element != null)
+                        parts.Add(row.Binding.Id + "@" + row.Element.Rect.anchoredPosition.y.ToString("0"));
+                Plugin.LogSource.LogInfo($"[Panel] checkpoint panel built (v6). settings h={_settingsContent.sizeDelta.y:0} " +
+                                          $"keyRows={_keyRows.Count} [{string.Join(", ", parts)}]");
+            }
+            catch { }
             Plugin.LogSource.LogInfo("[Panel] checkpoint panel built with native CustomUIManager (v6).");
         }
 
@@ -338,7 +349,39 @@ namespace ProbablyStolenTools
         {
             var element = NativeButton(_settingsContent, HotkeyText(binding), () => BeginCapture(binding));
             element.root.name = "hotkey-" + binding.Id;
+            StackSettingsRow(element.Rect, 28f);
             _keyRows.Add((element, binding));
+        }
+
+        /// <summary>
+        /// 设置区的开关行是预制体自己纵向排的，而 AddButton 用的按钮预制体不会参与这套排版
+        /// （直接叠在左上角、还会露到可视区外）。这里按现有行的最低点手动堆叠，
+        /// 并标记 ignoreLayout，避免和任何布局组打架。
+        /// </summary>
+        private void StackSettingsRow(RectTransform rect, float height)
+        {
+            if (rect == null || _settingsContent == null) return;
+            float bottom = 0f, lastHeight = 0f;
+            for (int i = 0; i < _settingsContent.childCount; i++)
+            {
+                var child = _settingsContent.GetChild(i) as RectTransform;
+                if (child == null || child == rect || !child.gameObject.activeSelf) continue;
+                float y = child.anchoredPosition.y;
+                if (y <= bottom) { bottom = y; lastHeight = child.rect.height; }
+            }
+            float top = bottom - (lastHeight > 0 ? lastHeight : height) - 2f;
+
+            rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.sizeDelta = new Vector2(_settingsContent.rect.width, height);
+            rect.anchoredPosition = new Vector2(0f, top);
+
+            var layout = rect.GetComponent<LayoutElement>() ?? rect.gameObject.AddComponent<LayoutElement>();
+            layout.ignoreLayout = true;
+
+            float needed = -top + height + 8f;
+            if (_settingsContent.sizeDelta.y < needed)
+                _settingsContent.sizeDelta = new Vector2(_settingsContent.sizeDelta.x, needed);
         }
 
         private void BeginCapture(Plugin.HotkeyBinding binding)
