@@ -584,6 +584,8 @@ namespace ProbablyStolenTools
 
         // 轮询式检查点
         private int _lastState = -1;
+        private bool _dayStartPending;
+        private float _dayStartArmedAt;
         private bool _lastArrived;
         private int _lastStackCount = -1;
 
@@ -681,6 +683,20 @@ namespace ProbablyStolenTools
             _bootTimer += Time.deltaTime;
             if (_bootTimer < 3f) return;
 
+            // 同样要等“今天还没人上门”，否则会把带顾客的中间态存成开业前节点。
+            bool idle = false;
+            try
+            {
+                idle = (int)store.storeState == 2 && !store.isClientArrived
+                    && store.currentClientInstance == null && !store.isClientBeingArrested;
+            }
+            catch { }
+            if (!idle)
+            {
+                if (_bootTimer < 25f) return;
+                Plugin.LogSource.LogWarning("[Rewind] boot checkpoint skipped: a client was already present");
+            }
+
             _bootDone = true;
             Rewind.Capture("进店", true);
         }
@@ -714,10 +730,32 @@ namespace ProbablyStolenTools
 
             if (state != _lastState)
             {
-                if (state == 2) Rewind.Capture("开业前", true);   // MORNING
+                if (state == 2)
+                {
+                    // MORNING：要等“今天真的还没人上门”再拍，否则会把带顾客的中间态存成开业前节点，
+                    // 恢复后就会出现“店里没人却既不能叫下一位、也遣散不掉”的幽灵顾客。
+                    _dayStartPending = true;
+                    _dayStartArmedAt = Time.unscaledTime;
+                }
                 else if (state == 1 && Plugin.CfgCaptureMidDay.Value)
                     Rewind.Capture("开门", false);                 // OPEN（默认不记：存档恢复不了）
                 _lastState = state;
+            }
+
+            if (_dayStartPending)
+            {
+                bool idle = !arrived && s.currentClientInstance == null && !s.isClientBeingArrested
+                    && !s.isHandlingShootout;
+                if (idle)
+                {
+                    _dayStartPending = false;
+                    Rewind.Capture("开业前", true);
+                }
+                else if (Time.unscaledTime - _dayStartArmedAt > 20f)
+                {
+                    _dayStartPending = false;
+                    EventLog.Write("[Rewind] day-start checkpoint skipped: a client was already present for 20s");
+                }
             }
 
             if (!Plugin.CfgCaptureMidDay.Value)
@@ -833,10 +871,34 @@ namespace ProbablyStolenTools
                 if (Time.time < _resumeT + 3f) return;
                 try
                 {
-                    EventLog.Write($"[Rewind] post-load state: arrived={PlayerStore.Instance.isClientArrived}, state={(int)PlayerStore.Instance.storeState}");
+                    var store = PlayerStore.Instance;
+                    int state = (int)store.storeState;
+                    EventLog.Write($"[Rewind] post-load state: arrived={store.isClientArrived}, state={state}");
+                    if (state == 2)
+                    {
+                        // 开业前的存档若残留“已有顾客到达”，恢复后会变成看不见、又赶不走的幽灵顾客：
+                        // 叫下一位被 currentClientInstance 挡住，遣散又没有可互动实例。
+                        if (store.currentClientInstance != null)
+                        {
+                            try
+                            {
+                                store.DismissCurrentClient(false, true, false);
+                                EventLog.Write("[Rewind] cleared stale client instance at day start");
+                            }
+                            catch (Exception e)
+                            {
+                                EventLog.Write("[Rewind] clear stale client failed: " + e.Message);
+                            }
+                        }
+                        if (store.isClientArrived)
+                        {
+                            store.isClientArrived = false;
+                            EventLog.Write("[Rewind] cleared stale isClientArrived at day start");
+                        }
+                    }
                     if (!p.IsDayStart && p.State == 1 && Plugin.CfgAutoOpenAfterRestore.Value)
                     {
-                        PlayerStore.Instance.OpenShutter();
+                        store.OpenShutter();
                         EventLog.Write("[Rewind] OpenShutter() called after restore.");
                     }
                 }
