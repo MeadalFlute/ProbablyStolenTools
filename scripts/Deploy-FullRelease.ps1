@@ -55,11 +55,12 @@ Assert-Tree $modsBefore (Join-Path $backup 'Mods')
 New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 Copy-Item -LiteralPath $sourceDll -Destination (Join-Path $targetDir 'ProbablyStolenTools.dll') -Force
 Copy-Item -LiteralPath $manifest -Destination (Join-Path $targetDir 'manifest.xml') -Force
-$preview = Join-Path $workspace 'release\preview.jpg'
+# The game only loads <mod>/preview.png (hardcoded in ModUIManager.GetLocalPreview).
+# release/preview.png is pre-shrunk (960x540 paletted); the full-size JPG is only for the
+# Workshop upload, so the packaged mod stays small.
+$preview = Join-Path $workspace 'release\preview.png'
 if (Test-Path -LiteralPath $preview) {
-    $textures = Join-Path $targetDir 'Textures'
-    New-Item -ItemType Directory -Path $textures -Force | Out-Null
-    Copy-Item -LiteralPath $preview -Destination (Join-Path $textures 'preview.jpg') -Force
+    Copy-Item -LiteralPath $preview -Destination (Join-Path $targetDir 'preview.png') -Force
 }
 
 $imported = $false
