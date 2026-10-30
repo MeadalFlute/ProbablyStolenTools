@@ -55,6 +55,12 @@ Assert-Tree $modsBefore (Join-Path $backup 'Mods')
 New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 Copy-Item -LiteralPath $sourceDll -Destination (Join-Path $targetDir 'ProbablyStolenTools.dll') -Force
 Copy-Item -LiteralPath $manifest -Destination (Join-Path $targetDir 'manifest.xml') -Force
+$preview = Join-Path $workspace 'release\preview.jpg'
+if (Test-Path -LiteralPath $preview) {
+    $textures = Join-Path $targetDir 'Textures'
+    New-Item -ItemType Directory -Path $textures -Force | Out-Null
+    Copy-Item -LiteralPath $preview -Destination (Join-Path $textures 'preview.jpg') -Force
+}
 
 $imported = $false
 $demoSettings = Join-Path (Split-Path -Parent $GameDir) 'Probably Stolen Demo\UserData\MelonPreferences.cfg'
@@ -74,7 +80,7 @@ $builtHash = (Get-FileHash -LiteralPath $sourceDll -Algorithm SHA256).Hash
 $deployedHash = (Get-FileHash -LiteralPath (Join-Path $targetDir 'ProbablyStolenTools.dll') -Algorithm SHA256).Hash
 if ($builtHash -ne $deployedHash) { throw 'Deployed DLL does not match build.' }
 $record = [ordered]@{
-    Version = '0.6.0'
+    Version = ([xml](Get-Content -LiteralPath $manifest -Raw)).Mod.ModVersion
     Timestamp = (Get-Date).ToString('o')
     GameDirectory = $GameDir
     Runtime = 'Mono'
@@ -88,11 +94,6 @@ $record = [ordered]@{
     StoppedGameProcesses = $stopped
     GameStarted = $false
     InGameValidated = $false
-    OfflineTestsPassed = 48
-    PatchTargetsChecked = 51
-    SnapshotFieldsChecked = 68
-    OfficialScannerPassed = $true
-    NativeSettingsRoundTripPassed = $true
     SaveFilesBefore = $saveBefore
     ModsBefore = $modsBefore
 }

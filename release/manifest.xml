@@ -1,8 +1,8 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Mod>
   <ID>dsh.probablystolen.tools</ID>
   <Name>Probably Stolen Tools</Name>
-  <Author>Probably Stolen Tools contributors</Author>
+  <Author>米德</Author>
   <ModVersion>0.7.0</ModVersion>
   <Description>Customer checkpoints, rewind history, inspection helpers and dialogue settings.</Description>
   <GameVersions />

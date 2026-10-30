@@ -34,18 +34,26 @@ namespace ProbablyStolenTools
         private CustomUIWindow _window;
         private const string WindowId = "ProbablyStolenTools.checkpoints";
         private readonly List<Il2CppSystem.Object> _callbacks = new();
-        private RectTransform _nativeContent, _settingsViewport, _settingsContent;
+        private RectTransform _nativeHeader, _nativeContent, _settingsViewport, _settingsContent;
+        private LayoutGroup _frameLayout;
         private Vector2 _lastWindowPosition;
         private float _retryAt;
         private RectTransform _settingsButton, _foldButton, _headerControls;
         private bool _settingsOpen;
         private readonly List<(RectTransform Rect, Toggle Toggle, ConfigEntry<bool> Config)> _settings = new();
-        private readonly List<(CustomUIElement Element, Plugin.HotkeyBinding Binding)> _keyRows = new();
+        private readonly List<(RectTransform Rect, TextMeshProUGUI Label, CustomUIElement Element,
+            Plugin.HotkeyBinding Binding)> _keyRows = new();
+        private TextMeshProUGUI _optionsHeading, _keysHeading;
+        private RectTransform _resetKeys;
+        private ScrollRect _settingsScroll;
         private Plugin.HotkeyBinding _captureTarget;
+        private int _captureStartedFrame;
         private static readonly KeyCode[] AllKeys = (KeyCode[])Enum.GetValues(typeof(KeyCode));
 
         /// <summary>正在等待玩家按新键：此时所有 mod 热键都必须让路。</summary>
         internal static bool CapturingKey { get; private set; }
+        private static int _captureEndedFrame = -1;
+        internal static bool SuppressHotkeys => CapturingKey || Time.frameCount == _captureEndedFrame;
         private RectTransform _canvasRect, _panelRect, _viewport, _content;
         private RawImage _resize;
         private TextMeshProUGUI _title, _hint, _fold, _empty, _toastText;
@@ -65,7 +73,7 @@ namespace ProbablyStolenTools
         private bool _closedUsable;
         private float _screenW, _screenH;
         private int _shown;
-        private const float HeaderH = PanelHeader.Height, BodyTop = 44f, RowH = 28f;
+        private const float BodyTop = 44f, RowH = 28f;
 
         private sealed class Row
         {
@@ -102,11 +110,12 @@ namespace ProbablyStolenTools
 
         private void Update()
         {
-            if (CapturingKey) { CaptureStep(); return; }
             try
             {
                 bool inGame = IsInGame();
-                if (Plugin.Down(Plugin.CfgKeyPanel)) _visible = !_visible;
+                bool capturingAtStart = CapturingKey;
+                if (capturingAtStart) CaptureStep();
+                if (!capturingAtStart && Plugin.Down(Plugin.CfgKeyPanel)) _visible = !_visible;
                 bool stale = _built && (_manager == null || _window == null || !_window.IsAlive
                     || Id(CustomUIManager.Instance) != Id(_manager));
                 if (stale) ReleaseWindow();
@@ -114,14 +123,16 @@ namespace ProbablyStolenTools
                     Build();
                 UpdateNotice(inGame);
                 if (!_built) return;
-                _panelGo.SetActive(inGame && _visible);
+                bool show = inGame && _visible;
+                if (!show && CapturingKey) EndCapture(null);
+                _panelGo.SetActive(show);
+                if (show) HandleGeometry();
                 if (_canvasRect.rect.width != _screenW || _canvasRect.rect.height != _screenH)
                 {
                     EndGesture();
                     Layout();
                 }
-                if (_panelGo.activeSelf) { HandleGeometry(); PlaceHeaderButtons(); }
-                else if (_dragging || _resizing) EndGesture();
+                if (!show && (_dragging || _resizing)) EndGesture();
                 int day = CurrentDay();
                 if (_revision != CustomerCheckpoint.Revision || _fileCount != Rewind.Points.Count
                     || _day != day || _activeId != CustomerCheckpoint.ActiveId
@@ -151,6 +162,21 @@ namespace ProbablyStolenTools
             }
         }
 
+        // Native drag events run after Update. Observe the resulting world geometry before persisting.
+        private void LateUpdate()
+        {
+            if (!_built || _panelGo == null || !_panelGo.activeInHierarchy || _resizing) return;
+            try
+            {
+                ObserveWindowPosition();
+                if (_dragging && !Input.GetMouseButton(0)) { Layout(); EndGesture(); }
+            }
+            catch (Exception e)
+            {
+                Plugin.LogSource?.LogWarning("[Panel] geometry failed: " + e.Message);
+            }
+        }
+
         private static bool IsInGame()
         {
             if (Plugin.CfgPreviewPanel.Value) return true;
@@ -170,27 +196,28 @@ namespace ProbablyStolenTools
             _manager = CustomUIManager.Instance;
             _panelGo = _window.root;
             _panelRect = _window.Rect;
-            _canvasRect = _panelRect.parent.Cast<RectTransform>();
+            _canvasRect = _manager.GetLayerRoot("overlay");
             _nativeContent = _window.ContentRoot;
             // The native frame owns its header and padding; only the content area is positioned manually.
             DisableLayout(_nativeContent);
             _title = _window.frame.titleText;
+            _nativeHeader = _title.rectTransform.parent.Cast<RectTransform>();
+            _frameLayout = _panelRect.GetComponent<LayoutGroup>();
             try { if (_title != null) _title.color = new Color(0.55f, 0.85f, 1.0f); } catch { }
-            _headerControls = NewObject("commands", _nativeContent).GetComponent<RectTransform>();
-            // 把 设置/收起 挪到标题栏，与日期同一行，省掉内容区的一整行高度。
-            try
-            {
-                if (_panelRect != null) _headerControls.SetParent(_panelRect, false);
-            }
-            catch { }
+            _headerControls = NewObject("commands", _panelRect).GetComponent<RectTransform>();
+            ManualRect(_headerControls);
             var fold = NativeButton(_headerControls, "收起", () =>
             {
+                EndCapture(null);
+                ObserveWindowPosition();
                 _folded = !_folded; _settingsOpen = false; _click.Reset(); Layout(); Persist();
             });
             _foldButton = fold.Rect;
             _fold = fold.text;
             var settingsButton = NativeButton(_headerControls, "设置", () =>
             {
+                EndCapture(null);
+                ObserveWindowPosition();
                 _settingsOpen = !_settingsOpen;
                 _folded = false;
                 _click.Reset();
@@ -230,13 +257,15 @@ namespace ProbablyStolenTools
             Stretch(settingsHit.rectTransform);
             _settingsGo.AddComponent<RectMask2D>();
             _settingsContent = NewObject("content", _settingsViewport).GetComponent<RectTransform>();
-            var settingsScroll = _settingsGo.AddComponent<ScrollRect>();
-            settingsScroll.viewport = _settingsViewport;
-            settingsScroll.content = _settingsContent;
-            settingsScroll.horizontal = false;
-            settingsScroll.inertia = false;
-            settingsScroll.movementType = ScrollRect.MovementType.Clamped;
-            settingsScroll.scrollSensitivity = RowH;
+            _settingsScroll = _settingsGo.AddComponent<ScrollRect>();
+            _settingsScroll.viewport = _settingsViewport;
+            _settingsScroll.content = _settingsContent;
+            _settingsScroll.horizontal = false;
+            _settingsScroll.inertia = false;
+            _settingsScroll.movementType = ScrollRect.MovementType.Clamped;
+            _settingsScroll.scrollSensitivity = RowH;
+            _optionsHeading = Text("options-heading", _settingsContent, 13, new Color(0.55f, 0.85f, 1f));
+            _optionsHeading.text = InspectionLocale.Text("辅助功能", "Options");
             NewSetting("自动鉴定报价", Plugin.CfgAutoAppraisal);
             NewSetting("自动提交鉴定", Plugin.CfgAutoSubmit);
             NewSetting("始终覆盖鉴定报价", Plugin.CfgAlwaysOverwrite);
@@ -244,12 +273,14 @@ namespace ProbablyStolenTools
             NewSetting(InspectionLocale.Text("双击物品快速鉴定", "Double-click to inspect"), Plugin.CfgDoubleClickInspection);
             NewSetting(InspectionLocale.Text("显示快速鉴定摘要", "Show quick inspection summary"), Plugin.CfgQuickInspection);
             NewSetting(InspectionLocale.Text("整日回退需确认", "Confirm whole-day rewind"), Plugin.CfgConfirmWholeDay);
+            _keysHeading = Text("keys-heading", _settingsContent, 13, new Color(0.55f, 0.85f, 1f));
+            _keysHeading.text = InspectionLocale.Text("快捷键", "Hotkeys");
             _keyRows.Clear();
             foreach (var binding in Plugin.Hotkeys) NewHotkeyRow(binding);
             var resetKeys = NativeButton(_settingsContent, InspectionLocale.Text("恢复默认快捷键", "Reset hotkeys"),
-                () => { Plugin.ResetHotkeys(); RefreshKeyLabels(); });
+                () => { EndCapture(null); Plugin.ResetHotkeys(); RefreshKeyLabels(); });
             resetKeys.root.name = "hotkey-reset";
-            StackSettingsRow(resetKeys.Rect, 28f);
+            _resetKeys = resetKeys.Rect;
             _resize = Raw("resize", _panelGo.transform, new Color(1, 1, 1, 0.04f), true);
             var grip = Text("grip", _resize.transform, 16, new Color(0.6f, 0.68f, 0.7f), TextAlignmentOptions.Center);
             grip.text = "\u25E2";
@@ -266,11 +297,11 @@ namespace ProbablyStolenTools
                 foreach (var row in _keyRows)
                     if (row.Element != null)
                         parts.Add(row.Binding.Id + "@" + row.Element.Rect.anchoredPosition.y.ToString("0"));
-                Plugin.LogSource.LogInfo($"[Panel] checkpoint panel built (v6). settings h={_settingsContent.sizeDelta.y:0} " +
+                Plugin.LogSource.LogInfo($"[Panel] checkpoint panel built (v7). settings h={_settingsContent.sizeDelta.y:0} " +
                                           $"keyRows={_keyRows.Count} [{string.Join(", ", parts)}]");
             }
             catch { }
-            Plugin.LogSource.LogInfo("[Panel] checkpoint panel built with native CustomUIManager (v6).");
+            Plugin.LogSource.LogInfo("[Panel] checkpoint panel built with native CustomUIManager (v7).");
         }
 
         private void BuildNotice()
@@ -332,56 +363,37 @@ namespace ProbablyStolenTools
             var builder = new CustomUIBuilder(_manager, _window, _settingsContent);
             builder.AddToggle(label, config.Value, callback, null);
             var element = builder.Last;
+            ManualRect(element.Rect);
             _settings.Add((element.Rect, element.toggle, config));
         }
 
         // ---------------- 快捷键改键 ----------------
 
         private string HotkeyText(Plugin.HotkeyBinding binding)
-            => binding.Label + "   [" + (binding.Config.Value == KeyCode.None
-                ? InspectionLocale.Text("已停用", "disabled")
-                : Plugin.KeyName(binding.Config.Value)) + "]";
+            => _captureTarget == binding ? InspectionLocale.Text("请按键…", "Press a key…")
+                : binding.Config.Value == KeyCode.None ? InspectionLocale.Text("已停用", "Disabled")
+                : Plugin.KeyName(binding.Config.Value);
+
+        private static string HotkeyLabel(Plugin.HotkeyBinding binding)
+            => InspectionLocale.Text(binding.Label, binding.Id == "prev" ? "Current customer"
+                : binding.Id == "day" ? "Start of this day" : binding.Id == "prevday" ? "Previous day"
+                : binding.Id == "panel" ? "Show / hide panel" : binding.Label);
 
 #if !MONO
         [HideFromIl2Cpp]
 #endif
         private void NewHotkeyRow(Plugin.HotkeyBinding binding)
         {
-            var element = NativeButton(_settingsContent, HotkeyText(binding), () => BeginCapture(binding));
+            var row = NewObject("hotkey-row-" + binding.Id, _settingsContent).GetComponent<RectTransform>();
+            ManualRect(row);
+            var label = Text("action", row, 13, new Color(0.82f, 0.86f, 0.90f));
+            label.text = HotkeyLabel(binding);
+            var element = NativeButton(row, HotkeyText(binding), () => BeginCapture(binding));
             element.root.name = "hotkey-" + binding.Id;
-            StackSettingsRow(element.Rect, 28f);
-            _keyRows.Add((element, binding));
-        }
-
-        /// <summary>
-        /// 设置区的开关行是预制体自己纵向排的，而 AddButton 用的按钮预制体不会参与这套排版
-        /// （直接叠在左上角、还会露到可视区外）。这里按现有行的最低点手动堆叠，
-        /// 并标记 ignoreLayout，避免和任何布局组打架。
-        /// </summary>
-        private void StackSettingsRow(RectTransform rect, float height)
-        {
-            if (rect == null || _settingsContent == null) return;
-            float bottom = 0f, lastHeight = 0f;
-            for (int i = 0; i < _settingsContent.childCount; i++)
-            {
-                var child = _settingsContent.GetChild(i) as RectTransform;
-                if (child == null || child == rect || !child.gameObject.activeSelf) continue;
-                float y = child.anchoredPosition.y;
-                if (y <= bottom) { bottom = y; lastHeight = child.rect.height; }
-            }
-            float top = bottom - (lastHeight > 0 ? lastHeight : height) - 2f;
-
-            rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0f, 1f);
-            rect.sizeDelta = new Vector2(_settingsContent.rect.width, height);
-            rect.anchoredPosition = new Vector2(0f, top);
-
-            var layout = rect.GetComponent<LayoutElement>() ?? rect.gameObject.AddComponent<LayoutElement>();
-            layout.ignoreLayout = true;
-
-            float needed = -top + height + 8f;
-            if (_settingsContent.sizeDelta.y < needed)
-                _settingsContent.sizeDelta = new Vector2(_settingsContent.sizeDelta.x, needed);
+            element.SetTooltip(InspectionLocale.Text(
+                "Esc 取消；Backspace 恢复默认；Delete 停用。",
+                "Esc: cancel; Backspace: default; Delete: disable."));
+            _keyRows.Add((row, label, element, binding));
         }
 
         private void BeginCapture(Plugin.HotkeyBinding binding)
@@ -389,17 +401,17 @@ namespace ProbablyStolenTools
             if (binding == null) return;
             _captureTarget = binding;
             CapturingKey = true;
-            var row = _keyRows.Find(r => r.Binding == binding);
-            if (row.Element != null && row.Element.text != null)
-                row.Element.SetText(InspectionLocale.Text(
-                    "按下新的按键…（Esc 取消，Backspace 恢复默认，Delete 清除）",
-                    "Press a new key… (Esc cancels, Backspace resets, Delete clears)"));
+            _captureStartedFrame = Time.frameCount;
+            RefreshKeyLabels();
         }
 
         private void CaptureStep()
         {
             try
             {
+                if (_captureTarget == null || !_built || !_settingsOpen || _panelGo == null
+                    || !_panelGo.activeInHierarchy || !IsInGame()) { EndCapture(null); return; }
+                if (Time.frameCount <= _captureStartedFrame) return;
                 if (Input.GetKeyDown(KeyCode.Escape)) { EndCapture(null); return; }
                 if (Input.GetKeyDown(KeyCode.Backspace))
                 {
@@ -426,6 +438,7 @@ namespace ProbablyStolenTools
             var binding = _captureTarget;
             _captureTarget = null;
             CapturingKey = false;
+            if (binding != null) _captureEndedFrame = Time.frameCount;
             if (binding != null && key.HasValue)
             {
                 if (key.Value == KeyCode.None && binding.Id == "panel")
@@ -443,8 +456,8 @@ namespace ProbablyStolenTools
                             ? $"{binding.Label} 已停用"
                             : $"{binding.Label} 已改为 {Plugin.KeyName(key.Value)}",
                         key.Value == KeyCode.None
-                            ? $"{binding.Label} disabled"
-                            : $"{binding.Label} is now {Plugin.KeyName(key.Value)}"));
+                            ? $"{HotkeyLabel(binding)} disabled"
+                            : $"{HotkeyLabel(binding)} is now {Plugin.KeyName(key.Value)}"));
                 }
             }
             RefreshKeyLabels();
@@ -550,28 +563,52 @@ namespace ProbablyStolenTools
         {
             _screenW = Math.Max(1, _canvasRect.rect.width);
             _screenH = Math.Max(1, _canvasRect.rect.height);
-            _bounds = _bounds.Constrain(_screenW, _screenH);
-            float h = _folded ? PanelHeader.Height + 10f : _bounds.Height;
+            // Inactive content contributes neither flexible height nor spacing to the native frame.
+            _nativeContent.gameObject.SetActive(!_folded);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_panelRect);
+            float foldedHeight = PanelHeader.CompactHeight(LayoutUtility.GetPreferredHeight(_nativeHeader),
+                _frameLayout != null ? _frameLayout.padding.vertical : 16);
+            _bounds = _bounds.Constrain(_screenW, _screenH, _folded ? foldedHeight : null);
+            float h = _folded ? Math.Min(foldedHeight, _screenH) : _bounds.Height;
             NativeUi.FixedSize(_window, _bounds.Width, h);
             NativeUi.Place(_window, _canvasRect, _bounds);
-            _lastWindowPosition = _panelRect.anchoredPosition;
+            RememberWindowPosition();
+            _fold.text = _folded ? "展开" : "收起";
+            _resize.gameObject.SetActive(!_folded);
+            PlaceHeaderButtons();
+            // Keep the last expanded geometry and scroll positions while the body is hidden.
+            if (_folded) return;
             float w = Math.Max(1, _nativeContent.rect.width);
             float contentH = Math.Max(1, _nativeContent.rect.height);
-            Place(_headerControls, 0, 0, w, HeaderH);
-            Place(_settingsButton, PanelHeader.SettingsX(w), -4, PanelHeader.ButtonWidth, 26);
-            Place(_foldButton, PanelHeader.FoldX(w), -4, PanelHeader.ButtonWidth, 26);
-            _fold.text = _folded ? "展开" : "收起";
             Place(_body.GetComponent<RectTransform>(), 0, 0, w, contentH);
-            _body.SetActive(!_folded && !_settingsOpen);
-            _settingsGo.SetActive(!_folded && _settingsOpen);
-            Place(_settingsViewport, 0, -HeaderH, w, Math.Max(1, contentH - HeaderH));
-            Place(_settingsContent, 0, 0, w, _settings.Count * 32f);
+            _body.SetActive(!_settingsOpen);
+            _settingsGo.SetActive(_settingsOpen);
+            float settingsHeight = Math.Max(1, contentH - 24);
+            Place(_settingsViewport, 0, 0, w, settingsHeight);
+            var settingsLayout = new PanelSettingsLayout(w, _settings.Count, _keyRows.Count);
+            float scrollOffset = settingsLayout.ScrollOffset(_settingsContent.anchoredPosition.y, settingsHeight);
+            Place(_settingsContent, 0, scrollOffset, w, settingsLayout.ContentHeight);
+            Place(_optionsHeading.rectTransform, PanelSettingsLayout.Padding, -PanelSettingsLayout.Padding,
+                settingsLayout.RowWidth, PanelSettingsLayout.SectionHeight);
+            Place(_keysHeading.rectTransform, PanelSettingsLayout.Padding, -settingsLayout.HotkeySectionY,
+                settingsLayout.RowWidth, PanelSettingsLayout.SectionHeight);
             for (int i = 0; i < _settings.Count; i++)
             {
                 var setting = _settings[i];
-                Place(setting.Rect, 0, -i * 32, w - 8, 30);
+                Place(setting.Rect, settingsLayout.Toggle(i));
                 setting.Toggle.interactable = i != 1 && i != 2 || Plugin.CfgAutoAppraisal.Value;
             }
+            for (int i = 0; i < _keyRows.Count; i++)
+            {
+                var row = _keyRows[i];
+                Place(row.Rect, settingsLayout.Key(i));
+                Place(row.Label.rectTransform, 0, 0, settingsLayout.LabelWidth, PanelSettingsLayout.RowHeight - 2);
+                Place(row.Element.Rect, settingsLayout.KeyX - PanelSettingsLayout.Padding, 0,
+                    settingsLayout.KeyWidth, PanelSettingsLayout.RowHeight - 2);
+            }
+            Place(_resetKeys, settingsLayout.KeyX, -settingsLayout.ResetY, settingsLayout.KeyWidth,
+                PanelSettingsLayout.RowHeight - 2);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_settingsContent);
             Place(_hint.rectTransform, 4, -2, Math.Max(1, w - 16), 20);
             float labelW = w - 76 - 72 - 54 - 32;
             float[] xs = { 12, 88, 88 + labelW, w - 66 };
@@ -588,32 +625,41 @@ namespace ProbablyStolenTools
                 for (int c = 0; c < 4; c++) Place(texts[c].rectTransform, xs[c], 0, ws[c], RowH);
             }
             Place(_empty.rectTransform, 12, -6, w - 24, 24);
-            Place(_resize.rectTransform, _bounds.Width - 24, -_bounds.Height + 24, 20, 20);
-            _resize.gameObject.SetActive(!_folded);
-            PlaceHeaderButtons();
+            Place(_resize.rectTransform, _panelRect.rect.width - 24, -_panelRect.rect.height + 24, 20, 20);
         }
 
-        // 按钮跟着标题文本走：世界坐标对齐，避免被原生布局组推走
+        // The native layout owns the title; our ignored sibling owns only its two buttons.
         private void PlaceHeaderButtons()
         {
-            try
-            {
-                if (_headerControls == null || _title == null || _panelRect == null) return;
-                var titleRt = _title.rectTransform;
-                if (titleRt == null) return;
-                float boxW = PanelHeader.ButtonWidth * 2 + PanelHeader.Gap;
-                _headerControls.anchorMin = _headerControls.anchorMax = new Vector2(1f, 1f);
-                _headerControls.pivot = new Vector2(1f, 0.5f);
-                _headerControls.sizeDelta = new Vector2(boxW, 22f);
-                // 贴窗口右侧内缘；纵向对齐标题文本中心（相对顶边，向下为负）
-                var worldCenter = titleRt.TransformPoint(new Vector3(titleRt.rect.center.x, titleRt.rect.center.y, 0f));
-                float localY = _panelRect.InverseTransformPoint(worldCenter).y;
-                float offsetFromTop = localY - _panelRect.rect.yMax;
-                _headerControls.anchoredPosition = new Vector2(-10f, offsetFromTop);
-                Place(_settingsButton, 0f, 0f, PanelHeader.ButtonWidth, 22f);
-                Place(_foldButton, PanelHeader.ButtonWidth + PanelHeader.Gap, 0f, PanelHeader.ButtonWidth, 22f);
-            }
-            catch { }
+            var title = NativeUi.Bounds(_title.rectTransform, _panelRect);
+            var commands = PanelHeader.Commands(_panelRect.rect.width, title.Y + title.Height / 2);
+            Place(_headerControls, commands);
+            Place(_settingsButton, 0, 0, PanelHeader.ButtonWidth, PanelHeader.ButtonHeight);
+            Place(_foldButton, PanelHeader.ButtonWidth + PanelHeader.Gap, 0,
+                PanelHeader.ButtonWidth, PanelHeader.ButtonHeight);
+            var margin = _title.margin;
+            margin.z = Math.Max(0, title.X + title.Width - commands.X + PanelHeader.Gap);
+            _title.margin = margin;
+            _title.enableWordWrapping = false;
+            _title.overflowMode = TextOverflowModes.Ellipsis;
+        }
+
+        private void RememberWindowPosition()
+        {
+            var bounds = NativeUi.Bounds(_panelRect, _canvasRect);
+            _lastWindowPosition = new Vector2(bounds.X, bounds.Y);
+        }
+
+        private void ObserveWindowPosition()
+        {
+            if (!_built || _resizing || _panelRect == null || _canvasRect == null) return;
+            var bounds = NativeUi.Bounds(_panelRect, _canvasRect);
+            var position = new Vector2(bounds.X, bounds.Y);
+            if ((position - _lastWindowPosition).sqrMagnitude < 0.01f) return;
+            _bounds = _bounds with { X = bounds.X, Y = bounds.Y };
+            _lastWindowPosition = position;
+            _dragging = true;
+            _click.Reset();
         }
 
         private void HandleGeometry()
@@ -631,21 +677,14 @@ namespace ProbablyStolenTools
                     && y >= _bounds.Height - 24 && y <= _bounds.Height && NativeUi.Topmost(_resize.rectTransform);
                 if (_resizing) { _pointerStart = point; _gestureStart = _bounds; _click.Reset(); }
             }
-            if (!_resizing && _panelRect.anchoredPosition != _lastWindowPosition)
-            {
-                var bounds = NativeUi.Bounds(_panelRect, _canvasRect);
-                _bounds = _bounds with { X = bounds.X, Y = bounds.Y };
-                _lastWindowPosition = _panelRect.anchoredPosition;
-                _dragging = true;
-                _click.Reset();
-            }
+            ObserveWindowPosition();
             if (_resizing)
             {
                 var delta = point - _pointerStart;
                 _bounds = _gestureStart with { Width = _gestureStart.Width + delta.x, Height = _gestureStart.Height + delta.y };
                 Layout();
             }
-            if ((_dragging || _resizing) && !Input.GetMouseButton(0)) { Layout(); EndGesture(); }
+            if (_resizing && !Input.GetMouseButton(0)) { Layout(); EndGesture(); }
         }
 
         private void EndGesture() { _dragging = _resizing = false; Persist(); }
@@ -668,6 +707,7 @@ namespace ProbablyStolenTools
 
         private void ReleaseWindow()
         {
+            EndCapture(null);
             _built = false;
             _click.Reset();
             _dragging = _resizing = false;
@@ -683,8 +723,10 @@ namespace ProbablyStolenTools
             _text.Clear();
             _columns.Clear();
             _settings.Clear();
+            _keyRows.Clear();
             _callbacks.Clear();
             _settingsOpen = false;
+            _settingsScroll = null;
         }
 
         private static void DisableLayout(RectTransform rect)
@@ -693,6 +735,15 @@ namespace ProbablyStolenTools
             if (group != null) group.enabled = false;
             var fitter = rect.GetComponent<ContentSizeFitter>();
             if (fitter != null) fitter.enabled = false;
+        }
+
+        private static void ManualRect(RectTransform rect)
+        {
+            // Own the outer rectangle without disabling the prefab's layout of its children.
+            var fitter = rect.GetComponent<ContentSizeFitter>();
+            if (fitter != null) fitter.enabled = false;
+            var element = rect.GetComponent<LayoutElement>() ?? rect.gameObject.AddComponent<LayoutElement>();
+            element.ignoreLayout = true;
         }
 
 #if !MONO
@@ -704,7 +755,17 @@ namespace ProbablyStolenTools
             _callbacks.Add(callback);
             var builder = new CustomUIBuilder(_manager, _window, parent);
             builder.AddButton(label, callback, null);
-            return builder.Last;
+            var element = builder.Last;
+            ManualRect(element.Rect);
+            if (element.text != null)
+            {
+                element.text.enableAutoSizing = true;
+                element.text.fontSizeMin = 10;
+                element.text.fontSizeMax = 13;
+                element.text.enableWordWrapping = false;
+                element.text.overflowMode = TextOverflowModes.Ellipsis;
+            }
+            return element;
         }
 
         private static GameObject NewObject(string name, Transform parent)
@@ -721,6 +782,9 @@ namespace ProbablyStolenTools
             rt.anchoredPosition = new Vector2(x, y);
             rt.sizeDelta = new Vector2(w, h);
         }
+
+        private static void Place(RectTransform rt, PanelBounds bounds)
+            => Place(rt, bounds.X, -bounds.Y, bounds.Width, bounds.Height);
 
         private static void Stretch(RectTransform rt)
         {

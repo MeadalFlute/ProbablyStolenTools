@@ -268,7 +268,7 @@ namespace ProbablyStolenTools
         {
             try
             {
-                if (entry.Value == KeyCode.None) return false;   // 已禁用：不响应任何按键
+                if (CheckpointPanel.SuppressHotkeys || entry.Value == KeyCode.None) return false;
                 return Input.GetKeyDown(entry.Value);
             }
             catch { return false; }

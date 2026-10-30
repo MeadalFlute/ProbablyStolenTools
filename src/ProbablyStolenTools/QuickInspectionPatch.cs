@@ -157,6 +157,8 @@ namespace ProbablyStolenTools
                     AddCheck(lines, InspectionLocale.Text("工厂编号", "Facility number"),
                         RibwichHelper.IsValidFacilityNumber(facility.Value));
             }
+            var wine = WineAppraisal.Lines(item);
+            if (wine != null) lines.AddRange(wine);
             int value = AppraisalHelper.GetCorrectBaseValue(item);
             if (value >= 0) lines.Add(InspectionLocale.Text("估值：", "Value: ") + value);
             return string.Join("\n", lines.ToArray());

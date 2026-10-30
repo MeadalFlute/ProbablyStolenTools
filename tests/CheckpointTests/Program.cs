@@ -282,6 +282,85 @@ Test("header buttons have fixed nonoverlapping bounds outside the drag region", 
         Check(!PanelHeader.CanDrag(10, PanelHeader.Height + 1, width));
     }
 });
+Test("settings remain separated and the reset action stays reachable at every supported width", () =>
+{
+    foreach (float width in new[] { 280f, 348f, 448f, 868f })
+    foreach (int toggles in new[] { 0, 7, 12 })
+    foreach (int keys in new[] { 0, 4, 8 })
+    {
+        var layout = new PanelSettingsLayout(width, toggles, keys);
+        var rows = Enumerable.Range(0, toggles).Select(layout.Toggle)
+            .Concat(Enumerable.Range(0, keys).Select(layout.Key))
+            .Append(new PanelBounds(layout.KeyX, layout.ResetY, layout.KeyWidth, PanelSettingsLayout.RowHeight - 2))
+            .ToArray();
+        for (int i = 0; i < rows.Length; i++)
+        {
+            var row = rows[i];
+            Check(row.X >= 0 && row.X + row.Width <= width
+                && row.Y >= 0 && row.Y + row.Height <= layout.ContentHeight);
+            if (i > 0) Check(rows[i - 1].Y + rows[i - 1].Height < row.Y);
+        }
+        Check(PanelSettingsLayout.Padding + layout.LabelWidth + PanelSettingsLayout.Gap <= layout.KeyX);
+        foreach (float viewport in new[] { 24f, 100f, 640f })
+        {
+            float bottom = layout.ScrollOffset(float.MaxValue, viewport);
+            var reset = rows[^1];
+            Check(reset.Y + reset.Height <= bottom + viewport);
+            Check(layout.ScrollOffset(bottom, viewport) == bottom);
+        }
+    }
+});
+Test("settings relayout preserves scroll position and clamps when the viewport grows", () =>
+{
+    var layout = new PanelSettingsLayout(448, 7, 4);
+    Check(layout.ScrollOffset(120, 200) == 120);
+    Check(layout.ScrollOffset(-10, 200) == 0 && layout.ScrollOffset(float.NaN, 200) == 0);
+    float bottom = layout.ScrollOffset(float.MaxValue, 100);
+    float resized = layout.ScrollOffset(bottom, 300);
+    Check(resized < bottom && resized == layout.ContentHeight - 300);
+    Check(layout.ScrollOffset(resized, layout.ContentHeight + 1) == 0);
+});
+Test("header commands stay aligned to the title without depending on window position", () =>
+{
+    foreach (float width in new[] { 320f, 380f, 480f, 900f })
+    {
+        var commands = PanelHeader.Commands(width, 22);
+        Check(commands.X >= 0 && commands.X + commands.Width <= width);
+        Check(commands.Y + commands.Height / 2 == 22 && commands.Height <= PanelHeader.Height);
+        Check(commands.Width == PanelHeader.ButtonWidth * 2 + PanelHeader.Gap);
+    }
+});
+Test("folded windows can stay at the bottom without losing their expanded size", () =>
+{
+    float foldedHeight = PanelHeader.CompactHeight(32, 16);
+    var bounds = new PanelBounds(20, 990, 480, 600);
+    var folded = bounds.Constrain(1920, 1080, foldedHeight);
+    Check(folded.Y == 990 && folded.Height == 600);
+    Check(folded.Constrain(1920, 1080, foldedHeight) == folded);
+    var expanded = folded.Constrain(1920, 1080);
+    Check(expanded.Y == 480 && expanded.Height == 600);
+    var tiny = bounds.Constrain(320, 36, foldedHeight);
+    Check(tiny.Y == 0 && tiny.Height == 36);
+});
+Test("compact frame includes native padding and keeps title and commands inside the header", () =>
+{
+    // WindowPrefab: padding 8 on each side, a 32-high Header and an inactive Content.
+    Check(PanelHeader.CompactHeight(32, 16) == 48);
+    foreach (float width in new[] { 380f, 480f, 900f })
+    foreach (float nativeHeight in new[] { 32f, 40f, 48f })
+    foreach (float padding in new[] { 8f, 16f, 24f })
+    {
+        float foldedHeight = PanelHeader.CompactHeight(nativeHeight, padding * 2);
+        var title = new PanelBounds(padding + 4, padding, width - padding * 2 - 4, nativeHeight);
+        var commands = PanelHeader.Commands(width, title.Y + title.Height / 2);
+        Check(title.Y >= 0 && title.Y + title.Height <= foldedHeight);
+        Check(commands.Y >= title.Y && commands.Y + commands.Height <= title.Y + title.Height);
+        Check(commands.X > title.X && commands.X + commands.Width <= width);
+        Check(foldedHeight - title.Y - title.Height == padding);
+        var bounds = new PanelBounds(20, 1050, width, 600).Constrain(1920, 1080, foldedHeight);
+        Check(bounds.Y + foldedHeight <= 1080 && bounds.Height == 600);
+    }
+});
 Test("inspection summary keeps its old default margin and moves independently of text scrolling", () =>
 {
     var position = new InspectionWindowPosition(1, 1);

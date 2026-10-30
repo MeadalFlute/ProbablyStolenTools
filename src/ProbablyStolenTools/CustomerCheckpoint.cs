@@ -768,6 +768,13 @@ namespace ProbablyStolenTools
         internal static void GuardCallback(ref Il2CppSystem.Action action)
         {
             if (!Enabled || action == null || Plugin.Store() == null) return;
+#if MONO
+            // 只接管游戏自身排的延时回调。其他 mod 同样调用 MetaHelper.WaitAndDo，
+            // 但它们的闭包目标类型在自己的程序集里；一并包进来会被下面的 epoch/场景检查丢掉，
+            // 表现为“卷帘门今日事件”之类的 mod 在换场景或回溯后不再显示。
+            var origin = action.Target;
+            if (origin == null || origin.GetType().Assembly != typeof(GameItem).Assembly) return;
+#endif
             long epoch = _epoch;
             int scene = SceneManager.GetActiveScene().handle;
             long token = ++_callbackId;

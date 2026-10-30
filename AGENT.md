@@ -1,10 +1,57 @@
 # Probably Stolen — Mod 项目交接文档（给 GPT / 后续 agent）
 
-> 当前源码：Codex **0.6.0**。正式版已部署，使用游戏自带 **Mono / IMod / Harmony**；游戏内验收待用户执行。
+> 当前源码：正式版 main **0.7.0**（含 DS 的快捷键改绑功能）。使用游戏自带 **Mono / IMod / Harmony**；本轮 UI 修正的游戏内验收待用户执行。
 > 当前维护者：Codex。DSH 集成已过时，不调用 DSH；用户明确要求不使用 Computer Use。
-> 当前实现以本节和 `research/0.6.0-full-release.md` 为准。下方 Demo、IL2CPP、MelonLoader 和 BepInEx 记录均为历史资料，不可直接套用正式版。
+> 当前 UI 实现以本节「正式版 UI 维护规则」为准；正式版运行时背景见 `research/0.6.0-full-release.md`。下方旧版本的数量、哈希和验收状态是当时记录，不是当前构建结果。
 > 设计讨论稿见 `research/2026-10-22-snapshot-B-design.md`。
 > 实现与验证边界见 `research/customer-checkpoint-implementation.md`，未通过游戏验收前不得称为可用功能。
+
+## 正式版 UI 维护规则（0.7.0，给 DS / 后续 agent）
+
+本轮只修正式版 main 的快捷键设置和窗口布局；通用快照测试版仍在独立 `beta/generic-snapshot` 分支，不要把那边的快照实现混入此项 UI 修复。
+
+### 已定位的原因
+
+- 旧 `StackSettingsRow` 在创建控件时读取兄弟的 `anchoredPosition/rect.height`，这些值还没经过最终布局，不能用来推算下一行。
+- 后续 `Layout()` 又只按 `_settings.Count * 32` 设置内容高度、排布复选框，漏掉快捷键和重置按钮。创建时的临时堆叠会被覆盖，滚动区也无法包含所有控件。
+- 标题按钮插入原生窗框后未排除原生布局；同时每帧追踪标题世界坐标、反复更换锚点和 pivot，产生多个布局控制者。
+- 原生 `UIDragHandler` 会将窗口从 overlay 迁入 letterbox dock，并调整局部缩放；`anchoredPosition` 属于当前父级，不能与迁移前的值比较，也不能直接保存为 overlay 坐标。
+
+### 正确的布局边界
+
+1. **原生窗框负责标题、边框和 ContentRoot 的位置。** `ContentRoot` 已经位于标题下方，不要再减一遍标题高度；不要关掉整个窗框的 LayoutGroup。我们只在自己的内容区域内手工布局。
+2. **一个 RectTransform 只有一个外部布局控制者。** 手动摆放的原生按钮、复选框根节点设 `LayoutElement.ignoreLayout=true`，禁用会改变其外部尺寸的 `ContentSizeFitter`；保留预制体内部负责文字/勾选框排布的 LayoutGroup。完全由我们手排子节点的容器才禁用其内部 LayoutGroup（`DisableLayout`）。不要递归禁用所有原生子布局。
+3. **Build 只建树，Layout 统一排全部行。** `PanelModel.cs` 的 `PanelSettingsLayout` 同时计算分节标题、全部设置行、动作名称/按键两列、重置按钮和 `ContentHeight`。增加新设置时加入相应集合，让同一模型计算高度；不要另外写“追加在上一个控件下面”的补丁。固定行高 34、实际控件高 32，留出间隔；滚动内容总高度必须包含末行和底部留白。
+4. **设置的纵向滚动量要保留。** 重排前读 `_settingsContent.anchoredPosition.y`，按 `ContentHeight - viewportHeight` 限制后恢复。不要因改键、节点刷新、拖动结束就重置为顶部。滚动 viewport 与右下角缩放握柄留出空间。
+5. **标题按钮跟随窗口层级。** `commands` 是窗框下忽略原生布局的子节点，统一左上角锚点/pivot；仅在 Layout 时由标题矩形求出本地位置，预留标题右边距，并截断过长标题。不要在每帧用世界坐标追着标题改按钮位置。窗口移动时子节点自然一起移动。
+6. **坐标始终使用固定参考区域。** `_canvasRect = CustomUIManager.GetLayerRoot("overlay")`；通过 `NativeUi.Bounds` 的世界坐标转换取得窗口在此参考区域的左上角位置，通过 `NativeUi.Place` 的世界位移放置。不要把 `_panelRect.parent` 当持久参考，也不要跨父级比较 `anchoredPosition`。窗口内部子控件才使用其父节点的局部坐标。
+7. **先同步实际位置，再切换布局或落盘。** 原生拖动回调发生在 Update 阶段，LateUpdate 再观察最终几何；松开鼠标后约束位置并保存一次。点击设置/收起前也先同步位置，避免旧配置把窗口拉回去。收起时按实际计算的标题栏总高度限制位置，保留展开高度，不能用展开高度把收起窗口从屏幕底部推走。
+8. **改键不改变控件尺寸。** 左侧是动作名，右侧固定宽度按键按钮；捕获中只显示「请按键…」，Esc/Backspace/Delete 的说明放 tooltip。不要把整段操作提示塞入按钮。捕获期间仍处理窗口几何、隐藏、场景失效和清理；切页面、收起、销毁时取消捕获。
+9. **改键用掉的按键不能同帧触发动作。** `CheckpointPanel.SuppressHotkeys` 包含捕获中和结束当帧，所有 Mod 热键统一经过 `Plugin.Down` 检查；不能仅清空 `CapturingKey` 就立刻恢复热键。不要绕过统一入口直接读回溯快捷键。
+
+对应文件：`src/ProbablyStolenTools/Panel.cs`（构建、布局、拖动、捕获生命周期）、`PanelModel.cs`（不依赖 Unity 的几何规则）、`NativeUi.cs`（原生窗框与固定参考坐标转换）、`Plugin.cs`（统一热键入口）。
+
+### 收起窗口修正（2026-10-31）
+
+上轮固定 90 的收起高度留下了空白。随后直接减到 44、清空原生标题、另画 `foldTitle` 的做法又破坏了原生布局：补画标题的 y=25、高=20，已超过 44 的窗高；按钮仍跟随另一份原生标题，两者没有共同的布局依据。
+
+已直接只读解析正式版 `sharedassets0.assets` 和 `level0` 的资源引用，确认 CustomUIManager 实际使用 `WindowPrefab`：根节点为 Image + VerticalLayoutGroup + UIDragHandler + CustomUIWindowFrame，padding 上下各 8、spacing 4；子节点 Header 带 preferredHeight=32 的 LayoutElement 与 HorizontalLayoutGroup，其中是 TitleTMP 和 CloseButton；Content 是独立的另一个子节点。不要把其他菜单窗框当作此预制体。
+
+正确顺序：先将 **整个 ContentRoot 设为 inactive**，让它连同 spacing 和 flexibleHeight 一起退出根布局，再重建原生布局，读取 Header 的 preferredHeight 和根 padding 计算收起高度；当前预制体为 32 + 8 + 8 = **48**，若字体或预制体提高标题栏高度则跟随测量结果。只隐藏 Content 内的 body/settings 仍会留下 Content 占位。不要仅修改总高度常量，不要删原生标题文字，也不要为收起状态增加第二份标题。
+
+收起和展开始终共用同一个原生 TitleTMP、同一组设置/展开按钮和同一根拖动组件。正文 inactive 后停止排它的子控件，保留上次展开尺寸和滚动量；展开时先恢复 ContentRoot，再重建窗框、布局正文。标题按钮仍按本地标题矩形对齐，不引入逐帧坐标追踪，不禁用原生根布局。
+
+本次构建 0 警告/0 错误；53 项离线测试通过（含新增的原生标题高度/边距、标题及按钮边界回归），53 个 Harmony 目标、68 个字段及官方扫描器/权限、配置和业务图往返检查通过。已部署正式版，未启动游戏；DLL SHA256：`489730DD2B988147944C8BDD3EF784DF0AAB35FD17D9E99217873CD030CE4ABA`，备份 `out/full-release-deploy-20261031-012329`；存档目录原有 220 个文件、游戏 Managed 和其他 Mod 文件逐一哈希不变，现有设置未修改。未进行游戏内渲染和拖动验收：请检查折叠时无多余正文空白、标题和两个按钮完整可见，拖动后仍对齐，展开/设置正常，重启保持折叠状态和原展开尺寸。
+
+### 验证与部署
+
+- 跑 Mono Release 构建、`tests/CheckpointTests` 和 `tests/ReleaseCompatibility`。布局回归覆盖不同宽度/行数下的行间隔、双列边界、末行可滚达、滚动量保持/约束、标题按钮边界和收起窗口贴底；这些检查不能证明 Unity 预制体的实际渲染、点击或 letterbox 行为正常。
+- 部署仍用 `scripts/Deploy-FullRelease.ps1`，备份存档/Mods、校验存档/游戏程序集/其他 Mod 不变，按完整 EXE 路径关闭游戏，不自动启动。部署脚本只记录自己实际完成的检查，不再硬编码旧构建的测试数量和扫描结论。
+- 人工验收：最小/默认/最大窗口尺寸下滚到设置底部，检查四项改键和重置可见且无重叠；滚动后拖标题、缩放、开关设置、收起再展开，按钮应与窗口保持一致；收起后拖到底边不应跳回上方；绑定 F6/F7 的确认按键不能立即触发回退；Esc 取消、Backspace 默认、Delete 停用和面板键禁用保护正常；返回菜单再读档不残留捕获状态，重启后位置/尺寸/改键保持。
+
+2026-10-30 结果：Mono Release 构建 0 警告/0 错误；52 项离线测试通过（含 4 项新增布局回归和真实 ES3 只读解析）；52 个 Harmony 目标、68 个字段、官方扫描器和权限声明、配置往返、真实托管业务图往返检查通过。测试工程新增 `PluginFixture.cs`，仅提供链接快照代码所需的日志替身，不改快照行为。未执行游戏内 UI 验收。
+
+2026-10-30 部署（历史）：DLL SHA256：`B0ACCEEBFBCCE2F050EFF72466A458FDC764F8CFB83F5A2182E91DC08A917B2E`；备份 `out/full-release-deploy-20261030-130053`。原存档目录内 184 个文件逐一校验不变，游戏 Managed 和其他 Mod 文件不变，未导入或修改现有配置。
 
 ## 给外部 agent：如何适配其他 Mod
 
