@@ -611,6 +611,11 @@ namespace ProbablyStolenTools
                 // Hidden retained objects may no longer be reachable from the current business graph.
                 foreach (var pair in RetainedItems)
                     if (!target.RenderedItems.ContainsKey(pair.Key)) DiscardRenderer(pair.Value);
+                // 没有归属容器、又不在当前节点里的物品视图是“幽灵”：数据被回退掉了，
+                // 只剩一个看得见、点得动但买不了的壳，还会和别的物品重叠。统一扫掉。
+                int staleFakes = HideStaleFakeViews(target);
+                if (staleFakes > 0)
+                    EventLog.Write($"[Customer] hid {staleFakes} stale fake view node(s) after restore");
                 foreach (var node in LiveNodes())
                     foreach (var w in node.Windows)
                         if (!target.Windows.ContainsKey(w.Key) && w.Value.handler != null)
@@ -692,6 +697,46 @@ namespace ProbablyStolenTools
                 return list == null ? -1 : list.Count;
             }
             catch { return -1; }
+        }
+        /// <summary>
+        /// 恢复后把残留的“假视图”（拖拽/展示用的 fake 节点）关掉。
+        /// 它们没有业务数据支撑，表现为柜台上一件买不了、还能和别的物品重叠的幽灵物品。
+        /// </summary>
+        private static int HideStaleFakeViews(Snapshot target)
+        {
+            int hidden = 0, orphanLogged = 0;
+            try
+            {
+                foreach (var item in target.RenderedItems.Values)
+                {
+                    if (item == null) continue;
+                    hidden += HideNode(item.fakeMiddle);
+                    hidden += HideNode(item.fakeInner);
+                    hidden += HideNode(item.fakeRotator);
+                    hidden += HideNode(item.fakeBackground);
+                    // 记录“有视图但不在任何容器里”的物品，方便定位幽灵来源。
+                    bool parented = false;
+                    try { parented = item.parentInventory != null; } catch { parented = true; }
+                    if (!parented && orphanLogged < 12 && !item.IsDestroyed())
+                    {
+                        orphanLogged++;
+                        EventLog.Write($"[Customer] orphan item view id={item.uniqueId} identifier={item.identifier}");
+                    }
+                }
+            }
+            catch (Exception e) { Plugin.LogSource?.LogWarning("[Customer] fake view cleanup failed: " + e.Message); }
+            return hidden;
+        }
+
+        private static int HideNode(TreeNodeRender node)
+        {
+            try
+            {
+                if (node == null || node.gameObject == null || !node.gameObject.activeSelf) return 0;
+                node.gameObject.SetActive(false);
+                return 1;
+            }
+            catch { return 0; }
         }
         private static void DestroyRenderer(GameItemElement item)
         {
