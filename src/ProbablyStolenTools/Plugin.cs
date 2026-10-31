@@ -44,6 +44,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<KeyCode> CfgKeyPrevDay;
         internal static ConfigEntry<bool> CfgConfirmWholeDay;
         internal static ConfigEntry<bool> CfgRepairStuckShutter;
+        internal static ConfigEntry<bool> CfgVerifyCapture;
         internal static ConfigEntry<KeyCode> CfgKeyPanel;
         internal static ConfigEntry<string> CfgRestoreMode;
         internal static ConfigEntry<bool> CfgAllowOpen;
@@ -192,6 +193,8 @@ namespace ProbablyStolenTools
                 "回到上一天 / back to previous day");
             CfgConfirmWholeDay = Config.Bind("Rewind", "ConfirmWholeDayRewind", true,
                 "Ask for confirmation before the whole-day rewinds (F5 / F7), since they overwrite the current save slot.");
+            CfgVerifyCapture = Config.Bind("Debug", "VerifyCapture", false,
+                "Re-read every slot right after capturing to prove nothing mutated mid-frame. Doubles capture time; keep off unless debugging.");
             CfgRepairStuckShutter = Config.Bind("Rewind", "RepairStuckShutter", true,
                 "If the shutter stays locked for 10s with no dialog, movement or shootout in progress, clear the lock so the shop can be closed again.");
             CfgKeyPanel = Config.Bind("Rewind", "KeyTogglePanel", KeyCode.F8,
