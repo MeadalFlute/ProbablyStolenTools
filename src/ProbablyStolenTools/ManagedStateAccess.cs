@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -8,9 +8,10 @@ namespace ProbablyStolenTools
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
     internal sealed class ManagedStateAccess : IStateAccess
     {
-        private sealed class Storage
+        // 每个槽位一份；快照里有几十万条，必须是结构体，否则光是分配就够卡一下。
+        private struct Storage
         {
-            internal int Index = -1;
+            internal int Index;
             internal FieldInfo[] Path;
             internal bool Anchor;
             internal object Target;
@@ -59,13 +60,37 @@ namespace ProbablyStolenTools
             var stores = new List<Storage>();
             _storage[id] = stores;
             bool root = _roots.TryGetValue(id, out var selected);
-            if (!root && !Traversable(type)) return slots;
+            if (!root)
+            {
+                if (!_traversable.TryGetValue(type, out var traversable))
+                {
+                    traversable = Traversable(type);
+                    _traversable[type] = traversable;
+                }
+                if (!traversable) return slots;
+            }
             if (value is Array array)
             {
                 if (array.Rank != 1 || array.GetLowerBound(0) != 0 || array.Length > 262144)
                     throw new InvalidOperationException("Unsupported snapshot array.");
-                for (int i = 0; i < array.Length; i++)
-                    Flatten(type.GetElementType(), new List<FieldInfo>(), i, type.FullName + "[" + i + "]", slots, stores, 0);
+                // 字典/列表内部都是大数组，逐元素重跑 Flatten 会把反射开销放大几十万倍；
+                // 这里按元素类型缓存一次展开结果，再按元素下标复制。
+                var elementType = type.GetElementType();
+                var elementSchema = elementType == null ? null : ElementSchema(elementType);
+                if (elementSchema == null)
+                    for (int i = 0; i < array.Length; i++)
+                        Flatten(type.GetElementType(), new List<FieldInfo>(), i, type.FullName + "[" + i + "]", slots, stores, 0);
+                else
+                {
+                    int baseOffset = stores.Count;
+                    for (int i = 0; i < array.Length; i++)
+                    {
+                        foreach (var slot in elementSchema.Slots)
+                            slots.Add(new StateSlot(baseOffset + slot.Offset, slot.Size, slot.IsReference, slot.Name));
+                        foreach (var store in elementSchema.Stores)
+                            stores.Add(new Storage { Index = i, Path = store.Path });
+                    }
+                }
             }
             else if (value is Delegate action)
             {
@@ -74,17 +99,22 @@ namespace ProbablyStolenTools
                     if (handler.Target != null)
                     {
                         slots.Add(new StateSlot(stores.Count, 8, true, type.FullName + ".target"));
-                        stores.Add(new Storage { Anchor = true, Target = handler.Target });
+                        stores.Add(new Storage { Index = -1, Anchor = true, Target = handler.Target });
                     }
+            }
+            else if (!root)
+            {
+                // 普通对象：直接用按类型缓存的展开结果，避免每个对象重跑反射。
+                var schema = SchemaFor(type);
+                slots.AddRange(schema.Slots);
+                stores.AddRange(schema.Stores);
             }
             else
             {
                 for (var current = type; current != null && !IsUnity(current); current = current.BaseType)
                     foreach (var field in current.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                     {
-                        if (root && selected != null && !selected.Contains(field.Name)) continue;
-                        // 这些是“当前正在转场/被锁”的计数器，不是业务状态：
-                        // 快照期间若恰好非 0，恢复后会把锁一起带回去（例如闭店一直提示“请稍候”）。
+                        if (selected != null && !selected.Contains(field.Name)) continue;
                         if (TransientLocks.Contains(current.FullName + "." + field.Name)) continue;
                         if (Visual(field.FieldType)) continue;
                         Flatten(field.FieldType, new List<FieldInfo> { field }, -1,
@@ -99,6 +129,48 @@ namespace ProbablyStolenTools
             return slots;
         }
 
+        // 按类型缓存“字段 → 槽位”的展开结果。每个快照要处理四万多个对象，
+        // 之前每个对象都重跑一遍反射 GetFields + 逐个分配 Storage，占了 800ms 里的大头。
+        private sealed class TypeSchema
+        {
+            internal StateSlot[] Slots;
+            internal Storage[] Stores;
+        }
+
+        private readonly Dictionary<Type, TypeSchema> _schemas = new Dictionary<Type, TypeSchema>();
+        private readonly Dictionary<Type, bool> _traversable = new Dictionary<Type, bool>();
+
+        private readonly Dictionary<Type, TypeSchema> _elementSchemas = new Dictionary<Type, TypeSchema>();
+
+        private TypeSchema ElementSchema(Type element)
+        {
+            if (_elementSchemas.TryGetValue(element, out var cached)) return cached;
+            var slots = new List<StateSlot>();
+            var stores = new List<Storage>();
+            Flatten(element, new List<FieldInfo>(), -1, element.FullName, slots, stores, 0);
+            var schema = new TypeSchema { Slots = slots.ToArray(), Stores = stores.ToArray() };
+            _elementSchemas[element] = schema;
+            return schema;
+        }
+        private TypeSchema SchemaFor(Type type)
+        {
+            if (_schemas.TryGetValue(type, out var cached)) return cached;
+            var slots = new List<StateSlot>();
+            var stores = new List<Storage>();
+            var path = new List<FieldInfo>();
+            for (var current = type; current != null && !IsUnity(current); current = current.BaseType)
+                foreach (var field in current.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                {
+                    if (TransientLocks.Contains(current.FullName + "." + field.Name)) continue;
+                    if (Visual(field.FieldType)) continue;
+                    path.Add(field);
+                    Flatten(field.FieldType, path, -1, current.FullName + "." + field.Name, slots, stores, 0);
+                    path.RemoveAt(path.Count - 1);
+                }
+            var schema = new TypeSchema { Slots = slots.ToArray(), Stores = stores.ToArray() };
+            _schemas[type] = schema;
+            return schema;
+        }
         private bool IsUnity(Type type) => _unityObject != null && type == _unityObject
             || type.Namespace == "UnityEngine";
 
