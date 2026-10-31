@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -20,18 +20,7 @@ namespace ProbablyStolenTools
 
     internal sealed class StateGraph : IDisposable
     {
-        // 每个快照有几十万条 Entry：这里必须是结构体，record class 会逐个上堆，
-        // 建立节点时的卡顿主要就是这批分配 + 随之而来的 GC。
-        private readonly struct Entry
-        {
-            internal readonly IntPtr Owner, Reference;
-            internal readonly StateSlot Slot;
-            internal readonly byte[] Bytes;
-            internal Entry(IntPtr owner, StateSlot slot, byte[] bytes, IntPtr reference)
-            {
-                Owner = owner; Slot = slot; Bytes = bytes; Reference = reference;
-            }
-        }
+        private sealed record Entry(IntPtr Owner, StateSlot Slot, byte[] Bytes, IntPtr Reference);
         private readonly IStateAccess _access;
         private readonly List<Entry> _entries = new();
         private readonly HashSet<IntPtr> _objects = new();

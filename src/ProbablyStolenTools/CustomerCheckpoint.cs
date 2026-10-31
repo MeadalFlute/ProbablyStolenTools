@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -380,9 +380,7 @@ namespace ProbablyStolenTools
             Snapshot candidate = null;
             try
             {
-                var timing = System.Diagnostics.Stopwatch.StartNew();
                 var access = Access(store, out var roots);
-                long tAccess = timing.ElapsedMilliseconds;
                 candidate = new Snapshot
                 {
                     Id = ++_nextId, Label = closed ? "closed" : store.currentClientInstance.GetClientBlueprint().identifier,
@@ -392,7 +390,6 @@ namespace ProbablyStolenTools
                     Cash = store.GetCash(), At = DateTime.Now, Random = RNG.random
                 };
                 candidate.Graph = StateGraph.Capture(access, roots);
-                long tWalk = timing.ElapsedMilliseconds;
                 candidate.Customer = new CustomerVisual();
                 candidate.Shop = new ShopPhaseVisual();
                 if (candidate.Graph.SlotCount == 0) throw new InvalidOperationException("Empty business-state graph.");
@@ -435,15 +432,8 @@ namespace ProbablyStolenTools
                     }
                 }
                 if (candidate.RenderedItems.Count == 0) throw new InvalidOperationException("No live inventory items reached from snapshot roots.");
-                long tItems = timing.ElapsedMilliseconds;
-                // 捕获整段都在同一帧内完成，理论上不会有人并发改状态；再做一次全量比对等于把
-                // 40k 对象/30 万槽位再走一遍，是建节点卡顿的主要来源之一。默认关闭，排查时可开。
-                if (Plugin.CfgVerifyCapture.Value)
-                {
-                    var diff = candidate.Graph.Differences();
-                    if (diff.Count != 0) throw new InvalidOperationException("Capture changed while reading: " + string.Join(", ", diff));
-                }
-                long tVerify = timing.ElapsedMilliseconds;
+                var diff = candidate.Graph.Differences();
+                if (diff.Count != 0) throw new InvalidOperationException("Capture changed while reading: " + string.Join(", ", diff));
                 if (closed)
                 {
                     History.Remove(ClosedNode);
@@ -459,8 +449,7 @@ namespace ProbablyStolenTools
                 EventLog.Write($"[Customer] CAPTURE id={_active.Id} client={_active.Label} history={CustomerCount}/10 " +
                     $"objects={_active.Graph.ObjectCount} slots={_active.Graph.SlotCount} bytes={_active.Graph.ByteCount} " +
                     $"items={_active.Items.Count} renderedItems={_active.RenderedItems.Count} windows={_active.Windows.Count} " +
-                    $"after={(Time.unscaledTime - _arrivedAt):0.00}s " +
-                    $"ms(access={tAccess},walk={tWalk - tAccess},items={tItems - tWalk},verify={tVerify - tItems},total={timing.ElapsedMilliseconds})");
+                    $"after={(Time.unscaledTime - _arrivedAt):0.00}s");
                 TraceBargain("CAPTURE");
             }
             catch (Exception e)
