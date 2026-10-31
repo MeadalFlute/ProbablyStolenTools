@@ -34,8 +34,9 @@ namespace ProbablyStolenTools
 
         private StateGraph(IStateAccess access) { _access = access; }
 
+        // 后期存档（490+ 件物品）的业务图已接近 5 万对象，原上限会让 F6 直接失效。
         internal static StateGraph Capture(IStateAccess access, IEnumerable<IntPtr> roots,
-            int maxObjects = 50000, int maxSlots = 1000000, long maxBytes = 64L * 1024 * 1024)
+            int maxObjects = 100000, int maxSlots = 1000000, long maxBytes = 64L * 1024 * 1024)
         {
             var graph = new StateGraph(access);
             try
