@@ -895,6 +895,13 @@ namespace ProbablyStolenTools
                             store.isClientArrived = false;
                             EventLog.Write("[Rewind] cleared stale isClientArrived at day start");
                         }
+                        // 回溯发生在闭店动画期间时，锁会随场景重载保留下来，按钮永远显示“请稍候”。
+                        if (p.IsDayStart && store.lockShutterButtonFlag != 0)
+                        {
+                            int before = store.lockShutterButtonFlag;
+                            store.lockShutterButtonFlag = 0;
+                            EventLog.Write($"[Rewind] cleared stale shutter lock at day start (was {before})");
+                        }
                     }
                     if (!p.IsDayStart && p.State == 1 && Plugin.CfgAutoOpenAfterRestore.Value)
                     {

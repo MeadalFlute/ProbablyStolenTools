@@ -96,7 +96,7 @@ namespace ProbablyStolenTools
 
         // ---------- 卷帘门锁看门狗 ----------
         // 正式版里闭店按钮的提示由 StoreShutterButton.GetTooltip 决定：
-        // storeState == 1 且 lockShutterButtonFlag != 0 时显示“请稍候”。
+        // storeState 为 1（营业）或 2（早市）且 lockShutterButtonFlag != 0 时显示“请稍候”。
         // 这个计数由游戏在对话/转场里自增自减，一旦某条中断路径漏了递减，
         // 玩家就会永远闭不了店。这里只在“没有任何正当理由”时兜底清零。
         private static float _shutterSince, _shutterLogAt;
@@ -105,7 +105,13 @@ namespace ProbablyStolenTools
         private static void ShutterWatchdog()
         {
             var store = Plugin.Store();
-            if (store == null || (int)store.storeState != 1 || store.lockShutterButtonFlag == 0)
+            if (store == null) { _shutterSince = 0; return; }
+
+            int state = (int)store.storeState;
+            // 早市同样会用锁显示“请稍候”：从闭店流程回溯到开业前时，关门动画加的锁可能残留。
+            // 开店动画本身也会短暂加锁，所以早市只在没有顾客时对长期持锁兜底。
+            if ((state != 1 && state != 2) || store.lockShutterButtonFlag == 0
+                || (state == 2 && (store.isClientArrived || store.currentClientInstance != null)))
             {
                 _shutterSince = 0;
                 return;
