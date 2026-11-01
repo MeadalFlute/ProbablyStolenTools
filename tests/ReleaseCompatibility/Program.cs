@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Runtime.Loader;
 using System.Xml.Linq;
 using System.Globalization;
@@ -118,7 +118,7 @@ var loadedNames = System.IO.Directory.GetFiles(managed, "*.dll")
 game.GetType("ModLoader").GetField("gameAssemblyNames", BindingFlags.Static | BindingFlags.NonPublic)
     .SetValue(null, loadedNames);
 var scanner = game.GetType("ModScanner");
-var result = scanner.GetMethod("Scan").Invoke(null, new object[] { new[] { dll }, null });
+var result = scanner.GetMethod("Scan").Invoke(null, new object[] { new[] { dll }, null, null, false });
 var resultType = result.GetType();
 foreach (var field in resultType.GetFields(BindingFlags.Public | BindingFlags.Instance))
 {
@@ -181,30 +181,63 @@ var dayField = station.GetType().GetField("dayCounter");
 cashField.SetValue(player, 135);
 itemField.SetValue(player, item);
 dayField.SetValue(station, 12);
-player.GetType().GetField("storeUIZoomLevels").SetValue(player, new Dictionary<string, int> { ["inspection"] = 2 });
+var zoomLevels = new Dictionary<string, int> { ["inspection"] = 2, ["store"] = 5, ["negotiation"] = 7 };
+player.GetType().GetField("storeUIZoomLevels").SetValue(player, zoomLevels);
 player.GetType().GetField("lastSaveTime").SetValue(player, new DateTime(2026, 10, 28));
+var items = new[] { item, Data("GameItemElement"), Data("GameItemElement"), Data("GameItemElement") };
+var itemArray = Array.CreateInstance(item.GetType(), items.Length);
+for (int i = 0; i < items.Length; i++) itemArray.SetValue(items[i], i);
 var identityType = mod.GetType("ProbablyStolenTools.ManagedObjects");
 var identityMethod = identityType.GetMethod("Id", BindingFlags.Static | BindingFlags.NonPublic);
 IntPtr Identity(object value) => (IntPtr)identityMethod.Invoke(null, new[] { value });
 var accessType = mod.GetType("ProbablyStolenTools.ManagedStateAccess");
 var access = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
     .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
-foreach (var root in new[] { player, station })
+foreach (var root in new[] { player, station, itemArray })
     accessType.GetMethod("AddRoot", dataFlags).Invoke(access, new object[] { Identity(root), Array.Empty<string>() });
 var graphType = mod.GetType("ProbablyStolenTools.StateGraph");
 var graph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
-    .Invoke(null, new object[] { access, new[] { Identity(player), Identity(station) }, 50000, 1000000, 64L * 1024 * 1024 });
+    .Invoke(null, new object[] { access, new[] { Identity(player), Identity(station), Identity(itemArray) }, 50000, 1000000, 64L * 1024 * 1024 });
 try
 {
+    // Repeated verification also exercises lazily compiled readers for actual game/private fields.
+    for (int i = 0; i < 40; i++)
+    {
+        var unchanged = (System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+            .Invoke(graph, new object[] { 12 });
+        if (unchanged.Count != 0) throw new Exception("Game data changed while warming field readers.");
+    }
+    var readers = (System.Collections.IDictionary)mod.GetType("ProbablyStolenTools.SnapshotFieldReader")
+        .GetField("Cache", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+    int compiledReaders = readers.Values.Cast<object>().Count(reader =>
+        (bool)reader.GetType().GetProperty("Compiled", dataFlags).GetValue(reader));
+    if (compiledReaders == 0) throw new Exception("Actual game field readers were not exercised.");
+    foreach (var element in items)
+        if (!(bool)graphType.GetMethod("Contains", dataFlags).Invoke(graph, new object[] { Identity(element) }))
+            throw new Exception("An item beyond the first array element was not captured.");
     cashField.SetValue(player, 999);
     itemField.SetValue(player, null);
     dayField.SetValue(station, 20);
+    itemArray.SetValue(null, 1);
+    itemArray.SetValue(items[0], 2);
+    itemArray.SetValue(null, 3);
+    zoomLevels["inspection"] = 20;
+    zoomLevels["store"] = 50;
+    zoomLevels.Remove("negotiation");
+    zoomLevels["new"] = 99;
     graphType.GetMethod("Restore", dataFlags).Invoke(graph, null);
     if ((int)cashField.GetValue(player) != 135 || !ReferenceEquals(itemField.GetValue(player), item)
         || (int)dayField.GetValue(station) != 12)
         throw new Exception("Actual game data graph restore failed.");
+    for (int i = 0; i < items.Length; i++)
+        if (!ReferenceEquals(itemArray.GetValue(i), items[i]))
+            throw new Exception("Actual game item array element was not restored: " + i);
+    if (zoomLevels.Count != 3 || zoomLevels["inspection"] != 2 || zoomLevels["store"] != 5
+        || zoomLevels["negotiation"] != 7)
+        throw new Exception("Actual game dictionary entries were not all restored.");
     var differences = (System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags).Invoke(graph, new object[] { 12 });
     if (differences.Count != 0) throw new Exception("Actual game data graph has differences after restore.");
-    Console.WriteLine("PASS real PlayerStore/StoreStation/GameItemElement managed graph round trip");
+    Console.WriteLine("PASS real PlayerStore/StoreStation/GameItemElement graph, four distinct array items and dictionary round trip"
+        + " (compiled readers=" + compiledReaders + ")");
 }
 finally { ((IDisposable)graph).Dispose(); }

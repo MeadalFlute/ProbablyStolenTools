@@ -40,6 +40,38 @@ namespace ProbablyStolenTools
         internal static int Revision => History.Revision;
         internal static long ActiveId => _active?.Id ?? 0;
 
+        /// <summary>一次捕获失败的记录：面板里以“损坏”节点显示，悬停看原因。</summary>
+        internal sealed class Failure
+        {
+            internal string Label;
+            internal string Reason;
+            internal DateTime At;
+            internal int Day;
+        }
+
+        internal static readonly List<Failure> Failures = new List<Failure>();
+
+        private static void RecordFailure(bool closed, Exception e)
+        {
+            try
+            {
+                string label = closed ? "闭店" : "顾客";
+                if (!closed)
+                {
+                    try
+                    {
+                        var client = Plugin.Store()?.currentClientInstance;
+                        if (client != null) label = client.GetClientBlueprint().identifier ?? label;
+                    }
+                    catch { }
+                }
+                string reason = e == null ? "unknown" : e.GetType().Name + ": " + (e.Message ?? "").Trim();
+                if (reason.Length > 400) reason = reason.Substring(0, 400) + "…";
+                Failures.Insert(0, new Failure { Label = label, Reason = reason, At = DateTime.Now, Day = Boundary.Day });
+                while (Failures.Count > 5) Failures.RemoveAt(Failures.Count - 1);
+            }
+            catch { }
+        }
         internal sealed class Snapshot : IDisposable
         {
             internal long Id;
@@ -207,6 +239,7 @@ namespace ProbablyStolenTools
         internal static void Shutdown()
         {
             Clear("Mod disabled");
+            SnapshotFieldReader.ClearCache();
             ClosedNode = null;
             PendingCallbacks.Clear();
             DialogueCallbacks.Clear();
@@ -380,7 +413,9 @@ namespace ProbablyStolenTools
             Snapshot candidate = null;
             try
             {
+                var timing = System.Diagnostics.Stopwatch.StartNew();
                 var access = Access(store, out var roots);
+                long tAccess = timing.ElapsedMilliseconds;
                 candidate = new Snapshot
                 {
                     Id = ++_nextId, Label = closed ? "closed" : store.currentClientInstance.GetClientBlueprint().identifier,
@@ -390,16 +425,23 @@ namespace ProbablyStolenTools
                     Cash = store.GetCash(), At = DateTime.Now, Random = RNG.random
                 };
                 candidate.Graph = StateGraph.Capture(access, roots);
+                long tWalk = timing.ElapsedMilliseconds;
                 candidate.Customer = new CustomerVisual();
                 candidate.Shop = new ShopPhaseVisual();
+                var visualIds = new HashSet<IntPtr>();
                 if (candidate.Graph.SlotCount == 0) throw new InvalidOperationException("Empty business-state graph.");
                 UnityRandomState.Capture(out candidate.UnityRandom);
                 foreach (var id in candidate.Graph.Objects)
                 {
+#if MONO
+                    var instance = ManagedObjects.Get(id);
+                    if (instance is GameItemElement)
+#else
                     if (Is<GameItemElement>(id))
+#endif
                     {
 #if MONO
-                        var item = (GameItemElement)ManagedObjects.Get(id);
+                        var item = (GameItemElement)instance;
 #else
                         var item = new GameItemElement(id);
 #endif
@@ -417,23 +459,29 @@ namespace ProbablyStolenTools
                             continue;
                         }
                         candidate.RenderedItems.Add(id, item);
-                        AddVisual(candidate, item.handler);
-                        AddVisual(candidate, item.fakeMiddle);
+                        AddVisual(candidate, item.handler, visualIds);
+                        AddVisual(candidate, item.fakeMiddle, visualIds);
                     }
+#if MONO
+                    if (instance is PixelWindow)
+#else
                     if (Is<PixelWindow>(id))
+#endif
                     {
 #if MONO
-                        var window = (PixelWindow)ManagedObjects.Get(id);
+                        var window = (PixelWindow)instance;
 #else
                         var window = new PixelWindow(id);
 #endif
                         candidate.Windows.Add(id, window);
-                        AddVisual(candidate, window.handler);
+                        AddVisual(candidate, window.handler, visualIds);
                     }
                 }
                 if (candidate.RenderedItems.Count == 0) throw new InvalidOperationException("No live inventory items reached from snapshot roots.");
+                long tItems = timing.ElapsedMilliseconds;
                 var diff = candidate.Graph.Differences();
                 if (diff.Count != 0) throw new InvalidOperationException("Capture changed while reading: " + string.Join(", ", diff));
+                long tVerify = timing.ElapsedMilliseconds;
                 if (closed)
                 {
                     History.Remove(ClosedNode);
@@ -446,10 +494,17 @@ namespace ProbablyStolenTools
                 RebuildRetainedItems();
                 Boundary.MarkReady();
                 Status = "Checkpoint: " + Name(_active);
+#if MONO
+                string readers = " " + SnapshotFieldReader.Summary;
+#else
+                string readers = "";
+#endif
                 EventLog.Write($"[Customer] CAPTURE id={_active.Id} client={_active.Label} history={CustomerCount}/10 " +
                     $"objects={_active.Graph.ObjectCount} slots={_active.Graph.SlotCount} bytes={_active.Graph.ByteCount} " +
                     $"items={_active.Items.Count} renderedItems={_active.RenderedItems.Count} windows={_active.Windows.Count} " +
-                    $"after={(Time.unscaledTime - _arrivedAt):0.00}s");
+                    $"after={(Time.unscaledTime - _arrivedAt):0.00}s " +
+                    $"ms(access={tAccess},walk={tWalk - tAccess},items={tItems - tWalk}," +
+                    $"verify={tVerify - tItems},total={timing.ElapsedMilliseconds})" + readers);
                 TraceBargain("CAPTURE");
             }
             catch (Exception e)
@@ -458,6 +513,7 @@ namespace ProbablyStolenTools
                 Boundary.Invalidate();
                 Status = "Capture failed: " + e.Message;
                 EventLog.Write("[Customer] CAPTURE FAILED: " + e);
+                RecordFailure(closed, e);
             }
         }
 
@@ -713,6 +769,7 @@ namespace ProbablyStolenTools
 
         private static void Clear(string reason = "场景切换")
         {
+            Failures.Clear();
             History.Clear();
             if (ClosedNode != null)
             {
@@ -882,9 +939,9 @@ namespace ProbablyStolenTools
             Il2CppClassPointerStore<T>.NativeClassPtr, IL2CPP.il2cpp_object_get_class(id));
 #endif
 
-        private static void AddVisual(Snapshot snapshot, TreeNodeRender node)
+        private static void AddVisual(Snapshot snapshot, TreeNodeRender node, HashSet<IntPtr> ids)
         {
-            if (node != null && !snapshot.Visuals.Any(v => Id(v.Node) == Id(node)))
+            if (node != null && ids.Add(Id(node)))
                 snapshot.Visuals.Add(new VisualState(node));
         }
 

@@ -282,7 +282,7 @@ namespace ProbablyStolenTools
                 ? Plugin.KeyName(Plugin.CfgKeyPrevDay.Value)
                 : Plugin.KeyName(Plugin.CfgKeyDay.Value);
             string what = action == WholeDayAction.DayStart ? "回到本日开业前" : "回到上一天";
-            string body = $"{what} 会覆盖当前存档槽位（覆盖前会保留一份 .pre_restore 备份）。\n\n" +
+            string body = $"{what} 会直接载入节点文件，不改动当前存档；之后的存档由游戏自己写入。\n\n" +
                           $"点击下方按钮确认，或直接再按一次 {other} 确认。";
             try
             {
@@ -364,12 +364,18 @@ namespace ProbablyStolenTools
                     return;
                 }
 
-                EventLog.Write($"[Rewind] restoring '{p.Label}' -> {Path.GetFileName(active)} (mode={Plugin.CfgRestoreMode.Value})");
+                EventLog.Write($"[Rewind] restoring '{p.Label}' (mode={Plugin.CfgRestoreMode.Value})");
 
-                // 先给当前状态留个后路
+                // 只加载、不覆盖当前存档：把 NewGameData.saveFile 指向检查点文件，
+                // 游戏自己经 SaveFiles.ResolveLoadFile() 读取；之后的写档仍由游戏按自己的节奏执行。
+                // 用 ASCII 临时名放到存档根目录：检查点文件名含中文，避免 ES3 解析差异。
+                const string stageName = "pstools_restore.es3";
+                try { File.Copy(p.Path, Path.Combine(Application.persistentDataPath, stageName), true); }
+                catch (Exception e) { EventLog.Write("[Rewind] stage copy failed: " + e.Message); return; }
+                PendingLoadFile = stageName;
+
+                // 给当前状态留一份备份（只复制，不改动原存档）
                 try { File.Copy(active, active + ".pre_restore", true); } catch { }
-
-                File.Copy(p.Path, active, true);
 
                 string mode = Plugin.CfgRestoreMode.Value;
                 PendingPoint = p;
@@ -387,6 +393,8 @@ namespace ProbablyStolenTools
                 bool loaded = false;
                 try
                 {
+                    var data2 = NewGameData.Instance;
+                    if (data2 != null && !string.IsNullOrEmpty(PendingLoadFile)) data2.saveFile = PendingLoadFile;
                     PlayerStore.Instance.LoadGame();
                     loaded = true;
                     Plugin.LogSource.LogInfo("[Rewind] LoadGame() returned.");
@@ -426,6 +434,8 @@ namespace ProbablyStolenTools
         internal static bool PendingMenuReload;
         internal static int PendingSlot = -1;
         internal static Point PendingPoint;
+        /// <summary>恢复期间要加载的检查点文件（相对存档目录）。为空表示按槽位正常加载。</summary>
+        internal static string PendingLoadFile;
 
         private static void GoToMenuAndAutoLoad(int slotId)
         {
@@ -449,6 +459,8 @@ namespace ProbablyStolenTools
             try
             {
                 try { PlayerPrefs.SetInt("activeSaveSlotId", slotId); PlayerPrefs.Save(); } catch { }
+                var data3 = NewGameData.Instance;
+                if (data3 != null && !string.IsNullOrEmpty(PendingLoadFile)) data3.saveFile = PendingLoadFile;
                 var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
                 UnityEngine.SceneManagement.SceneManager.LoadScene(scene.name);
                 EventLog.Write($"[Rewind] reloaded scene '{scene.name}'.");
@@ -802,6 +814,10 @@ namespace ProbablyStolenTools
                 // 否则接下来几秒内到店的顾客会被 Restoring 挡掉、或稍后被延迟的重置清空。
                 _resumePoint = p;
                 Rewind.PendingPoint = null;
+                // 载入完成：恢复正常按槽位加载，避免下次“继续游戏”还去读检查点文件。
+                try { if (NewGameData.Instance != null) NewGameData.Instance.saveFile = null; } catch { }
+                Rewind.PendingLoadFile = null;
+                try { File.Delete(Path.Combine(Application.persistentDataPath, "pstools_restore.es3")); } catch { }
                 Rewind.ResetAfterFileReload();
                 ResetPollingAfterFileReload();
                 CustomerCheckpoint.ResetAfterFileReload();
@@ -1022,6 +1038,7 @@ namespace ProbablyStolenTools
                 var mm = MainMenuUIController.Instance;
                 if (data == null || mm == null) return false;
                 data.saveSlot = slot;
+                if (!string.IsNullOrEmpty(Rewind.PendingLoadFile)) data.saveFile = Rewind.PendingLoadFile;
                 try { mm.saveUIManager?.CloseUI(); } catch { }
                 mm.StartNewGameClick();
                 EventLog.Write($"[Rewind] StartNewGameClick() issued for slot {slot}.");

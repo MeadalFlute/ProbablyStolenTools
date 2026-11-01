@@ -8,18 +8,33 @@ namespace ProbablyStolenTools
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
     internal sealed class ManagedStateAccess : IStateAccess
     {
-        private sealed class Storage
+        private readonly struct Storage
         {
-            internal int Index = -1;
-            internal FieldInfo[] Path;
-            internal bool Anchor;
-            internal object Target;
+            internal readonly int Index;
+            internal readonly FieldInfo[] Path;
+            internal readonly object Target;
+            internal readonly SnapshotFieldReader Reader;
+            internal bool Anchor => Target != null;
+            internal Storage(int index, FieldInfo[] path, object target = null, SnapshotFieldReader reader = null)
+            { Index = index; Path = path; Target = target; Reader = reader; }
+        }
+
+        // Only immutable field descriptions are shared; values and array indices remain per capture.
+        private sealed class TypeSchema
+        {
+            internal readonly StateSlot[] Slots;
+            internal readonly Storage[] Stores;
+            internal TypeSchema(List<StateSlot> slots, List<Storage> stores)
+            { Slots = slots.ToArray(); Stores = stores.ToArray(); }
         }
 
         private readonly Dictionary<IntPtr, object> _retained = new();
         private readonly Dictionary<IntPtr, HashSet<string>> _roots = new();
-        private readonly Dictionary<IntPtr, List<Storage>> _storage = new();
-        private readonly Dictionary<object, long> _values = new();
+        private readonly Dictionary<IntPtr, Storage[]> _storage = new();
+        private readonly Dictionary<Type, TypeSchema> _schemas = new();
+        private readonly Dictionary<Type, TypeSchema> _elementSchemas = new();
+        private readonly Dictionary<Type, bool> _traversable = new();
+        private readonly Dictionary<object, byte[]> _values = new();
         private readonly Dictionary<long, object> _savedValues = new();
         private long _nextValue;
         private static readonly object NullValue = new();
@@ -33,11 +48,16 @@ namespace ProbablyStolenTools
         };
         private readonly Type _unityObject;
         private readonly string _gameAssembly;
+        private readonly bool _fastReads;
 
         internal ManagedStateAccess(Type unityObject = null, string gameAssembly = "Assembly-CSharp")
+            : this(unityObject, gameAssembly, true) { }
+
+        internal ManagedStateAccess(Type unityObject, string gameAssembly, bool fastReads)
         {
             _unityObject = unityObject;
             _gameAssembly = gameAssembly;
+            _fastReads = fastReads;
         }
 
         internal void AddRoot(IntPtr id, params string[] fields)
@@ -55,48 +75,108 @@ namespace ProbablyStolenTools
         {
             var value = _retained[id];
             var type = value.GetType();
-            var slots = new List<StateSlot>();
-            var stores = new List<Storage>();
-            _storage[id] = stores;
             bool root = _roots.TryGetValue(id, out var selected);
-            if (!root && !Traversable(type)) return slots;
+            if (!root)
+            {
+                if (!_traversable.TryGetValue(type, out bool traversable))
+                    _traversable.Add(type, traversable = Traversable(type));
+                if (!traversable)
+                {
+                    _storage[id] = Array.Empty<Storage>();
+                    return Array.Empty<StateSlot>();
+                }
+            }
             if (value is Array array)
             {
                 if (array.Rank != 1 || array.GetLowerBound(0) != 0 || array.Length > 262144)
                     throw new InvalidOperationException("Unsupported snapshot array.");
+                // Empty arrays have no fields to flatten, even for otherwise unsupported element types.
+                if (array.Length == 0)
+                {
+                    _storage[id] = Array.Empty<Storage>();
+                    return Array.Empty<StateSlot>();
+                }
+                var elementType = type.GetElementType();
+                if (!_elementSchemas.TryGetValue(elementType, out var element))
+                {
+                    var elementSlots = new List<StateSlot>();
+                    var elementStores = new List<Storage>();
+                    Flatten(elementType, new List<FieldInfo>(), -1, "", elementSlots, elementStores, 0);
+                    PrepareReaders(elementType.MakeArrayType(), elementSlots, elementStores, true);
+                    _elementSchemas.Add(elementType, element = new TypeSchema(elementSlots, elementStores));
+                }
+                bool vector = type == elementType.MakeArrayType();
+                int stride = element.Stores.Length;
+                var slots = new StateSlot[checked(array.Length * stride)];
+                var stores = new Storage[slots.Length];
                 for (int i = 0; i < array.Length; i++)
-                    Flatten(type.GetElementType(), new List<FieldInfo>(), i, type.FullName + "[" + i + "]", slots, stores, 0);
+                {
+                    string prefix = type.FullName + "[" + i + "]";
+                    for (int j = 0; j < stride; j++)
+                    {
+                        int offset = i * stride + j;
+                        var slot = element.Slots[j];
+                        slots[offset] = new StateSlot(offset, slot.Size, slot.IsReference, prefix + slot.Name);
+                        var storage = element.Stores[j];
+                        stores[offset] = new Storage(i, storage.Path, reader: vector ? storage.Reader : null);
+                    }
+                }
+                _storage[id] = stores;
+                return slots;
             }
-            else if (value is Delegate action)
+            if (value is Delegate action)
             {
+                var slots = new List<StateSlot>();
+                var stores = new List<Storage>();
                 // Delegates are immutable; visit every invocation target without rewriting code/identity.
                 foreach (var handler in action.GetInvocationList())
                     if (handler.Target != null)
                     {
                         slots.Add(new StateSlot(stores.Count, 8, true, type.FullName + ".target"));
-                        stores.Add(new Storage { Anchor = true, Target = handler.Target });
+                        stores.Add(new Storage(-1, null, handler.Target));
                     }
+                _storage[id] = stores.ToArray();
+                return slots;
             }
-            else
+            TypeSchema schema;
+            if (root && selected != null) schema = ObjectSchema(type, selected);
+            else if (!_schemas.TryGetValue(type, out schema))
+                _schemas.Add(type, schema = ObjectSchema(type, null));
+            _storage[id] = schema.Stores;
+            return schema.Slots;
+        }
+
+        private TypeSchema ObjectSchema(Type type, HashSet<string> selected)
+        {
+            var slots = new List<StateSlot>();
+            var stores = new List<Storage>();
+            for (var current = type; current != null && !IsUnity(current); current = current.BaseType)
+                foreach (var field in current.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                {
+                    if (selected != null && !selected.Contains(field.Name)) continue;
+                    if (TransientLocks.Contains(current.FullName + "." + field.Name)) continue;
+                    if (Visual(field.FieldType)) continue;
+                    Flatten(field.FieldType, new List<FieldInfo> { field }, -1,
+                        current.FullName + "." + field.Name, slots, stores, 0);
+                }
+            if (selected != null)
+                foreach (string name in selected)
+                    if (!slots.Any(s => s.Name.EndsWith("." + name, StringComparison.Ordinal)
+                        || s.Name.Contains("." + name + ".", StringComparison.Ordinal)))
+                        throw new InvalidOperationException("Required snapshot field missing: " + name);
+            PrepareReaders(type, slots, stores, false);
+            return new TypeSchema(slots, stores);
+        }
+
+        private void PrepareReaders(Type owner, List<StateSlot> slots, List<Storage> stores, bool element)
+        {
+            if (!_fastReads) return;
+            for (int i = 0; i < stores.Count; i++)
             {
-                for (var current = type; current != null && !IsUnity(current); current = current.BaseType)
-                    foreach (var field in current.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
-                    {
-                        if (root && selected != null && !selected.Contains(field.Name)) continue;
-                        // 这些是“当前正在转场/被锁”的计数器，不是业务状态：
-                        // 快照期间若恰好非 0，恢复后会把锁一起带回去（例如闭店一直提示“请稍候”）。
-                        if (TransientLocks.Contains(current.FullName + "." + field.Name)) continue;
-                        if (Visual(field.FieldType)) continue;
-                        Flatten(field.FieldType, new List<FieldInfo> { field }, -1,
-                            current.FullName + "." + field.Name, slots, stores, 0);
-                    }
-                if (root && selected != null)
-                    foreach (string name in selected)
-                        if (!slots.Any(s => s.Name.EndsWith("." + name, StringComparison.Ordinal)
-                            || s.Name.Contains("." + name + ".", StringComparison.Ordinal)))
-                            throw new InvalidOperationException("Required snapshot field missing: " + name);
+                var storage = stores[i];
+                stores[i] = new Storage(storage.Index, storage.Path, reader:
+                    SnapshotFieldReader.Get(owner, slots[i].Name, storage.Path, element));
             }
-            return slots;
         }
 
         private bool IsUnity(Type type) => _unityObject != null && type == _unityObject
@@ -182,7 +262,7 @@ namespace ProbablyStolenTools
             List<StateSlot> slots, List<Storage> stores)
         {
             slots.Add(new StateSlot(stores.Count, 8, !type.IsValueType, name));
-            stores.Add(new Storage { Index = index, Path = path });
+            stores.Add(new Storage(index, path));
         }
 
         private object Read(IntPtr id, StateSlot slot)
@@ -190,6 +270,7 @@ namespace ProbablyStolenTools
             var storage = _storage[id][slot.Offset];
             if (storage.Anchor) return storage.Target;
             object value = _retained[id];
+            if (storage.Reader != null && storage.Reader.TryRead(value, storage.Index, out var fast)) return fast;
             if (storage.Index >= 0) value = ((Array)value).GetValue(storage.Index);
             foreach (var field in storage.Path) value = field.GetValue(value);
             return value;
@@ -225,13 +306,15 @@ namespace ProbablyStolenTools
             object value = Read(id, slot) ?? NullValue;
             object key = value is float single ? (object)(typeof(float), BitConverter.SingleToInt32Bits(single))
                 : value is double number ? (object)(typeof(double), BitConverter.DoubleToInt64Bits(number)) : value;
-            if (!_values.TryGetValue(key, out long token))
+            if (!_values.TryGetValue(key, out var saved))
             {
-                token = ++_nextValue;
-                _values.Add(key, token);
+                long token = ++_nextValue;
+                saved = BitConverter.GetBytes(token);
+                _values.Add(key, saved);
                 _savedValues.Add(token, value);
             }
-            return BitConverter.GetBytes(token);
+            // StateGraph treats returned bytes as immutable; reuse equal tokens, including verification reads.
+            return saved;
         }
 
         public IntPtr ReadReference(IntPtr id, StateSlot slot) => ManagedObjects.Id(Read(id, slot));
@@ -251,6 +334,7 @@ namespace ProbablyStolenTools
         public void Dispose()
         {
             _retained.Clear(); _storage.Clear(); _roots.Clear(); _values.Clear(); _savedValues.Clear();
+            _schemas.Clear(); _elementSchemas.Clear(); _traversable.Clear();
         }
     }
 }

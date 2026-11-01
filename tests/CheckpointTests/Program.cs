@@ -8,6 +8,7 @@ void Test(string name, Action action)
 void Check(bool condition) { if (!condition) throw new Exception("Assertion failed"); }
 
 ManagedSnapshotTests.Run(Test, Check);
+SnapshotOptimizationTests.Run(Test, Check);
 
 Test("cycle and shared object keep original identity", () =>
 {
@@ -510,7 +511,8 @@ Test("inspection checks follow the current item and do not retain previous issue
     Check(drugs.All(c => !string.IsNullOrWhiteSpace(c.Chinese)
         && !string.IsNullOrWhiteSpace(c.English) && !string.IsNullOrWhiteSpace(c.LocalizationKey)));
 });
-if (args.Length > 0)
+if (args.Contains("--benchmark")) SnapshotOptimizationTests.Benchmark();
+if (args.Length > 0 && !args[0].StartsWith("--", StringComparison.Ordinal))
 {
     Test("real ES3 save metadata (read only)", () =>
     {

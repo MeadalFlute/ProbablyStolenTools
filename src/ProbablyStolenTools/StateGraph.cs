@@ -20,7 +20,7 @@ namespace ProbablyStolenTools
 
     internal sealed class StateGraph : IDisposable
     {
-        private sealed record Entry(IntPtr Owner, StateSlot Slot, byte[] Bytes, IntPtr Reference);
+        private readonly record struct Entry(IntPtr Owner, StateSlot Slot, byte[] Bytes, IntPtr Reference);
         private readonly IStateAccess _access;
         private readonly List<Entry> _entries = new();
         private readonly HashSet<IntPtr> _objects = new();
@@ -40,13 +40,15 @@ namespace ProbablyStolenTools
             var graph = new StateGraph(access);
             try
             {
-                var pending = new Queue<(IntPtr Id, IntPtr Parent, string Field)>(
-                    roots.Where(p => p != IntPtr.Zero).Select(p => (p, IntPtr.Zero, "root")));
+                var pending = new Queue<IntPtr>();
+                // Register all roots first so an earlier root's links cannot replace their root paths.
+                foreach (var root in roots)
+                    if (root != IntPtr.Zero && graph._sources.TryAdd(root, (IntPtr.Zero, "root")))
+                        pending.Enqueue(root);
                 while (pending.Count != 0)
                 {
-                    var (id, parent, field) = pending.Dequeue();
-                    if (!graph._objects.Add(id)) continue;
-                    graph._sources.Add(id, (parent, field));
+                    var id = pending.Dequeue();
+                    graph._objects.Add(id);
                     if (graph._objects.Count > maxObjects)
                         throw new InvalidOperationException("Snapshot object limit exceeded.");
                     access.Retain(id);
@@ -58,7 +60,8 @@ namespace ProbablyStolenTools
                         {
                             var value = access.ReadReference(id, slot);
                             graph._entries.Add(new Entry(id, slot, null, value));
-                            if (value != IntPtr.Zero) pending.Enqueue((value, id, slot.Name));
+                            if (value != IntPtr.Zero && graph._sources.TryAdd(value, (id, slot.Name)))
+                                pending.Enqueue(value);
                             graph.ByteCount += IntPtr.Size;
                         }
                         else
@@ -108,9 +111,13 @@ namespace ProbablyStolenTools
             _access.Validate();
             foreach (var e in _entries)
             {
-                bool same = e.Slot.IsReference
-                    ? _access.ReadReference(e.Owner, e.Slot) == e.Reference
-                    : _access.ReadValue(e.Owner, e.Slot).SequenceEqual(e.Bytes);
+                bool same;
+                if (e.Slot.IsReference) same = _access.ReadReference(e.Owner, e.Slot) == e.Reference;
+                else
+                {
+                    var value = _access.ReadValue(e.Owner, e.Slot);
+                    same = ReferenceEquals(value, e.Bytes) || value.SequenceEqual(e.Bytes);
+                }
                 if (!same && result.Count < max) result.Add(e.Slot.Name);
             }
             return result;

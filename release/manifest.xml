@@ -12,5 +12,6 @@
   <Capabilities>
     <Capability>files</Capability>
     <Capability>reflection-external</Capability>
+    <Capability>dynamic-code</Capability>
   </Capabilities>
 </Mod>

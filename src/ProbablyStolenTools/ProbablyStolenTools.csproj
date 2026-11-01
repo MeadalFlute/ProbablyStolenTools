@@ -32,7 +32,7 @@
     <Reference Include="Unity.TextMeshPro" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Unity.TextMeshPro.dll" Private="false" />
   </ItemGroup>
   <ItemGroup Condition="'$(GameRuntime)' != 'Mono'">
-    <Compile Remove="ManagedStateAccess.cs;ManagedRuntime.cs;MonoModConfig.cs" />
+    <Compile Remove="ManagedStateAccess.cs;ManagedRuntime.cs;MonoModConfig.cs;SnapshotFieldReader.cs" />
     <Reference Include="MelonLoader">
       <HintPath>$(MelonDir)\MelonLoader.dll</HintPath>
       <Private>false</Private>

@@ -81,6 +81,7 @@ namespace ProbablyStolenTools
             internal Graphic Bg;
             internal Color IdleColor;
             internal Button Button;
+            internal CustomUIElement Element;
             internal TextMeshProUGUI Time, Label, Cash, State;
             internal object Node;
         }
@@ -483,6 +484,7 @@ namespace ProbablyStolenTools
         {
             var row = new Row();
             var element = NativeButton(_content, "", () => ClickRow(row));
+            row.Element = element;
             row.Go = element.root;
             row.Button = element.button;
             row.Bg = row.Button.targetGraphic;
@@ -538,7 +540,23 @@ namespace ProbablyStolenTools
                 Bind(_rows[_shown++], p, p.At, "开业前", p.Cash, "存档", true);
                 break;
             }
-            for (int i = _shown; i < _rows.Count; i++) { _rows[i].Node = null; _rows[i].Go.SetActive(false); }
+            // 建立失败的节点也列出来：名字可见、状态为“损坏”，悬停显示失败原因。
+            var failures = CustomerCheckpoint.Failures;
+            for (int i = 0; i < failures.Count && _shown < _rows.Count; i++)
+            {
+                var failure = failures[i];
+                var row = _rows[_shown++];
+                Bind(row, null, failure.At, failure.Label, 0, "损坏", false);
+                row.Cash.text = "—";
+                row.Bg.color = new Color(0.42f, 0.14f, 0.16f, row.IdleColor.a);
+                try { row.Element?.SetTooltip(failure.Reason); } catch { }
+            }
+            for (int i = _shown; i < _rows.Count; i++)
+            {
+                _rows[i].Node = null;
+                _rows[i].Go.SetActive(false);
+                try { _rows[i].Element?.SetTooltip(null); } catch { }
+            }
             _title.text = day < 0 ? "今日回溯" : $"今日回溯 · 第 {day} 天";
             _empty.gameObject.SetActive(_shown == 0);
             Layout();
