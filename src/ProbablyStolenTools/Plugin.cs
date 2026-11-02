@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using HarmonyLib;
 #if !MONO
@@ -39,6 +39,7 @@ namespace ProbablyStolenTools
         // ---- rewind / checkpoints ----
         internal static ConfigEntry<bool> CfgRewind;
         internal static ConfigEntry<int> CfgMaxPoints;
+        internal static ConfigEntry<int> CfgMaxObjects, CfgMaxSlots, CfgMaxBytesMb;
         internal static ConfigEntry<KeyCode> CfgKeyPrev;
         internal static ConfigEntry<KeyCode> CfgKeyDay;
         internal static ConfigEntry<KeyCode> CfgKeyPrevDay;
@@ -184,6 +185,12 @@ namespace ProbablyStolenTools
                 "Record a checkpoint before opening the shop and whenever a new client arrives.");
             CfgMaxPoints = Config.Bind("Rewind", "MaxCheckpoints", 20,
                 "How many checkpoints to keep.");
+            CfgMaxObjects = Config.Bind("Snapshot", "MaxObjects", 200000,
+                "Snapshot object limit. Raise it if a heavily modded game fails with 'Snapshot object limit exceeded'.");
+            CfgMaxSlots = Config.Bind("Snapshot", "MaxSlots", 3000000,
+                "Snapshot field-slot limit. Raise it if capture fails with 'Snapshot slot limit exceeded'.");
+            CfgMaxBytesMb = Config.Bind("Snapshot", "MaxBytesMB", 256,
+                "Snapshot byte budget in MiB.");
             CfgKeyPrev = Config.Bind("Rewind", "KeyPrevCheckpoint", KeyCode.F6,
                 "Reset the current customer to their arrival checkpoint (in memory, no save-file fallback).");
             CfgKeyDay = Config.Bind("Rewind", "KeyDayStart", KeyCode.F7,

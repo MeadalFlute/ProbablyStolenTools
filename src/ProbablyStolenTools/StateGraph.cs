@@ -35,7 +35,7 @@ namespace ProbablyStolenTools
         private StateGraph(IStateAccess access) { _access = access; }
 
         internal static StateGraph Capture(IStateAccess access, IEnumerable<IntPtr> roots,
-            int maxObjects = 50000, int maxSlots = 1000000, long maxBytes = 64L * 1024 * 1024)
+            int maxObjects = 200000, int maxSlots = 3000000, long maxBytes = 256L * 1024 * 1024)
         {
             var graph = new StateGraph(access);
             try
@@ -50,12 +50,16 @@ namespace ProbablyStolenTools
                     var id = pending.Dequeue();
                     graph._objects.Add(id);
                     if (graph._objects.Count > maxObjects)
-                        throw new InvalidOperationException("Snapshot object limit exceeded.");
+                        throw new InvalidOperationException(
+                            "Snapshot object limit exceeded (" + maxObjects + " objects). " +
+                            "Increase Snapshot.MaxObjects in PSTools.settings.xml.");
                     access.Retain(id);
                     foreach (var slot in access.Describe(id))
                     {
                         if (graph._entries.Count >= maxSlots)
-                            throw new InvalidOperationException("Snapshot slot limit exceeded.");
+                            throw new InvalidOperationException(
+                                "Snapshot slot limit exceeded (" + maxSlots + " slots). " +
+                                "Increase Snapshot.MaxSlots in PSTools.settings.xml.");
                         if (slot.IsReference)
                         {
                             var value = access.ReadReference(id, slot);

@@ -366,6 +366,11 @@ namespace ProbablyStolenTools
             return access;
         }
 
+        private static int MaxSnapshotObjects => Clamp(Plugin.CfgMaxObjects?.Value ?? 200000, 1000, 1000000);
+        private static int MaxSnapshotSlots => Clamp(Plugin.CfgMaxSlots?.Value ?? 3000000, 10000, 8000000);
+        private static long MaxSnapshotBytes => (long)Clamp(Plugin.CfgMaxBytesMb?.Value ?? 256, 16, 2048) * 1024 * 1024;
+        private static int Clamp(int value, int min, int max) => value < min ? min : value > max ? max : value;
+
         internal static void TryCapture()
         {
             if (!_armed || !Enabled || Restoring || Rewind.Restoring || Boundary.Attempted || _faulted) return;
@@ -424,7 +429,7 @@ namespace ProbablyStolenTools
                     Day = Boundary.Day, Scene = Boundary.Scene, Store = Boundary.Store, Client = Boundary.Client,
                     Cash = store.GetCash(), At = DateTime.Now, Random = RNG.random
                 };
-                candidate.Graph = StateGraph.Capture(access, roots);
+                candidate.Graph = StateGraph.Capture(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
                 long tWalk = timing.ElapsedMilliseconds;
                 candidate.Customer = new CustomerVisual();
                 candidate.Shop = new ShopPhaseVisual();
@@ -575,7 +580,7 @@ namespace ProbablyStolenTools
                 target.Customer.Validate();
                 target.Shop.Validate();
                 var access = Access(store, out var roots);
-                current = StateGraph.Capture(access, roots);
+                current = StateGraph.Capture(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
                 target.Graph.Differences();
                 TraceBargain("BEFORE RESTORE");
                 var newItems = new List<GameItemElement>();
