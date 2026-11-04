@@ -557,15 +557,33 @@ namespace ProbablyStolenTools
             var store = Plugin.Store();
             var ui = StoreUIManager.Instance;
             var phone = PhoneUIManager.Instance;
-            if (store == null || target.Store != Ptr(store) || target.Scene != Boundary.Scene || target.Day != Boundary.Day
-                || _outside || ((int)store.storeState != 0 && (int)store.storeState != 1) || store.isClientBeingArrested
-                || store.isHandlingShootout || store.isGeneScannerScanning
-                || ui == null || ui.isShootingMode || ui.isAboutToStartMainDialog || _closeArmed
-                || StoreClientMono.Instance == null || StoreClientMono.Instance.IsMoving()
-                || (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem)
-                || GameFields.PhoneBusy(phone))
+            // 逐项记录阻塞原因：以前统一提示“请先结束当前操作”，出事时看不出是哪一条。
+            // 这里不再看 isAboutToStartMainDialog —— 那个瞬态标志在 mod 环境里会卡住为 true，
+            // 会让所有回溯无条件被拒绝。
+            var blockers = new List<string>();
+            if (store == null) blockers.Add("noStore");
+            else
             {
-                EventLog.Write("[Customer] F6 refused during dragging, a phone call, scanning, or a customer transition.");
+                if (target.Store != Ptr(store)) blockers.Add("storeChanged");
+                if (target.Scene != Boundary.Scene) blockers.Add("sceneChanged");
+                if (target.Day != Boundary.Day) blockers.Add("dayChanged");
+                int state = (int)store.storeState;
+                if (state != 0 && state != 1) blockers.Add("state=" + state);
+                if (store.isClientBeingArrested) blockers.Add("arrested");
+                if (store.isHandlingShootout) blockers.Add("shootout");
+                if (store.isGeneScannerScanning) blockers.Add("geneScan");
+            }
+            if (_outside) blockers.Add("outside");
+            if (ui == null) blockers.Add("noUI");
+            else if (ui.isShootingMode) blockers.Add("shootingMode");
+            if (_closeArmed) blockers.Add("closeArmed");
+            if (StoreClientMono.Instance == null) blockers.Add("noClientMono");
+            else if (StoreClientMono.Instance.IsMoving()) blockers.Add("clientMoving");
+            if (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem) blockers.Add("dragging");
+            if (GameFields.PhoneBusy(phone)) blockers.Add("phoneBusy");
+            if (blockers.Count != 0)
+            {
+                EventLog.Write("[Customer] F6 refused: " + string.Join(", ", blockers));
                 PanelNotice.Show("请先结束当前操作", true);
                 return;
             }
