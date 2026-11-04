@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -310,11 +310,30 @@ namespace ProbablyStolenTools
         {
             var ui = StoreUIManager.Instance;
             var dialog = DialogUIManager.Instance;
+            // 不再要求 !isAboutToStartMainDialog：那是“0.25 秒后开主对话”的瞬态标志，
+            // 一旦游戏自己的延时回调没跑完（mod 环境里并不罕见），它会一直为 true，
+            // 导致节点永远建不起来。真正要等的是“没有对话、顾客没在移动”。
             return store != null && store.currentClientInstance != null && store.isClientArrived
                 && (int)store.storeState == 1 && !store.isClientBeingArrested && !store.isHandlingShootout
-                && ui != null && !ui.isAboutToStartMainDialog && !ui.isShootingMode
+                && ui != null && !ui.isShootingMode
                 && StoreClientMono.Instance != null && !StoreClientMono.Instance.IsMoving()
                 && dialog != null && dialog.currentDialog == null && dialog.isConversationActiveFlag == 0;
+        }
+
+        private static float _captureSince;
+
+        internal static void TryCapture()
+        {
+            if (!_armed || !Enabled || Restoring || Rewind.Restoring || Boundary.Attempted || _faulted) return;
+            var store = Plugin.Store();
+            if (!IsSettled(store)) { _captureSince = 0; WatchSettle(store); return; }
+            // 判定条件需要连续稳定一小段时间，避免在到店动画/对话切换的那一帧落盘。
+            if (_captureSince == 0) { _captureSince = Time.unscaledTime; return; }
+            if (Time.unscaledTime - _captureSince < 0.25f) return;
+            _captureSince = 0;
+            Boundary.MarkAttempt();
+            _armed = false;
+            Capture(store, false);
         }
 
         private static NativeStateAccess Access(PlayerStore store, out List<IntPtr> roots)
@@ -372,16 +391,6 @@ namespace ProbablyStolenTools
         private static int MaxSnapshotSlots => Clamp(Plugin.CfgMaxSlots?.Value ?? 3000000, 10000, 8000000);
         private static long MaxSnapshotBytes => (long)Clamp(Plugin.CfgMaxBytesMb?.Value ?? 256, 16, 2048) * 1024 * 1024;
         private static int Clamp(int value, int min, int max) => value < min ? min : value > max ? max : value;
-
-        internal static void TryCapture()
-        {
-            if (!_armed || !Enabled || Restoring || Rewind.Restoring || Boundary.Attempted || _faulted) return;
-            var store = Plugin.Store();
-            if (!IsSettled(store)) { WatchSettle(store); return; }
-            Boundary.MarkAttempt();
-            _armed = false;
-            Capture(store, false);
-        }
 
         private static float _settleLogAt;
 
