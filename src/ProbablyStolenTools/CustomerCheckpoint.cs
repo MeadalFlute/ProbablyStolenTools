@@ -327,6 +327,14 @@ namespace ProbablyStolenTools
             if (!_armed || !Enabled || Restoring || Rewind.Restoring || Boundary.Attempted || _faulted) return;
             var store = Plugin.Store();
             if (!IsSettled(store)) { _captureSince = 0; WatchSettle(store); return; }
+            // 节点必须建立在“开场对话已经播完”之后：卖货顾客的商品是那段对话里才摆上柜台的，
+            // 抢在对话前落盘，回溯后就会只剩一个空柜台（商品全部消失）。
+            if (!OpeningDialogueDone(store) && Time.unscaledTime - _arrivedAt < 8f)
+            {
+                _captureSince = 0;
+                WatchSettle(store);
+                return;
+            }
             // 判定条件需要连续稳定一小段时间，避免在到店动画/对话切换的那一帧落盘。
             if (_captureSince == 0) { _captureSince = Time.unscaledTime; return; }
             if (Time.unscaledTime - _captureSince < 0.25f) return;
@@ -334,6 +342,16 @@ namespace ProbablyStolenTools
             Boundary.MarkAttempt();
             _armed = false;
             Capture(store, false);
+        }
+
+        private static bool OpeningDialogueDone(PlayerStore store)
+        {
+            try
+            {
+                var blueprint = store?.currentClientInstance?.GetClientBlueprint();
+                return blueprint == null || blueprint.isMainDialogueStarted;
+            }
+            catch { return true; }
         }
 
         private static NativeStateAccess Access(PlayerStore store, out List<IntPtr> roots)
