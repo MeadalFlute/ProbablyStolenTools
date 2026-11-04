@@ -338,6 +338,12 @@ namespace ProbablyStolenTools
         internal static void Restore(Point p, bool allowDayChange = false)
         {
             if (Busy || PendingMenuReload || PendingPoint != null || CustomerCheckpoint.Restoring) return;
+            if (Settling)
+            {
+                EventLog.Write("[Rewind] restore ignored: the previous reload is still settling.");
+                PanelNotice.Show("上一个节点还在载入，请稍候", true);
+                return;
+            }
             if (p == null || !File.Exists(p.Path))
             {
                 Plugin.LogSource.LogWarning("[Rewind] checkpoint file missing.");
@@ -436,6 +442,8 @@ namespace ProbablyStolenTools
         internal static Point PendingPoint;
         /// <summary>恢复期间要加载的检查点文件（相对存档目录）。为空表示按槽位正常加载。</summary>
         internal static string PendingLoadFile;
+        /// <summary>上一次回溯的载入/收尾还没结束；此时拒绝新的回溯，避免两次载入互相踩状态。</summary>
+        internal static bool Settling;
 
         private static void GoToMenuAndAutoLoad(int slotId)
         {
@@ -802,7 +810,7 @@ namespace ProbablyStolenTools
         private void PostLoadResume()
         {
             var p = _resumePoint ?? Rewind.PendingPoint;
-            if (p == null) { _resumeStage = 0; return; }
+            if (p == null) { _resumeStage = 0; Rewind.Settling = false; return; }
 
             if (_resumeStage == 0)
             {
@@ -813,6 +821,7 @@ namespace ProbablyStolenTools
                 // 新存档已经就位：立刻清掉“恢复中”标记并重置节点系统，
                 // 否则接下来几秒内到店的顾客会被 Restoring 挡掉、或稍后被延迟的重置清空。
                 _resumePoint = p;
+                Rewind.Settling = true;
                 Rewind.PendingPoint = null;
                 // 载入完成：恢复正常按槽位加载，避免下次“继续游戏”还去读检查点文件。
                 try { if (NewGameData.Instance != null) NewGameData.Instance.saveFile = null; } catch { }
@@ -912,6 +921,17 @@ namespace ProbablyStolenTools
                             EventLog.Write("[Rewind] cleared stale isClientArrived at day start");
                         }
                     }
+                    // 载入时如果存档正好带着“卷帘门转场锁”，之后没有任何流程会把它减回去，
+                    // 表现为按卷帘门完全没反应。这里在没有对话/移动时兜底清掉。
+                    var dlg = DialogUIManager.Instance;
+                    var mono = StoreClientMono.Instance;
+                    bool idleForShutter = dlg != null && dlg.currentDialog == null && dlg.isConversationActiveFlag == 0
+                        && !dlg.isWaitingForManualAdvance && (mono == null || !mono.IsMoving());
+                    if (idleForShutter && store.lockShutterButtonFlag != 0)
+                    {
+                        EventLog.Write($"[Rewind] cleared stale lockShutterButtonFlag={store.lockShutterButtonFlag} after load");
+                        store.lockShutterButtonFlag = 0;
+                    }
                     if (!p.IsDayStart && p.State == 1 && Plugin.CfgAutoOpenAfterRestore.Value)
                     {
                         store.OpenShutter();
@@ -923,6 +943,8 @@ namespace ProbablyStolenTools
                     EventLog.Write($"[Rewind] post-load action failed: {e.GetType().Name}: {e.Message}");
                 }
                 // 重置已经在载入完成的瞬间做过，这里不能再做一次：会清掉期间刚捕获的顾客节点。
+                // 载入与首轮修正都已完成，可以接受下一次回溯请求。
+                Rewind.Settling = false;
                 _resumeStage = 3;
                 _resumeT = Time.time;
                 return;
@@ -951,6 +973,7 @@ namespace ProbablyStolenTools
                 catch { }
                 _resumeStage = 0;
                 _resumePoint = null;
+                Rewind.Settling = false;
             }
         }
 

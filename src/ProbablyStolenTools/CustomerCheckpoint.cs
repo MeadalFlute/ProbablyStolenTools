@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -137,7 +137,9 @@ namespace ProbablyStolenTools
         private static void ShutterWatchdog()
         {
             var store = Plugin.Store();
-            if (store == null || (int)store.storeState != 1 || store.lockShutterButtonFlag == 0)
+            int state = store == null ? -1 : (int)store.storeState;
+            // 早市(2) 与营业(1) 都可能被残留锁挡住：早市时按卷帘门不会有任何反应。
+            if (store == null || (state != 1 && state != 2) || store.lockShutterButtonFlag == 0)
             {
                 _shutterSince = 0;
                 return;
@@ -170,7 +172,7 @@ namespace ProbablyStolenTools
                                $"client={(store.currentClientInstance != null ? 1 : 0)}");
             }
 
-            if (held < 10f) return;
+            if (held < (state == 2 ? 15f : 10f)) return;
             if (!Plugin.CfgRepairStuckShutter.Value) return;
 
             int before = store.lockShutterButtonFlag;
