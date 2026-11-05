@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using HarmonyLib;
@@ -349,7 +349,7 @@ namespace ProbablyStolenTools
             if (p == null || !File.Exists(p.Path))
             {
                 Plugin.LogSource.LogWarning("[Rewind] checkpoint file missing.");
-                PanelNotice.Show("节点文件已丢失，无法回溯", true);
+                PanelNotice.Show("节点文件已丢失，无法回溯" + "\n详情请查看日志（设置中的“查看日志”）", true);
                 return;
             }
 
@@ -357,7 +357,7 @@ namespace ProbablyStolenTools
             if (p.State == 1 && !Plugin.CfgAllowOpen.Value)
             {
                 EventLog.Write($"[Rewind] 跳过 '{p.Label}'：该节点处于营业中(OPEN)，游戏存档不支持中途恢复。");
-                PanelNotice.Show("无法回溯：" + p.Label + " 是营业中节点，游戏存档不支持中途恢复", true);
+                PanelNotice.Show("无法回溯：" + p.Label + " 是营业中节点，游戏存档不支持中途恢复" + "\n详情请查看日志（设置中的“查看日志”）", true);
                 return;
             }
 
@@ -375,7 +375,7 @@ namespace ProbablyStolenTools
                         : slot != p.SlotId ? "当前存档槽位与节点不一致（" + slot + " != " + p.SlotId + "）"
                         : !allowDayChange && p.Day != StoreStation.GetDayCounter() ? "节点不是今天的（第 " + p.Day + " 天）"
                         : "存档进度标识不一致（可能已换档）";
-                    PanelNotice.Show("无法回溯：" + why, true);
+                    PanelNotice.Show("无法回溯：" + why + "\n详情请查看日志（设置中的“查看日志”）", true);
                     return;
                 }
 

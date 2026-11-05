@@ -122,6 +122,13 @@ namespace ProbablyStolenTools
             LogSource?.LogInfo($"[Keys] {self.Label} -> {KeyName(key)}");
         }
 
+        /// <summary>设置页的“查看日志”：在游戏内打开日志窗口，同时把路径复制到剪贴板。</summary>
+        internal static void OpenLog()
+        {
+            string path = EventLog.Path;
+            try { GUIUtility.systemCopyBuffer = path; } catch { }
+            LogWindow.Toggle();
+        }
         internal static void ResetHotkeys()
         {
             foreach (var binding in Hotkeys) binding.Config.Value = binding.Default;

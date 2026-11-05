@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 #if !MONO
 using Il2CppInterop.Runtime.Attributes;
@@ -23,7 +23,10 @@ namespace ProbablyStolenTools
         {
             Message = message;
             Warning = warning;
-            Until = Time.unscaledTime + (warning ? 3f : 2.2f);
+            // 多行提示需要更长的阅读时间。
+            int lines = 1;
+            for (int i = 0; i < message.Length; i++) if (message[i] == '\n') lines++;
+            Until = Time.unscaledTime + (warning ? 3.2f : 2.2f) + (lines - 1) * 1.1f;
         }
     }
 
@@ -44,7 +47,7 @@ namespace ProbablyStolenTools
         private readonly List<(RectTransform Rect, TextMeshProUGUI Label, CustomUIElement Element,
             Plugin.HotkeyBinding Binding)> _keyRows = new();
         private TextMeshProUGUI _optionsHeading, _keysHeading;
-        private RectTransform _resetKeys;
+        private RectTransform _resetKeys, _openLog;
         private ScrollRect _settingsScroll;
         private Plugin.HotkeyBinding _captureTarget;
         private int _captureStartedFrame;
@@ -282,6 +285,9 @@ namespace ProbablyStolenTools
                 () => { EndCapture(null); Plugin.ResetHotkeys(); RefreshKeyLabels(); });
             resetKeys.root.name = "hotkey-reset";
             _resetKeys = resetKeys.Rect;
+            var openLog = NativeButton(_settingsContent, InspectionLocale.Text("查看日志", "Open log"), Plugin.OpenLog);
+            openLog.root.name = "open-log";
+            _openLog = openLog.Rect;
             _resize = Raw("resize", _panelGo.transform, new Color(1, 1, 1, 0.04f), true);
             var grip = Text("grip", _resize.transform, 16, new Color(0.6f, 0.68f, 0.7f), TextAlignmentOptions.Center);
             grip.text = "\u25E2";
@@ -342,6 +348,10 @@ namespace ProbablyStolenTools
             _toast.SetActive(notice);
             if (!notice) return;
             _toastText.text = PanelNotice.Message;
+            int noticeLines = 1;
+            for (int i = 0; i < PanelNotice.Message.Length; i++) if (PanelNotice.Message[i] == '\n') noticeLines++;
+            var noticeRect = _toast.GetComponent<RectTransform>();
+            noticeRect.sizeDelta = new Vector2(640, Mathf.Max(30, 14 + noticeLines * 20));
             var font = FontLoader.Instance?.simplifiedChineseFont;
             if (font != null) { _toastText.font = font; _toastText.fontSharedMaterial = font.material; }
             _toastText.color = PanelNotice.Warning ? new Color(1, 0.8f, 0.65f) : new Color(0.78f, 0.94f, 0.86f);
@@ -625,6 +635,8 @@ namespace ProbablyStolenTools
                     settingsLayout.KeyWidth, PanelSettingsLayout.RowHeight - 2);
             }
             Place(_resetKeys, settingsLayout.KeyX, -settingsLayout.ResetY, settingsLayout.KeyWidth,
+                PanelSettingsLayout.RowHeight - 2);
+            Place(_openLog, PanelSettingsLayout.Padding, -settingsLayout.LogY, settingsLayout.RowWidth,
                 PanelSettingsLayout.RowHeight - 2);
             LayoutRebuilder.ForceRebuildLayoutImmediate(_settingsContent);
             Place(_hint.rectTransform, 4, -2, Math.Max(1, w - 16), 20);

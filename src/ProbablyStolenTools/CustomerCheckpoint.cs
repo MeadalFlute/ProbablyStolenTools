@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -68,6 +68,7 @@ namespace ProbablyStolenTools
                 string reason = e == null ? "unknown" : e.GetType().Name + ": " + (e.Message ?? "").Trim();
                 if (reason.Length > 400) reason = reason.Substring(0, 400) + "…";
                 Failures.Insert(0, new Failure { Label = label, Reason = reason, At = DateTime.Now, Day = Boundary.Day });
+                PanelNotice.Show("节点建立失败：" + label + "\n详情请查看日志（设置中的“查看日志”）", true);
                 while (Failures.Count > 5) Failures.RemoveAt(Failures.Count - 1);
             }
             catch { }
@@ -597,14 +598,14 @@ namespace ProbablyStolenTools
             Observe();
             if (_faulted)
             {
-                PanelNotice.Show("回溯失败后需先重新载入游戏", true);
+                PanelNotice.Show("回溯失败后需先重新载入游戏\n详情请查看日志（设置中的“查看日志”）", true);
                 return;
             }
             if (!Enabled || target?.Graph == null || (!History.Items.Contains(target) && target != ClosedNode))
             {
                 EventLog.Write("[Customer] F6 unavailable: " + Status + ". No save-file fallback.");
                 string why = Failures.Count > 0 ? "（最近一次建立失败：" + Failures[0].Reason + "）" : "";
-                PanelNotice.Show("暂无可用节点" + why, true);
+                PanelNotice.Show("暂无可用节点" + why + "\n详情请查看日志（设置中的“查看日志”）", true);
                 return;
             }
             var store = Plugin.Store();
@@ -641,7 +642,8 @@ namespace ProbablyStolenTools
             {
                 string detail = string.Join("、", blockers.Select(BlockerText));
                 EventLog.Write("[Customer] F6 refused: " + string.Join(", ", blockers) + " (" + detail + ")");
-                PanelNotice.Show("无法回溯：" + detail, true);
+                PanelNotice.Show("无法回溯：\n" + string.Join("\n", blockers.Select(BlockerText))
+                    + "\n详情请查看日志（设置中的“查看日志”）", true);
                 return;
             }
             bool changingPhase = ((int)store.storeState == 0) != target.IsClosed;
@@ -662,7 +664,8 @@ namespace ProbablyStolenTools
                 {
                     string phaseDetail = string.Join("、", phaseBlockers);
                     EventLog.Write("[Customer] F6 refused (phase change): " + phaseDetail);
-                    PanelNotice.Show("无法切换营业状态：" + phaseDetail, true);
+                    PanelNotice.Show("无法切换营业状态：\n" + string.Join("\n", phaseBlockers)
+                        + "\n详情请查看日志（设置中的“查看日志”）", true);
                     return;
                 }
             }
