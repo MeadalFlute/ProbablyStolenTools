@@ -46,9 +46,21 @@ namespace ProbablyStolenTools
         {
             var manager = CustomUIManager.Instance;
             if (manager == null) return;
-            var builder = NativeUi.Create("ProbablyStolenTools.log", "运行日志 / Log", 780f, 540f, true, out var window);
+            // 窗口开大一些：日志行较长，小窗只能显示几行。
+            var builder = NativeUi.Create("ProbablyStolenTools.log", "运行日志 / Log", 1120f, 800f, true, out var window);
             _window = window;
-            NativeUi.FixedSize(window, 780f, 540f);
+            NativeUi.FixedSize(window, 1120f, 800f);
+            try
+            {
+                var overlay = manager.GetLayerRoot("overlay");
+                if (overlay != null)
+                {
+                    var bounds = new PanelBounds(90, 70, 1120f, 800f)
+                        .Constrain(overlay.rect.width, overlay.rect.height);
+                    NativeUi.Place(window, overlay, bounds);
+                }
+            }
+            catch { }
             try
             {
                 if (window.frame.closeButton != null)
@@ -62,18 +74,31 @@ namespace ProbablyStolenTools
             catch { }
 
             var host = window.ContentRoot;
+            // 先放一个带 RectMask2D 的容器，保证文字不会画出窗框外。
+            var view = new GameObject("log-view", typeof(RectTransform));
+            view.transform.SetParent(host, false);
+            var viewRect = view.GetComponent<RectTransform>();
+            viewRect.anchorMin = Vector2.zero;
+            viewRect.anchorMax = Vector2.one;
+            viewRect.offsetMin = new Vector2(4, 4);
+            viewRect.offsetMax = new Vector2(-4, -4);
+            var viewImage = view.AddComponent<Image>();
+            viewImage.color = new Color(0, 0, 0, 0);
+            viewImage.raycastTarget = false;
+            view.AddComponent<RectMask2D>();
+
             var go = new GameObject("log-text", typeof(RectTransform));
-            go.transform.SetParent(host, false);
+            go.transform.SetParent(view.transform, false);
             var rect = go.GetComponent<RectTransform>();
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(6, 6);
-            rect.offsetMax = new Vector2(-6, -6);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
 
             _text = go.AddComponent<TextMeshProUGUI>();
             _text.fontSize = 13;
             _text.alignment = TextAlignmentOptions.TopLeft;
-            _text.enableWordWrapping = false;
+            _text.enableWordWrapping = true;
             _text.raycastTarget = false;
             _text.color = new Color(0.82f, 0.9f, 0.86f);
             var font = FontLoader.Instance?.simplifiedChineseFont;
