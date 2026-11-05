@@ -107,7 +107,14 @@ namespace ProbablyStolenTools
             var intent = Plugin.Store().currentClientInstance.GetClientBlueprint().clientIntent;
             if (!DialogueSkip.Ordinary(intent))
             {
-                Invalidate("Unsupported customer type: " + intent);
+                // 对话/剧情类顾客不建立节点，但不能连累当天已经存在的节点：
+                // 之前这里走 Invalidate() → Clear()，一来剧情顾客就把整天的节点清空了，
+                // 表现就是“突然没有节点可用”。
+                _armed = false;
+                Boundary.MarkAttempt();
+                Status = "Unsupported customer type: " + intent;
+                EventLog.Write("[Customer] unsupported customer type " + intent
+                    + ": no checkpoint for this client, existing nodes kept.");
                 return;
             }
             _armed = true;
@@ -590,6 +597,9 @@ namespace ProbablyStolenTools
                 if (store.isClientBeingArrested) blockers.Add("arrested");
                 if (store.isHandlingShootout) blockers.Add("shootout");
                 if (store.isGeneScannerScanning) blockers.Add("geneScan");
+                // 非剧情顾客不再清空节点，因此必须在这里挡住“当前顾客不是该节点那位”的回溯。
+                if (!target.IsClosed && target.Client != IntPtr.Zero && store.currentClientInstance != null
+                    && target.Client != Ptr(store.currentClientInstance)) blockers.Add("differentClient");
             }
             if (_outside) blockers.Add("outside");
             if (ui == null) blockers.Add("noUI");
