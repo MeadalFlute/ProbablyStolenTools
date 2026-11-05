@@ -412,6 +412,33 @@ namespace ProbablyStolenTools
             return access;
         }
 
+        /// <summary>把门控键翻译成玩家/维护者都看得懂的具体原因。</summary>
+        private static string BlockerText(string key)
+        {
+            switch (key)
+            {
+                case "noStore": return "商店数据未就绪";
+                case "storeChanged": return "商店实例已变化";
+                case "sceneChanged": return "已切换场景";
+                case "dayChanged": return "已经跨天";
+                case "arrested": return "顾客正在被逮捕";
+                case "shootout": return "正在发生枪战";
+                case "geneScan": return "正在基因扫描";
+                case "outside": return "当前在店外";
+                case "noUI": return "商店界面未就绪";
+                case "shootingMode": return "处于射击模式";
+                case "closeArmed": return "正在闭店";
+                case "noClientMono": return "顾客模型未就绪";
+                case "clientMoving": return "顾客正在移动";
+                case "dragging": return "正在拖拽物品";
+                case "phoneBusy": return "正在通话";
+                case "differentClient": return "当前顾客不是该节点记录的顾客";
+                default:
+                    if (key.StartsWith("state=", StringComparison.Ordinal))
+                        return "当前不是营业/闭店状态（state=" + key.Substring(6) + "）";
+                    return key;
+            }
+        }
         private static int MaxSnapshotObjects => Clamp(Plugin.CfgMaxObjects?.Value ?? 200000, 1000, 1000000);
         private static int MaxSnapshotSlots => Clamp(Plugin.CfgMaxSlots?.Value ?? 3000000, 10000, 8000000);
         private static long MaxSnapshotBytes => (long)Clamp(Plugin.CfgMaxBytesMb?.Value ?? 256, 16, 2048) * 1024 * 1024;
@@ -576,7 +603,8 @@ namespace ProbablyStolenTools
             if (!Enabled || target?.Graph == null || (!History.Items.Contains(target) && target != ClosedNode))
             {
                 EventLog.Write("[Customer] F6 unavailable: " + Status + ". No save-file fallback.");
-                PanelNotice.Show("暂无可用节点", true);
+                string why = Failures.Count > 0 ? "（最近一次建立失败：" + Failures[0].Reason + "）" : "";
+                PanelNotice.Show("暂无可用节点" + why, true);
                 return;
             }
             var store = Plugin.Store();
@@ -611,19 +639,32 @@ namespace ProbablyStolenTools
             if (GameFields.PhoneBusy(phone)) blockers.Add("phoneBusy");
             if (blockers.Count != 0)
             {
-                EventLog.Write("[Customer] F6 refused: " + string.Join(", ", blockers));
-                PanelNotice.Show("请先结束当前操作", true);
+                string detail = string.Join("、", blockers.Select(BlockerText));
+                EventLog.Write("[Customer] F6 refused: " + string.Join(", ", blockers) + " (" + detail + ")");
+                PanelNotice.Show("无法回溯：" + detail, true);
                 return;
             }
             bool changingPhase = ((int)store.storeState == 0) != target.IsClosed;
             var phaseDialog = DialogUIManager.Instance;
-            if (changingPhase && (PendingCallbacks.Count != 0
-                || phaseDialog == null || phaseDialog.currentDialog != null
-                || phaseDialog.isConversationActiveFlag != 0 || phaseDialog.isWaitingForManualAdvance
-                || !ShopPhaseVisual.IsSettled()))
+            if (changingPhase)
             {
-                PanelNotice.Show("请等待当前对话和关门动画结束", true);
-                return;
+                var phaseBlockers = new List<string>();
+                if (PendingCallbacks.Count != 0) phaseBlockers.Add("还有 " + PendingCallbacks.Count + " 个延时回调未结束");
+                if (phaseDialog == null) phaseBlockers.Add("对话界面未就绪");
+                else
+                {
+                    if (phaseDialog.currentDialog != null) phaseBlockers.Add("对话进行中");
+                    if (phaseDialog.isConversationActiveFlag != 0) phaseBlockers.Add("对话未结束");
+                    if (phaseDialog.isWaitingForManualAdvance) phaseBlockers.Add("等待手动继续对话");
+                }
+                if (!ShopPhaseVisual.IsSettled()) phaseBlockers.Add("开关门动画未结束");
+                if (phaseBlockers.Count != 0)
+                {
+                    string phaseDetail = string.Join("、", phaseBlockers);
+                    EventLog.Write("[Customer] F6 refused (phase change): " + phaseDetail);
+                    PanelNotice.Show("无法切换营业状态：" + phaseDetail, true);
+                    return;
+                }
             }
 
             StateGraph current = null;
