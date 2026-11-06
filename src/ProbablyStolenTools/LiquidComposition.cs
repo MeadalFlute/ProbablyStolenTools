@@ -77,21 +77,28 @@ namespace ProbablyStolenTools
 
                 // 酒精占全液比例（用于 75% 医用酒精判定）
                 result.AlcoholPercent = (int)Math.Round(alcohol * 100.0 / total);
-                if (water >= bestAmount && water > 0)
+                // 水占比超过 70% 才算“水为主”；否则按化学/其它成分处理。
+                if (water * 100.0 / total > 70.0)
                 {
                     result.WaterTop = true;
                     return result;
                 }
-                if (alcohol >= bestAmount && alcohol > 0)
+                // 酒精同理：超过 70% 才算酒精为主。
+                if (alcohol * 100.0 / total > 70.0)
                 {
                     result.AlcoholTop = true;
                     return result;
                 }
-                if (best < 0) return result;
+                if (best < 0)
+                {
+                    // 只剩水/酒精且都没超过 70%：退回占比最高的一侧。
+                    if (water >= alcohol) { result.WaterTop = true; return result; }
+                    result.AlcoholTop = true;
+                    return result;
+                }
 
-                long denominator = total - water - alcohol;
-                if (denominator <= 0) return result;
-                int percent = (int)Math.Round(bestAmount * 100.0 / denominator);
+                // 占比不再排除水和酒精：直接用该成分占全液的比例。
+                int percent = (int)Math.Round(bestAmount * 100.0 / total);
                 if (percent < 1) percent = 1;
                 if (percent > 100) percent = 100;
                 var liquid = liquids[best];

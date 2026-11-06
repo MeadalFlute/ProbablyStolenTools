@@ -75,8 +75,8 @@ namespace ProbablyStolenTools
                 if (!IsUnfermentedBottle(item)) return null;
                 int waterMl = WaterHelper.GetCurrentCapacityML(item);
                 if (waterMl >= MinWaterMl) return null;
-                return InspectionLocale.Text($"水量不足：{waterMl}/{MinWaterMl} ml",
-                    $"Not enough water: {waterMl}/{MinWaterMl} ml");
+                // 容器自己会显示水量，这里只提示“不足”。
+                return InspectionLocale.Text("水量不足", "Not enough water");
             }
             catch { return null; }
         }
