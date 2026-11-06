@@ -1,27 +1,48 @@
-﻿using System;
+using System;
 using HarmonyLib;
 
 namespace ProbablyStolenTools
 {
     /// <summary>
-    /// 只在“物品悬浮说明”构建期间，把液体容器的显示名换成主要成分名。
+    /// 只在“物品悬浮说明 / 拖拽使用提示”构建期间，把液体容器的显示名换成主要成分名。
     /// 背包、交易列表、任务文本等其它界面保持原名。
+    /// 用嵌套深度而不是布尔值，避免两个入口同时处于作用域时相互覆盖。
     /// </summary>
     internal static class TooltipNameScope
     {
-        internal static bool Active;
+        private static int _depth;
 
-        internal static void Reset() => Active = false;
+        internal static bool Active => _depth > 0;
+
+        internal static void Push() { if (_depth < 8) _depth++; }
+
+        internal static void Pop() { if (_depth > 0) _depth--; }
+
+        internal static void Reset() => _depth = 0;
     }
 
     [HarmonyPatch(typeof(GameItemElement), "GetTooltipBasic")]
     internal static class TooltipNameScopePatch
     {
         [HarmonyPrefix]
-        private static void Prefix() => TooltipNameScope.Active = true;
+        private static void Prefix() => TooltipNameScope.Push();
 
         [HarmonyPostfix]
-        private static void Postfix() => TooltipNameScope.Active = false;
+        private static void Postfix() => TooltipNameScope.Pop();
+    }
+
+    /// <summary>
+    /// 拖拽时的“对 X 使用 Y / 对 X 放入 Y”提示由 RichTextGenerator 直接取 GetDisplayName，
+    /// 不在 GetTooltipBasic 的作用域里，所以单独包一层。
+    /// </summary>
+    [HarmonyPatch(typeof(RichTextGenerator), nameof(RichTextGenerator.UseItemOnOtherItem))]
+    internal static class TooltipNameScopeUsePatch
+    {
+        [HarmonyPrefix]
+        private static void Prefix() => TooltipNameScope.Push();
+
+        [HarmonyPostfix]
+        private static void Postfix() => TooltipNameScope.Pop();
     }
 
     [HarmonyPatch(typeof(GameItem), nameof(GameItem.GetDisplayName))]

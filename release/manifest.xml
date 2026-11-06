@@ -3,7 +3,7 @@
   <ID>dsh.probablystolen.tools</ID>
   <Name>Probably Stolen Tools</Name>
   <Author>米德</Author>
-  <ModVersion>0.8.2</ModVersion>
+  <ModVersion>0.8.3</ModVersion>
   <Description>Customer checkpoints, rewind history, inspection helpers and dialogue settings.</Description>
   <GameVersions>
     <GameVersion>0.46D</GameVersion>
