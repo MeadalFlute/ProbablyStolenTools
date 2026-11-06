@@ -566,12 +566,33 @@ namespace ProbablyStolenTools
 
         internal static void Write(string msg)
         {
+            string line = WithBrand(msg);
             try
             {
-                System.IO.File.AppendAllText(Path, $"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
+                System.IO.File.AppendAllText(Path, $"[{DateTime.Now:HH:mm:ss}] {line}{Environment.NewLine}");
             }
             catch { }
-            Plugin.LogSource.LogInfo(msg);
+            Plugin.LogSource.LogInfo(line);
+        }
+
+        /// <summary>
+        /// 统一日志头：原来的 [Customer]/[Rewind]/[Shutter] 等子系统标签保留为后缀，
+        /// 前面加品牌前缀，得到 [QuickSL/Customer] 这种形式；没有标签的行加 [QuickSL]。
+        /// </summary>
+        private static string WithBrand(string msg)
+        {
+            if (string.IsNullOrEmpty(msg)) return "[QuickSL]";
+            if (msg[0] == '[')
+            {
+                int end = msg.IndexOf(']');
+                if (end > 1 && end + 1 < msg.Length && msg[end + 1] == ' ')
+                {
+                    string tag = msg.Substring(1, end - 1);
+                    if (tag.StartsWith("QuickSL", StringComparison.Ordinal)) return msg;
+                    return "[QuickSL/" + tag + "]" + msg.Substring(end + 1);
+                }
+            }
+            return "[QuickSL] " + msg;
         }
     }
 
