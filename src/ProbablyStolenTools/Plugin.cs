@@ -41,6 +41,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<int> CfgMaxPoints;
         internal static ConfigEntry<int> CfgMaxObjects, CfgMaxSlots, CfgMaxBytesMb;
         internal static ConfigEntry<KeyCode> CfgKeyPrev;
+        internal static ConfigEntry<KeyCode> CfgKeyManual;
         internal static ConfigEntry<KeyCode> CfgKeyDay;
         internal static ConfigEntry<KeyCode> CfgKeyPrevDay;
         internal static ConfigEntry<bool> CfgConfirmWholeDay;
@@ -198,6 +199,8 @@ namespace ProbablyStolenTools
                 "Snapshot field-slot limit. Raise it if capture fails with 'Snapshot slot limit exceeded'.");
             CfgMaxBytesMb = Config.Bind("Snapshot", "MaxBytesMB", 256,
                 "Snapshot byte budget in MiB.");
+            CfgKeyManual = Config.Bind("Rewind", "KeyManualCheckpoint", KeyCode.F9,
+                "Create a checkpoint immediately, without waiting for a customer.");
             CfgKeyPrev = Config.Bind("Rewind", "KeyPrevCheckpoint", KeyCode.F6,
                 "Reset the current customer to their arrival checkpoint (in memory, no save-file fallback).");
             CfgKeyDay = Config.Bind("Rewind", "KeyDayStart", KeyCode.F7,
@@ -213,6 +216,7 @@ namespace ProbablyStolenTools
 
             Hotkeys = new List<HotkeyBinding>
             {
+                new HotkeyBinding("manual", "立即建立节点", CfgKeyManual, KeyCode.F9),
                 new HotkeyBinding("prev", "回到本顾客到店", CfgKeyPrev, KeyCode.F6),
                 new HotkeyBinding("day", "回到本日开业前", CfgKeyDay, KeyCode.F7),
                 new HotkeyBinding("prevday", "回到上一天", CfgKeyPrevDay, KeyCode.F5),

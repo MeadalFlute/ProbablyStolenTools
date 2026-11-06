@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Text.RegularExpressions;
 
 namespace ProbablyStolenTools
@@ -21,6 +21,9 @@ namespace ProbablyStolenTools
 
         internal static string Color(string text, bool passed)
             => $"<color={(passed ? MatchColor : MismatchColor)}>{text}</color>";
+
+        internal static string Composition(string name, int percent)
+            => $"<color={ActualColor}>{Plain(name)} {percent}%</color>";
 
         internal static string Water(string declared, string actual, bool matches)
         {

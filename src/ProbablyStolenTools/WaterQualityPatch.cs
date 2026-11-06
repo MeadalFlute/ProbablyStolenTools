@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using HarmonyLib;
 
 namespace ProbablyStolenTools
@@ -42,8 +42,12 @@ namespace ProbablyStolenTools
 #endif
                 if (slots == null) return;
                 var quality = Read(item);
-                if (quality == null) return;
-                string text = " -" + InspectionText.Water(quality.Declared, quality.Actual, quality.Matches);
+                var top = LiquidComposition.TopComponent(item);
+                if (quality == null && top == null) return;
+                // 水/酒精不是最高成分时，水质一栏改为显示占比最高的那种物质。
+                string text = top != null
+                    ? " -" + InspectionText.Composition(top.Name, top.Percent)
+                    : " -" + InspectionText.Water(quality.Declared, quality.Actual, quality.Matches);
                 foreach (var slot in slots)
                 {
                     if (slot == null || !slot.gameObject.activeInHierarchy || slot.TMP == null
@@ -62,8 +66,15 @@ namespace ProbablyStolenTools
             {
                 if (builder == null) return;
                 var quality = Read(item);
-                if (quality == null) return;
+                var top = LiquidComposition.TopComponent(item);
+                if (quality == null && top == null) return;
                 builder.Add("水质：");
+                if (top != null)
+                {
+                    builder.Add(top.Name + " " + top.Percent + "%", RenderHandler.ColorPalette.LightBlue);
+                    builder.NextLine();
+                    return;
+                }
                 builder.Add(InspectionText.Plain(quality.Declared), quality.Matches
                     ? RenderHandler.ColorPalette.Green : RenderHandler.ColorPalette.Red);
                 if (!quality.Matches)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -330,6 +330,27 @@ namespace ProbablyStolenTools
 
         private static float _captureSince;
 
+        /// <summary>玩家手动建立节点（默认 F9）：复用顾客节点的捕获逻辑，不依赖是否有顾客在场。</summary>
+        internal static void CaptureManual()
+        {
+            if (!Enabled) { PanelNotice.Show("无法建立节点：回溯功能已关闭", true); return; }
+            if (Restoring || Rewind.Restoring || Rewind.Busy)
+            { PanelNotice.Show("无法建立节点：正在恢复存档或节点", true); return; }
+            if (_faulted) { PanelNotice.Show("无法建立节点：上次恢复失败，请重新载入游戏", true); return; }
+            var store = Plugin.Store();
+            if (store == null) { PanelNotice.Show("无法建立节点：商店数据未就绪", true); return; }
+            if (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem)
+            { PanelNotice.Show("无法建立节点：正在拖拽物品", true); return; }
+            if (store.isGeneScannerScanning)
+            { PanelNotice.Show("无法建立节点：正在基因扫描", true); return; }
+            if (Time.unscaledTime - _lastManualAt < 1.5f) return;
+            _lastManualAt = Time.unscaledTime;
+            Observe();
+            bool closed = (int)store.storeState == 0;
+            Capture(store, closed, true);
+        }
+
+        private static float _lastManualAt;
         internal static void TryCapture()
         {
             if (!_armed || !Enabled || Restoring || Rewind.Restoring || Boundary.Attempted || _faulted) return;
@@ -477,7 +498,7 @@ namespace ProbablyStolenTools
             catch (Exception e) { EventLog.Write("[Customer] settle watch failed: " + e.Message); }
         }
 
-        private static void Capture(PlayerStore store, bool closed)
+        private static void Capture(PlayerStore store, bool closed, bool manual = false)
         {
             Snapshot candidate = null;
             try
@@ -487,8 +508,9 @@ namespace ProbablyStolenTools
                 long tAccess = timing.ElapsedMilliseconds;
                 candidate = new Snapshot
                 {
-                    Id = ++_nextId, Label = closed ? "closed" : store.currentClientInstance.GetClientBlueprint().identifier,
-                    DisplayName = closed ? null : store.currentClientInstance.GetClientBlueprint().displayName,
+                    Id = ++_nextId,
+                    Label = manual ? "手动" : closed ? "closed" : store.currentClientInstance.GetClientBlueprint().identifier,
+                    DisplayName = manual ? null : closed ? null : store.currentClientInstance.GetClientBlueprint().displayName,
                     IsClosed = closed,
                     Day = Boundary.Day, Scene = Boundary.Scene, Store = Boundary.Store, Client = Boundary.Client,
                     Cash = store.GetCash(), At = DateTime.Now, Random = RNG.random
@@ -561,8 +583,10 @@ namespace ProbablyStolenTools
                 _active = candidate;
                 candidate = null;
                 RebuildRetainedItems();
-                Boundary.MarkReady();
+                // 手动节点不能改写“当前顾客已捕获”的边界，否则会挡掉该顾客稍后的自动节点。
+                if (!manual) Boundary.MarkReady();
                 Status = "Checkpoint: " + Name(_active);
+                if (manual) PanelNotice.Show("已建立手动节点 #" + _active.Id);
 #if MONO
                 string readers = " " + SnapshotFieldReader.Summary;
 #else

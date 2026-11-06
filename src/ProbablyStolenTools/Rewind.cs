@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using HarmonyLib;
@@ -657,6 +657,9 @@ namespace ProbablyStolenTools
             {
                 if (Plugin.Down(Plugin.CfgKeyPrev))
                     CustomerCheckpoint.Restore();
+
+                if (Plugin.CfgKeyManual != null && Plugin.Down(Plugin.CfgKeyManual))
+                    CustomerCheckpoint.CaptureManual();
 
                 // 整日回退会覆盖存档槽位，默认先弹确认；确认框未关时，
                 // 再按“相反”的那个热键直接确认（同键则取消），避免连按误触。
