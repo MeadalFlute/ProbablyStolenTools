@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -615,6 +615,7 @@ namespace ProbablyStolenTools
             // 这里不再看 isAboutToStartMainDialog —— 那个瞬态标志在 mod 环境里会卡住为 true，
             // 会让所有回溯无条件被拒绝。
             var blockers = new List<string>();
+            bool crossClient = false;
             if (store == null) blockers.Add("noStore");
             else
             {
@@ -626,9 +627,11 @@ namespace ProbablyStolenTools
                 if (store.isClientBeingArrested) blockers.Add("arrested");
                 if (store.isHandlingShootout) blockers.Add("shootout");
                 if (store.isGeneScannerScanning) blockers.Add("geneScan");
-                // 非剧情顾客不再清空节点，因此必须在这里挡住“当前顾客不是该节点那位”的回溯。
-                if (!target.IsClosed && target.Client != IntPtr.Zero && store.currentClientInstance != null
-                    && target.Client != Ptr(store.currentClientInstance)) blockers.Add("differentClient");
+                // 允许回到更早的顾客节点：PlayerStore.currentClientInstance 在快照里，
+                // 恢复后当前顾客会被换成节点记录的那一位，模型贴图也随 CustomerVisual 一起还原。
+                // 这里只记录“跨顾客”，不再拦截。
+                crossClient = !target.IsClosed && target.Client != IntPtr.Zero && store.currentClientInstance != null
+                    && target.Client != Ptr(store.currentClientInstance);
             }
             if (_outside) blockers.Add("outside");
             if (ui == null) blockers.Add("noUI");
@@ -641,10 +644,22 @@ namespace ProbablyStolenTools
             if (blockers.Count != 0)
             {
                 string detail = string.Join("、", blockers.Select(BlockerText));
-                EventLog.Write("[Customer] F6 refused: " + string.Join(", ", blockers) + " (" + detail + ")");
+                long currentClient = 0;
+                try { currentClient = Ptr(store?.currentClientInstance).ToInt64(); } catch { }
+                EventLog.Write("[Customer] F6 refused: " + string.Join(", ", blockers) + " (" + detail + ")"
+                    + " target=" + Name(target) + " targetClient=0x" + target.Client.ToInt64().ToString("X")
+                    + " currentClient=0x" + currentClient.ToString("X"));
                 PanelNotice.Show("无法回溯：\n" + string.Join("\n", blockers.Select(BlockerText))
                     + "\n详情请查看日志（设置中的“查看日志”）", true);
                 return;
+            }
+            if (crossClient)
+            {
+                long currentClient = 0;
+                try { currentClient = Ptr(store.currentClientInstance).ToInt64(); } catch { }
+                EventLog.Write("[Customer] F6 cross-client rewind: target=" + Name(target)
+                    + " targetClient=0x" + target.Client.ToInt64().ToString("X")
+                    + " currentClient=0x" + currentClient.ToString("X"));
             }
             bool changingPhase = ((int)store.storeState == 0) != target.IsClosed;
             var phaseDialog = DialogUIManager.Instance;
