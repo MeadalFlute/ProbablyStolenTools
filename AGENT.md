@@ -1,4 +1,4 @@
-# Probably Stolen — Mod 项目交接文档（给 GPT / 后续 agent）
+﻿# Probably Stolen — Mod 项目交接文档（给 GPT / 后续 agent）
 
 > 当前源码：正式版 main **0.7.0**（含 DS 的快捷键改绑功能）。使用游戏自带 **Mono / IMod / Harmony**；最新「第二轮快照优化」已获用户反馈：效果良好，仍有短暂停顿但在接受范围内。
 > 当前维护者：Codex。DSH 集成已过时，不调用 DSH；用户明确要求不使用 Computer Use。
@@ -6,6 +6,43 @@
 > 设计讨论稿见 `research/2026-10-22-snapshot-B-design.md`。
 > 实现与验证边界见 `research/customer-checkpoint-implementation.md`，未通过游戏验收前不得称为可用功能。
 
+## 最近维护要点（0.7.0 之后，2026-11-07，请先读这一节）
+
+平台与范围：**只维护正式版 Mono / IMod / Harmony**。MelonLoader 路径已弃用，不再修工具提示等内容；`#if !MONO` 分支只保证能编译。
+
+### 节点时机与门控
+- 顾客节点必须建立在**开场对话播完之后**（`StoreClient.isMainDialogueStarted`，8 秒兜底）。卖货顾客的商品是在开场对话里摆上柜台的，抢在对话前落盘会导致回溯后柜台为空。
+- **不要用 `StoreUIManager.isAboutToStartMainDialog` 当门控**：它只是"0.25 秒后开主对话"的瞬态标志，游戏自己的延时回调没跑完时会一直为 true，节点永远建不出来、回溯也永远被拒。
+- `Snapshot.StoreState` 记录捕获时的 `store.storeState`。门控规则：营业(1)/闭店(0) 允许；**手动节点允许在同一 state 下回溯**（包括闭店后的早市 state=2）；自动顾客节点仍只支持 0/1。
+- 允许跨顾客回溯（当前顾客与新节点不同时只写 `[QuickSL/Customer] F6 cross-client rewind`，不再拦截）；`PlayerStore.currentClientInstance` 与 `CustomerVisual` 会一起还原。
+- 剧情/对话类顾客（`ClientIntent.DIALOGUE` 等非普通意图）**跳过建节点但不清空历史**；以前调用 `Invalidate()` 会连当天全部节点一起删掉。
+- 节点上限 20（`CheckpointHistory<Snapshot>`），面板行数 24；两者必须同步改。闭店的自动节点只从 `ClosedNode` 显示，**手动建立的闭店节点要正常列入列表**。
+
+### 液体单位与成分显示（`LiquidComposition`）
+- **液体 tag 始终以微升（µL）存储**：`LIQUID_CONTAINER_CAPACITY = mL * 1000`，`GetLiquidParts` 返回的也是 µL。界面在不足 1mL 时显示 µL 只是格式化，不改变存储。因此"保留不满 1ml"的阈值是 **1000**，不是 1。
+- 主成分判定：水占比 **> 70%** 才算水为主；酒精 **> 70%** 才算酒精为主；否则取"水/酒精之外占比最高"的成分。只剩水+酒精且都 ≤70% 时退回占比较高的一侧。
+- 显示格式：`成分（占比% | 纯度% | 评级）`，**占比 = 该成分 ÷ 全液总量**（不再排除水/酒精），最多两位小数。
+- 纯度：排除水、酒精、脂合剂、脂肪、物理污染物、微生物；蛋白/酸/碱仅在 ≥1000µL 时扣除；化学污染物按占剩余量 0.7% 封顶；产物取剩余成分中最高者。纯度 < 0 时显示「酿造失败」。
+- 评级：≥99 纯品级 `#7B3F9E`；90–99 药用级 `#B0337A`；80–90 近药用级 `#E8A0BE`；60–80 街头标准级 `#8A8FA3`；45–60 掺兑级 `#A0522D`；30–45 垃圾级 `#E05A2B`；<30 淀粉级 `#E8B08A`。
+- 空瓶：名字显示 `空瓶（迷你/小/标准/大）`（250/450/750/2000ml 档），**不显示水质行**。滴管、量筒/量杯、容量 <200mL 的容器**都不改名**（`LiquidComposition.NoRename`）。
+- 违禁酵母：只用原版样式单独一行（`mech_contraband_low`，LightRed、粗体），**不要真的打 `CONTRABAND_ITEM_TAG`**，也不要再拼进名字。
+
+### 工具提示
+- 追加说明行走原生 `ModHook.OnCreateTooltipLate`（`TooltipHooks`，`Plugin.Initialize` 订阅、`OnDisable` 取消），不要再新增 `GameItemElement.GetTooltipBasic` / `WaterFeatureHelper.CreateWaterFeatureTooltip` 补丁。
+- 名称替换必须在 `GetTooltipBasic` 之前生效，所以保留 `TooltipNameScopePatch`（Prefix/Postfix 作用域）+ `TooltipComponentNamePatch`（`GameItem.GetDisplayName`），只在悬浮说明构建期间改写。
+
+### 日志与日志窗口
+- `EventLog.Write` 统一加品牌头：`[QuickSL]` 或 `[QuickSL/子系统]`（子系统沿用原 `[Customer]/[Rewind]/[Shutter]` 等）。控制台日志走游戏 `ModLog`（带模组名前缀）。
+- 设置页「查看日志」用官方 `CustomUIManager.Window(...)` 构建器（`LAYER_OVERLAY`、`BeginScrollFlexible`、`AddLabel`、`AddButton`），不要再手排窗框/`RectMask2D`。日志尾部 400 行。
+
+### 文件回退（F5/F7）
+- 只加载、不写回：检查点复制成 `pstools_restore.es3`，设置 `NewGameData.saveFile` 让游戏经 `SaveFiles.ResolveLoadFile` 读取；载入完成后清空 `saveFile` 并删除暂存文件。不要再用 `File.Copy(检查点 → save_N.es3)`。
+- 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`（默认 200000 / 3000000 / 256）。
+
+### 验证基线
+- `tests\CheckpointTests`：60 项；`tests\ReleaseCompatibility`：53 个 Harmony 挂点、68 个字段、官方扫描器无 HardFlags。
+- 官方自查（需 `dev.txt`）：F8 控制台 `mod-scan dsh.probablystolen.tools`。
+- 已记录一次无法复现的进店原生闪退（2026-11-07 03:06，日志停在 `checkpoint '开业前' saved` 之后，无托管异常、无 dmp）；再出现时先收集 `Player.log` 与复现路径，不要盲目回退。
 ## 保守快照优化（2026-10-31）
 
 本轮以回退后的 `48c2114` 为基线，只降低重复反射和分配成本。完整对象/字段遍历、集合整个后备数组、主线程捕获及捕获后的完整 `Differences()` 校验均保留；不切后台线程、不分帧、不缩小业务图，不合入 `beta/generic-snapshot`。
