@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using HarmonyLib;
@@ -11,7 +11,6 @@ namespace ProbablyStolenTools
     {
         private static bool _loggedFailure;
         private static int _diagnostics;
-        internal static int _lastInspectFrame = -1;
 
         [HarmonyPrefix]
         private static bool Prefix(ItemMouseDoubleClickHandler __instance, GameItem newItem)
@@ -19,7 +18,6 @@ namespace ProbablyStolenTools
 
         private static bool TryInspect(ItemMouseDoubleClickHandler handler, GameItem item)
         {
-            _lastInspectFrame = Time.frameCount;
             bool consumed = false;
             var why = new StringBuilder();
             try
@@ -108,13 +106,10 @@ namespace ProbablyStolenTools
 
         private static bool Finish(StringBuilder why, bool consumed)
         {
-            if (_diagnostics < 40)
+            if (_diagnostics < 12)
             {
                 ++_diagnostics;
-                string line = $"[DoubleClick] consumed={consumed} {(why.Length == 0 ? "ok" : why.ToString().Trim())}";
-                Plugin.LogSource.LogInfo(line);
-                // 报错反馈通常只带 PSTools.log，所以失败原因也写一份到这里。
-                try { EventLog.Write(line); } catch { }
+                Plugin.LogSource.LogInfo($"[DoubleClick] consumed={consumed} {(why.Length == 0 ? "ok" : why.ToString().Trim())}");
             }
             return consumed;
         }
@@ -190,40 +185,5 @@ namespace ProbablyStolenTools
             }
             return null;
         }
-    }
-
-    /// <summary>
-    /// 诊断用：游戏自己判定“双击”了，但我们的 DoubleClickAction 前缀没被调用，
-    /// 说明有别的 mod 抢先把该动作消费掉了。只记录，不改变任何行为。
-    /// </summary>
-    [HarmonyPatch(typeof(ItemMouseDoubleClickHandler), "OnEventUpdate")]
-    internal static class DoubleClickProbePatch
-    {
-        [HarmonyPostfix]
-        private static void Postfix(ItemMouseDoubleClickHandler __instance)
-        {
-            try
-            {
-                if (__instance == null) return;
-                bool doubleClick = false;
-                try { doubleClick = GameFields.Get<bool>(__instance, "isDoubleClick"); } catch { }
-                if (!doubleClick) return;
-                if (DoubleClickInspectionPatch._lastInspectFrame == Time.frameCount) return;
-                if (DoubleClickProbePatch._logged >= 20) return;
-                ++DoubleClickProbePatch._logged;
-                string item = "?";
-                try
-                {
-                    var clicked = GameFields.Get<GameItem>(__instance, "lastClickedItem");
-                    item = clicked?.identifier ?? "?";
-                }
-                catch { }
-                EventLog.Write("[DoubleClick] handler detected a double-click but our patch did not run (item=" + item
-                    + "). Another mod likely consumes DoubleClickAction.");
-            }
-            catch { }
-        }
-
-        private static int _logged;
     }
 }
