@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -84,8 +84,25 @@ namespace ProbablyStolenTools
 
     internal sealed class ModLogger
     {
-        internal void LogInfo(string message) => Debug.Log("[PSTools] " + message);
-        internal void LogWarning(string message) => Debug.LogWarning("[PSTools] " + message);
-        internal void LogError(string message) => Debug.LogError("[PSTools] " + message);
+        // 指南要求用游戏的 ModLog：控制台里会带 [模组名] 前缀，玩家能分辨来源。
+        internal static ModLog Log;
+
+        internal void LogInfo(string message)
+        {
+            if (Log != null) { Log.Log(message); return; }
+            Debug.Log("[PSTools] " + message);
+        }
+
+        internal void LogWarning(string message)
+        {
+            if (Log != null) { Log.Warning(message); return; }
+            Debug.LogWarning("[PSTools] " + message);
+        }
+
+        internal void LogError(string message)
+        {
+            if (Log != null) { Log.Error(message); return; }
+            Debug.LogError("[PSTools] " + message);
+        }
     }
 }

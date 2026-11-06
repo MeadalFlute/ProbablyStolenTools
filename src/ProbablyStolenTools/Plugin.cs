@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using HarmonyLib;
 #if !MONO
@@ -25,6 +25,9 @@ namespace ProbablyStolenTools
 
         internal static ModLogger LogSource;
         internal static Plugin Instance;
+#if MONO
+        internal static ModManifest Manifest;
+#endif
         internal ModConfig Config { get; private set; }
 
         // ---- auto appraisal ----
@@ -124,6 +127,15 @@ namespace ProbablyStolenTools
         }
 
         /// <summary>设置页的“查看日志”：在游戏内打开日志窗口，同时把路径复制到剪贴板。</summary>
+        /// <summary>游戏开发工具（F8 控制台 / F9 开发菜单）是否启用。</summary>
+        internal static bool DevToolsPresent()
+        {
+            try
+            {
+                return System.IO.File.Exists(System.IO.Path.Combine(Application.dataPath, "..", "dev.txt"));
+            }
+            catch { return false; }
+        }
         internal static void OpenLog()
         {
             string path = EventLog.Path;
@@ -156,7 +168,12 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgPanelFolded;
 
 #if MONO
-        public void Init(ModManifest manifest) { }
+        public void Init(ModManifest manifest)
+        {
+#if MONO
+            Manifest = manifest;
+#endif
+        }
         public void OnEnable() => Initialize();
         public void OnDisable() => OverlayBootstrap.Release();
         private void Initialize()
@@ -166,6 +183,19 @@ namespace ProbablyStolenTools
         {
             Instance = this;
             LogSource = new ModLogger();
+#if MONO
+            // 指南要求：日志走游戏的 ModLog，控制台里会带 [模组名] 前缀。
+            if (Manifest != null)
+            {
+                try { ModLogger.Log = new ModLog(Manifest); } catch { }
+            }
+            LogSource.LogInfo("Probably Stolen Tools " + Version + " loaded on game " + Application.version);
+            if (DevToolsPresent())
+            {
+                LogSource.LogWarning("dev.txt found: the game's F8 console and F9 dev menu share our default keys. " +
+                    "Rebind the panel / manual checkpoint keys in the settings if they clash.");
+            }
+#endif
             Config = new ModConfig();
 
             CfgAutoAppraisal = Config.Bind("AutoAppraisal", "Enabled", true,
