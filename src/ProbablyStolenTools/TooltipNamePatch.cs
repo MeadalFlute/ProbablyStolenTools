@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using HarmonyLib;
 
 namespace ProbablyStolenTools
@@ -37,6 +37,19 @@ namespace ProbablyStolenTools
     /// </summary>
     [HarmonyPatch(typeof(RichTextGenerator), nameof(RichTextGenerator.UseItemOnOtherItem))]
     internal static class TooltipNameScopeUsePatch
+    {
+        [HarmonyPrefix]
+        private static void Prefix() => TooltipNameScope.Push();
+
+        [HarmonyPostfix]
+        private static void Postfix() => TooltipNameScope.Pop();
+    }
+
+    /// <summary>
+    /// 倾倒 / 放入提示（“将 X 放入 Y”）走 InsertItemInOtherItem，同样直接取 GetDisplayName。
+    /// </summary>
+    [HarmonyPatch(typeof(RichTextGenerator), nameof(RichTextGenerator.InsertItemInOtherItem))]
+    internal static class TooltipNameScopeInsertPatch
     {
         [HarmonyPrefix]
         private static void Prefix() => TooltipNameScope.Push();
