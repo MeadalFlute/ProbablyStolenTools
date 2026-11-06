@@ -30,6 +30,19 @@ namespace ProbablyStolenTools
                 WaterFeatureHelper.GetPurityArrayIndex(claimed) == WaterFeatureHelper.GetPurityArrayIndex(actual));
         }
 
+        /// <summary>水质一栏的文字：空瓶 / 酒精 / 水（保留原水质）/ 最高成分（占比 | 纯度 | 评级）。</summary>
+        private static string Describe(LiquidComposition.Analysis analysis, Quality quality)
+        {
+            if (analysis == null) return null;
+            if (analysis.Empty) return " -空瓶（" + analysis.SizeName + "）";
+            if (analysis.WaterTop)
+                return quality == null ? null
+                    : " -" + InspectionText.Water(quality.Declared, quality.Actual, quality.Matches);
+            if (analysis.AlcoholTop) return " -" + LiquidComposition.AlcoholLabel(analysis);
+            if (analysis.TopName == null) return null;
+            return " -" + InspectionText.Component(analysis.TopName, analysis.TopPercent,
+                analysis.Purity, analysis.Grade, analysis.GradeColor);
+        }
         internal static void UpdateFeatures(NegociationUIManager ui, GameItem item)
         {
             try
@@ -41,13 +54,11 @@ namespace ProbablyStolenTools
                 var slots = ui?.itemFeatureUIs;
 #endif
                 if (slots == null) return;
+                var analysis = LiquidComposition.Analyze(item);
+                if (analysis == null) return;
                 var quality = Read(item);
-                var top = LiquidComposition.TopComponent(item);
-                if (quality == null && top == null) return;
-                // 水/酒精不是最高成分时，水质一栏改为显示占比最高的那种物质。
-                string text = top != null
-                    ? " -" + InspectionText.Composition(top.Name, top.Percent)
-                    : " -" + InspectionText.Water(quality.Declared, quality.Actual, quality.Matches);
+                string text = Describe(analysis, quality);
+                if (text == null) return;
                 foreach (var slot in slots)
                 {
                     if (slot == null || !slot.gameObject.activeInHierarchy || slot.TMP == null
@@ -65,16 +76,34 @@ namespace ProbablyStolenTools
             try
             {
                 if (builder == null) return;
+                var analysis = LiquidComposition.Analyze(item);
+                if (analysis == null) return;
                 var quality = Read(item);
-                var top = LiquidComposition.TopComponent(item);
-                if (quality == null && top == null) return;
                 builder.Add("水质：");
-                if (top != null)
+                if (analysis.Empty)
                 {
-                    builder.Add(top.Name + " " + top.Percent + "%", RenderHandler.ColorPalette.LightBlue);
+                    builder.Add("空瓶（" + analysis.SizeName + "）", RenderHandler.ColorPalette.LightBlue);
                     builder.NextLine();
                     return;
                 }
+                if (analysis.AlcoholTop)
+                {
+                    builder.Add(LiquidComposition.AlcoholLabel(analysis), RenderHandler.ColorPalette.LightBlue);
+                    builder.NextLine();
+                    return;
+                }
+                if (!analysis.WaterTop)
+                {
+                    if (analysis.TopName == null) return;
+                    builder.Add(InspectionText.Plain(analysis.TopName), RenderHandler.ColorPalette.Orange);
+                    builder.Add("（" + analysis.TopPercent + "% | 纯度 " + analysis.Purity + "% | ", RenderHandler.ColorPalette.White);
+                    builder.Add("<color=" + analysis.GradeColor + ">" + InspectionText.Plain(analysis.Grade) + "</color>",
+                        RenderHandler.ColorPalette.None);
+                    builder.Add("）", RenderHandler.ColorPalette.White);
+                    builder.NextLine();
+                    return;
+                }
+                if (quality == null) return;
                 builder.Add(InspectionText.Plain(quality.Declared), quality.Matches
                     ? RenderHandler.ColorPalette.Green : RenderHandler.ColorPalette.Red);
                 if (!quality.Matches)

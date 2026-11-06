@@ -22,8 +22,14 @@ namespace ProbablyStolenTools
         internal static string Color(string text, bool passed)
             => $"<color={(passed ? MatchColor : MismatchColor)}>{text}</color>";
 
+        internal const string ComponentColor = "#E08A2E";
+
         internal static string Composition(string name, int percent)
             => $"<color={ActualColor}>{Plain(name)} {percent}%</color>";
+
+        /// <summary>水质行里的成分摘要：占比 | 纯度 | 评级。</summary>
+        internal static string Component(string name, int percent, int purity, string grade, string gradeColor)
+            => $"<color={ComponentColor}>{Plain(name)}</color>（{percent}% | 纯度 {purity}% | <color={gradeColor}>{Plain(grade)}</color>）";
 
         internal static string Water(string declared, string actual, bool matches)
         {
