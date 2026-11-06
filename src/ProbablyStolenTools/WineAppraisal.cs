@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -43,6 +43,24 @@ namespace ProbablyStolenTools
         // ---------------- 物品描述用的一行结论 ----------------
 
         /// <summary>写进物品描述的精简结论；与酿酒无关时返回 null。</summary>
+        /// <summary>未发酵酒瓶里放了违禁酵母（阴光莓果酿）。</summary>
+        internal static bool IsIllegalBottle(GameItem item)
+        {
+            try
+            {
+                if (!IsUnfermentedBottle(item)) return false;
+                var children = item.FindAllChildItems();
+                if (children == null) return false;
+                for (int i = 0; i < children.Count; i++)
+                {
+                    var child = children[i];
+                    if (child != null && child.IsTag("WINE_YEAST_TAG") && child.IsTag("WINE_YEAST_ILLEGAL_TAG"))
+                        return true;
+                }
+            }
+            catch { }
+            return false;
+        }
         internal static string Describe(GameItem item)
         {
             try
@@ -60,15 +78,13 @@ namespace ProbablyStolenTools
 
                 int waterMl = 0;
                 try { waterMl = WaterHelper.GetCurrentCapacityML(item); } catch { }
-                if (waterMl < MinWaterMl)
-                    return InspectionLocale.Text($"无法酿酒：水量 {waterMl}/{MinWaterMl} ml",
-                        $"Cannot brew: {waterMl}/{MinWaterMl} ml water");
+                bool lowWater = waterMl < MinWaterMl;
 
                 int waterScore = 0;
                 try { waterScore = WineHelper.GetWaterQualityScore(item); } catch { }
 
                 int berryScore = 0, berryCount = 0;
-                bool illegal = false, yeast = false;
+                bool yeast = false;
                 try
                 {
                     var children = item.FindAllChildItems();
@@ -85,22 +101,25 @@ namespace ProbablyStolenTools
                             else if (child.IsTag("WINE_YEAST_TAG"))
                             {
                                 yeast = true;
-                                if (child.IsTag("WINE_YEAST_ILLEGAL_TAG")) illegal = true;
                             }
                         }
                 }
                 catch { }
 
-                if (illegal)
-                    return InspectionLocale.Text("阴光莓果酿 · 违禁品", "GloomBerry Wine - contraband");
-
                 int bonus = berryCount >= BerryBonusThreshold ? 1 : 0;
                 int total = waterScore + berryScore + bonus + (yeast ? 1 : 0);
-                string grade = InspectionLocale.Text(GradeName(total, out string gradeEn), gradeEn);
+                // 预期品质为负：直接判定酿造失败（水量不足也会走到这里，不再提前返回）。
+                string grade, gradeEn;
+                if (total < 0) { grade = "酿造失败"; gradeEn = "Brewing failed"; }
+                else grade = InspectionLocale.Text(GradeName(total, out gradeEn), gradeEn);
+                string waterNote = lowWater
+                    ? InspectionLocale.Text($"水{Signed(waterScore)}（水量不足 {waterMl}/{MinWaterMl}ml）",
+                        $"water {Signed(waterScore)} (low water {waterMl}/{MinWaterMl}ml)")
+                    : InspectionLocale.Text($"水{Signed(waterScore)}", $"water {Signed(waterScore)}");
                 return InspectionLocale.Text(
-                    $"预计：{grade}（{total} 分｜水{Signed(waterScore)} 莓{Signed(berryScore)}"
+                    $"预计：{grade}（{total} 分｜{waterNote} 莓{Signed(berryScore)}"
                     + (bonus > 0 ? "+1" : "") + (yeast ? " 酵母+1" : "") + "）",
-                    $"Expected: {grade} ({total} pts | water {Signed(waterScore)}, berries {Signed(berryScore)}"
+                    $"Expected: {grade} ({total} pts | {(lowWater ? $"water {Signed(waterScore)} (low {waterMl}/{MinWaterMl}ml)" : $"water {Signed(waterScore)}")}, berries {Signed(berryScore)}"
                     + (bonus > 0 ? ", two-berry +1" : "") + (yeast ? ", yeast +1" : "") + ")");
             }
             catch (Exception e)
