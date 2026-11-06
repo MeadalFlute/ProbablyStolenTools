@@ -22,6 +22,7 @@ namespace ProbablyStolenTools
         private const string Fat = "fat";
         private const string PlantMatter = "plant_matter";
         private const string Debris = "debris";
+        private const string ReducingAgent = "reducing_agent";
 
         internal sealed class Analysis
         {
@@ -149,7 +150,7 @@ namespace ProbablyStolenTools
                 if (amount <= 0) continue;
                 string id = liquids[i]?.identifier;
                 if (id == Water || id == Alcohol || id == Lipobond || id == Physical || id == Microbe || id == Fat
-                    || id == PlantMatter || id == Debris) continue;
+                    || id == PlantMatter || id == Debris || id == ReducingAgent) continue;
                 // parts 的单位是微升：规则是“保留不满 1ml 的部分”，即 1000µL 以下不扣除。
                 if ((id == Protein || id == Acid || id == Base) && amount >= 1000) continue;
                 if (id == Chemical) { chemical += amount; continue; }
