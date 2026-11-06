@@ -36,6 +36,21 @@ namespace ProbablyStolenTools
             internal string SizeName;     // 微/小/标准/大
         }
 
+        /// <summary>
+        /// 滴管、量筒/量杯这类小容器（普遍低于 200mL）不参与“用成分名替换物品名”。
+        /// </summary>
+        internal static bool NoRename(GameItem item)
+        {
+            try
+            {
+                if (item == null) return true;
+                if (item.IsTag("LIQUID_CONTAINER_DROPPER_TAG")) return true;
+                if (item.IsTag("GRADUATED_CONTAINER_TAG")) return true;
+                int capacity = WaterHelper.GetTotalCapacityML(item);
+                return capacity > 0 && capacity < 200;
+            }
+            catch { return true; }
+        }
         internal static bool IsSmallEnough(GameItem item)
         {
             try

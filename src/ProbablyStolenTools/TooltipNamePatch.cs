@@ -33,6 +33,7 @@ namespace ProbablyStolenTools
             if (!TooltipNameScope.Active || __instance == null) return;
             try
             {
+                if (LiquidComposition.NoRename(__instance)) return;
                 var analysis = LiquidComposition.Analyze(__instance);
                 if (analysis == null) return;
                 // 空瓶：把尺寸写进名字（水质行不再重复）。
