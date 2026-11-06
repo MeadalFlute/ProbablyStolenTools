@@ -80,6 +80,7 @@ namespace ProbablyStolenTools
             internal string DisplayName;
             internal bool IsClosed;
             internal bool IsManual;
+            internal int StoreState;
             internal string ExpiredReason;
             internal int Day, Cash, Scene;
             internal IntPtr Store, Client;
@@ -515,6 +516,7 @@ namespace ProbablyStolenTools
                     DisplayName = manual ? null : closed ? null : store.currentClientInstance.GetClientBlueprint().displayName,
                     IsClosed = closed,
                     IsManual = manual,
+                    StoreState = (int)store.storeState,
                     Day = Boundary.Day, Scene = Boundary.Scene, Store = Boundary.Store, Client = Boundary.Client,
                     Cash = store.GetCash(), At = DateTime.Now, Random = RNG.random
                 };
@@ -650,7 +652,9 @@ namespace ProbablyStolenTools
                 if (target.Scene != Boundary.Scene) blockers.Add("sceneChanged");
                 if (target.Day != Boundary.Day) blockers.Add("dayChanged");
                 int state = (int)store.storeState;
-                if (state != 0 && state != 1) blockers.Add("state=" + state);
+                // 手动节点允许在同一营业状态下回溯（包括早市 state=2）；自动节点仍只支持营业/闭店。
+                bool sameState = target.StoreState == state;
+                if (state != 0 && state != 1 && !(target.IsManual && sameState)) blockers.Add("state=" + state);
                 if (store.isClientBeingArrested) blockers.Add("arrested");
                 if (store.isHandlingShootout) blockers.Add("shootout");
                 if (store.isGeneScannerScanning) blockers.Add("geneScan");

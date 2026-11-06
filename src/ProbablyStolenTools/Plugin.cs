@@ -175,14 +175,17 @@ namespace ProbablyStolenTools
 #endif
         }
         public void OnEnable() => Initialize();
-        public void OnDisable() => OverlayBootstrap.Release();
+        public void OnDisable()
+        {
+            TooltipHooks.Disable();
+            OverlayBootstrap.Release();
+        }
         private void Initialize()
 #else
         public override void OnInitializeMelon()
 #endif
         {
             Instance = this;
-            float initStarted = Time.realtimeSinceStartup;
             LogSource = new ModLogger();
 #if MONO
             // 指南要求：日志走游戏的 ModLog，控制台里会带 [模组名] 前缀。
@@ -310,7 +313,7 @@ namespace ProbablyStolenTools
                 LogSource.LogError($"Overlay bootstrap failed: {e}");
             }
 
-            LogSource.LogInfo($"[Tools] init took {((Time.realtimeSinceStartup - initStarted) * 1000f):0} ms (game up {initStarted:0.00}s)");
+            TooltipHooks.Enable();
             LogSource.LogInfo("Loaded.");
         }
 

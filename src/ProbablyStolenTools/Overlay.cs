@@ -37,7 +37,7 @@ namespace ProbablyStolenTools
                 UnityEngine.Object.DontDestroyOnLoad(_go);
                 _go.AddComponent<RewindOverlay>();
                 _go.AddComponent<CheckpointPanel>();
-                Plugin.LogSource.LogInfo($"[Overlay] created in scene at +{Time.realtimeSinceStartup:0.00}s.");
+                Plugin.LogSource.LogInfo("[Overlay] created in scene.");
 
                 try
                 {

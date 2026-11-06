@@ -133,11 +133,5 @@ namespace ProbablyStolenTools
             => WaterQualityPatch.UpdateFeatures(__instance, __0);
     }
 
-    [HarmonyPatch(typeof(WaterFeatureHelper), nameof(WaterFeatureHelper.CreateWaterFeatureTooltip))]
-    internal static class WaterQualityTooltipPatch
-    {
-        [HarmonyPostfix]
-        private static void Postfix(RichTextBuilder __0, GameItem __1)
-            => WaterQualityPatch.AddTooltip(__0, __1);
-    }
+
 }

@@ -43,6 +43,30 @@ namespace ProbablyStolenTools
         // ---------------- 物品描述用的一行结论 ----------------
 
         /// <summary>写进物品描述的精简结论；与酿酒无关时返回 null。</summary>
+        /// <summary>通过原生 ModHook.OnCreateTooltip 追加到悬浮说明：水位警告 / 预期品质 / 违禁品。</summary>
+        internal static void AddTooltip(RichTextBuilder builder, GameItem item)
+        {
+            if (builder == null) return;
+            try
+            {
+                string warning = WaterWarning(item);
+                if (!string.IsNullOrEmpty(warning))
+                    builder.AddLine(warning, true, RenderHandler.ColorPalette.LightRed, false, false, false, false,
+                        RenderHandler.ColorPalette.None, RenderHandler.ColorPalette.None, RenderHandler.ColorPalette.None);
+                string line = Describe(item);
+                if (!string.IsNullOrEmpty(line))
+                    builder.AddLine(line, true, RenderHandler.ColorPalette.None, false, false, false, false,
+                        RenderHandler.ColorPalette.None, RenderHandler.ColorPalette.None, RenderHandler.ColorPalette.None);
+                if (IsIllegalBottle(item))
+                {
+                    string tag = LocHelper.GetLocalizedMechanic("mech_contraband_low");
+                    if (!string.IsNullOrEmpty(tag))
+                        builder.AddLine(tag, true, RenderHandler.ColorPalette.LightRed, true, false, false, false,
+                            RenderHandler.ColorPalette.Black, RenderHandler.ColorPalette.Black, RenderHandler.ColorPalette.Black);
+                }
+            }
+            catch (Exception e) { Plugin.LogSource?.LogWarning("[Wine] tooltip append failed: " + e.Message); }
+        }
         /// <summary>水量不足单独成行；水量足够时返回 null。</summary>
         internal static string WaterWarning(GameItem item)
         {
