@@ -94,14 +94,15 @@ namespace ProbablyStolenTools
 
                 // 酒精占全液比例（用于 75% 医用酒精判定）
                 result.AlcoholPercent = (int)Math.Round(alcohol * 100.0 / total);
-                // 水占比超过 70% 才算“水为主”；否则按化学/其它成分处理。
-                if (water * 100.0 / total > 70.0)
+                // 水占比超过 65% 才算“水为主”；否则按化学/其它成分处理。
+                // 65% 是为了让游戏自带的 70% 酒精小瓶仍判定为酒精为主。
+                if (water * 100.0 / total > 65.0)
                 {
                     result.WaterTop = true;
                     return result;
                 }
-                // 酒精同理：超过 70% 才算酒精为主。
-                if (alcohol * 100.0 / total > 70.0)
+                // 酒精同理：超过 65% 才算酒精为主。
+                if (alcohol * 100.0 / total > 65.0)
                 {
                     result.AlcoholTop = true;
                     return result;
@@ -186,6 +187,6 @@ namespace ProbablyStolenTools
 
         /// <summary>酒精最高时的显示名：75% 视为医用酒精。</summary>
         internal static string AlcoholLabel(Analysis a)
-            => a != null && a.AlcoholTop && a.AlcoholPercent == 75 ? "医用酒精" : "酒精";
+            => a != null && a.AlcoholTop && a.AlcoholPercent >= 74 && a.AlcoholPercent <= 76 ? "医用酒精" : "酒精";
     }
 }
