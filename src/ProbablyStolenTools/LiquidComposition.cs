@@ -19,6 +19,7 @@ namespace ProbablyStolenTools
         private const string Protein = "protein";
         private const string Acid = "acid";
         private const string Base = "base";
+        private const string Fat = "fat";
 
         internal sealed class Analysis
         {
@@ -122,7 +123,7 @@ namespace ProbablyStolenTools
                 int amount = parts[i];
                 if (amount <= 0) continue;
                 string id = liquids[i]?.identifier;
-                if (id == Water || id == Alcohol || id == Lipobond || id == Physical || id == Microbe) continue;
+                if (id == Water || id == Alcohol || id == Lipobond || id == Physical || id == Microbe || id == Fat) continue;
                 if ((id == Protein || id == Acid || id == Base) && amount >= 1) continue;
                 if (id == Chemical) { chemical += amount; continue; }
                 remaining += amount;
@@ -150,7 +151,7 @@ namespace ProbablyStolenTools
 
         internal static string SizeFor(int capacityMl)
         {
-            if (capacityMl <= 250) return "微";
+            if (capacityMl <= 250) return "迷你";
             if (capacityMl <= 450) return "小";
             if (capacityMl <= 750) return "标准";
             return "大";
