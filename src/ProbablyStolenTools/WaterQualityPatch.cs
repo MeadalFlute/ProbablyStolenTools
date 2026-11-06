@@ -92,7 +92,7 @@ namespace ProbablyStolenTools
                 {
                     if (analysis.TopName == null) return;
                     builder.Add(InspectionText.Plain(analysis.TopName), RenderHandler.ColorPalette.Orange);
-                    builder.Add("（" + analysis.TopPercent + "% | 纯度 " + analysis.Purity + "% | ", RenderHandler.ColorPalette.White);
+                    builder.Add("（" + InspectionText.Number(analysis.TopPercent) + "% | 纯度 " + InspectionText.Number(analysis.Purity) + "% | ", RenderHandler.ColorPalette.White);
                     builder.Add("<color=" + analysis.GradeColor + ">" + InspectionText.Plain(analysis.Grade) + "</color>",
                         RenderHandler.ColorPalette.None);
                     builder.Add("）", RenderHandler.ColorPalette.White);

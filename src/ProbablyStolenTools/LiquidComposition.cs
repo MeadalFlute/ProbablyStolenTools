@@ -28,9 +28,9 @@ namespace ProbablyStolenTools
             internal bool AlcoholTop;
             internal string TopName;
             internal string TopIdentifier;
-            internal int TopPercent;      // 水与酒精之外的占比
+            internal double TopPercent;   // 该成分占全液的比例
             internal int AlcoholPercent;  // 酒精占全液比例
-            internal int Purity;          // 预期提纯后的产物纯度
+            internal double Purity;       // 预期提纯后的产物纯度
             internal string Grade;
             internal string GradeColor;
             internal string SizeName;     // 微/小/标准/大
@@ -98,15 +98,15 @@ namespace ProbablyStolenTools
                 }
 
                 // 占比不再排除水和酒精：直接用该成分占全液的比例。
-                int percent = (int)Math.Round(bestAmount * 100.0 / total);
-                if (percent < 1) percent = 1;
+                double percent = bestAmount * 100.0 / total;
+                if (percent < 0.01) percent = 0.01;
                 if (percent > 100) percent = 100;
                 var liquid = liquids[best];
                 result.TopName = string.IsNullOrEmpty(liquid.displayName) ? liquid.identifier : liquid.displayName;
                 result.TopIdentifier = liquid.identifier;
                 result.TopPercent = percent;
 
-                ComputePurity(liquids, parts, out int purity);
+                ComputePurity(liquids, parts, out double purity);
                 result.Purity = purity;
                 Grade(purity, out string grade, out string color);
                 result.Grade = grade;
@@ -121,7 +121,7 @@ namespace ProbablyStolenTools
         /// 排除水、酒精、脂合剂、物理污染物、微生物；蛋白/酸/碱仅排除 ≥1ml 的部分；
         /// 化学污染物按总量 0.7% 封顶后计入杂质。
         /// </summary>
-        private static void ComputePurity(System.Collections.Generic.List<Liquid> liquids, int[] parts, out int purity)
+        private static void ComputePurity(System.Collections.Generic.List<Liquid> liquids, int[] parts, out double purity)
         {
             purity = 0;
             double remaining = 0, product = 0, chemical = 0;
@@ -131,7 +131,8 @@ namespace ProbablyStolenTools
                 if (amount <= 0) continue;
                 string id = liquids[i]?.identifier;
                 if (id == Water || id == Alcohol || id == Lipobond || id == Physical || id == Microbe || id == Fat) continue;
-                if ((id == Protein || id == Acid || id == Base) && amount >= 1) continue;
+                // parts 的单位是微升：规则是“保留不满 1ml 的部分”，即 1000µL 以下不扣除。
+                if ((id == Protein || id == Acid || id == Base) && amount >= 1000) continue;
                 if (id == Chemical) { chemical += amount; continue; }
                 remaining += amount;
                 if (amount > product) product = amount;
@@ -141,11 +142,12 @@ namespace ProbablyStolenTools
             if (chemical > maxChemical) chemical = maxChemical;
             double total = remaining + chemical;
             if (total <= 0 || product <= 0) { purity = 0; return; }
-            purity = (int)Math.Round(product * 100.0 / total);
+            purity = product * 100.0 / total;
             if (purity > 100) purity = 100;
+            if (purity < 0) purity = 0;
         }
 
-        internal static void Grade(int purity, out string grade, out string color)
+        internal static void Grade(double purity, out string grade, out string color)
         {
             if (purity >= 99) { grade = "纯品级"; color = "#7B3F9E"; }
             else if (purity >= 90) { grade = "药用级"; color = "#B0337A"; }

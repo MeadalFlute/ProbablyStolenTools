@@ -28,8 +28,12 @@ namespace ProbablyStolenTools
             => $"<color={ActualColor}>{Plain(name)} {percent}%</color>";
 
         /// <summary>水质行里的成分摘要：占比 | 纯度 | 评级。</summary>
-        internal static string Component(string name, int percent, int purity, string grade, string gradeColor)
-            => $"<color={ComponentColor}>{Plain(name)}</color>（{percent}% | 纯度 {purity}% | <color={gradeColor}>{Plain(grade)}</color>）";
+        internal static string Component(string name, double percent, double purity, string grade, string gradeColor)
+            => $"<color={ComponentColor}>{Plain(name)}</color>（{Number(percent)}% | 纯度 {Number(purity)}% | <color={gradeColor}>{Plain(grade)}</color>）";
+
+        /// <summary>最多两位小数、去掉末尾 0：99.63 / 100 / 0.17。</summary>
+        internal static string Number(double value)
+            => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
         internal static string Water(string declared, string actual, bool matches)
         {
