@@ -10,6 +10,10 @@
 
 平台与范围：**只维护正式版 Mono / IMod / Harmony**。MelonLoader 路径已弃用，不再修工具提示等内容；`#if !MONO` 分支只保证能编译。
 
+### 版本与发布
+- 版本号规则：**大版本、中间版本手动决定，小版本每次 git push 前 +1**。当前发布版本 **0.8.0**；之后每次推送前把 `Plugin.Version`（`Plugin.cs`）与清单 `<ModVersion>`（`release/manifest.xml`）同时 +1（例如 0.8.1、0.8.2）。
+- 发布流程：改版本号 → `dotnet build -c Release` → `tests\CheckpointTests` + `tests\ReleaseCompatibility` → `scripts\Deploy-FullRelease.ps1` → 更新 `CHANGELOG.md` → 推送。
+- 推送前先告诉用户、由用户提供临时 token；网络不稳时用带超时的 `git push` 重试（TLS 版本交替）。
 ### 节点时机与门控
 - 顾客节点必须建立在**开场对话播完之后**（`StoreClient.isMainDialogueStarted`，8 秒兜底）。卖货顾客的商品是在开场对话里摆上柜台的，抢在对话前落盘会导致回溯后柜台为空。
 - **不要用 `StoreUIManager.isAboutToStartMainDialog` 当门控**：它只是"0.25 秒后开主对话"的瞬态标志，游戏自己的延时回调没跑完时会一直为 true，节点永远建不出来、回溯也永远被拒。
