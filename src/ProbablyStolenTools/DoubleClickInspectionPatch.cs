@@ -11,14 +11,7 @@ namespace ProbablyStolenTools
     {
         private static bool _loggedFailure;
         private static int _diagnostics;
-        internal static void InspectFromProbe(ItemMouseDoubleClickHandler handler, GameItem item)
-            => TryInspect(handler, item);
-
         internal static int _lastInspectFrame = -1;
-        private static GameItem _lastItem;
-        private static float _lastAt;
-        private static bool _lastConsumed;
-        private static GameItem _pendingItem;
 
         [HarmonyPrefix]
         private static bool Prefix(ItemMouseDoubleClickHandler __instance, GameItem newItem)
@@ -27,10 +20,6 @@ namespace ProbablyStolenTools
         private static bool TryInspect(ItemMouseDoubleClickHandler handler, GameItem item)
         {
             _lastInspectFrame = Time.frameCount;
-            // 同一件物品 0.35 秒内只处理一次：兜底路径和正常路径可能在同一帧各触发一次。
-            if (item != null && ReferenceEquals(item, _lastItem) && Time.unscaledTime - _lastAt < 0.35f)
-                return _lastConsumed;
-            _pendingItem = item;
             bool consumed = false;
             var why = new StringBuilder();
             try
@@ -119,9 +108,6 @@ namespace ProbablyStolenTools
 
         private static bool Finish(StringBuilder why, bool consumed)
         {
-            _lastItem = _pendingItem;
-            _lastAt = Time.unscaledTime;
-            _lastConsumed = consumed;
             if (_diagnostics < 40)
             {
                 ++_diagnostics;
@@ -233,30 +219,9 @@ namespace ProbablyStolenTools
                 }
                 catch { }
                 EventLog.Write("[DoubleClick] handler detected a double-click but our patch did not run (item=" + item
-                    + "). Trying the fallback inspection path.");
-                var clickedItem = GameFields.Get<GameItem>(__instance, "lastClickedItem");
-                DoubleClickInspectionPatch._lastInspectFrame = -1;
-                DoubleClickInspectionPatch.InspectFromProbe(__instance, clickedItem);
+                    + "). Another mod likely consumes DoubleClickAction.");
             }
             catch { }
-        }
-
-        private static int _logged;
-    }
-
-    /// <summary>
-    /// 诊断用：确认 ItemMouseDoubleClickHandler 是否真的收到了鼠标按下事件。
-    /// 如果这条从不出现，说明报告者点的根本不是这个组件所在的界面。
-    /// </summary>
-    [HarmonyPatch(typeof(ItemMouseDoubleClickHandler), "OnEventPress")]
-    internal static class DoubleClickPressProbe
-    {
-        [HarmonyPostfix]
-        private static void Postfix()
-        {
-            if (DoubleClickPressProbe._logged >= 3) return;
-            ++DoubleClickPressProbe._logged;
-            try { EventLog.Write("[DoubleClick] press observed by ItemMouseDoubleClickHandler"); } catch { }
         }
 
         private static int _logged;
