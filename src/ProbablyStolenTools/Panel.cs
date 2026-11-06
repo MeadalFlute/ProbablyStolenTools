@@ -252,7 +252,7 @@ namespace ProbablyStolenTools
             _scroll.movementType = ScrollRect.MovementType.Clamped;
             _scroll.scrollSensitivity = RowH;
             _scroll.inertia = false;
-            for (int i = 0; i < 12; i++) _rows.Add(NewRow(i));
+            for (int i = 0; i < 24; i++) _rows.Add(NewRow(i));
             _empty = Text("empty", viewportGo.transform, 13, new Color(0.55f, 0.70f, 0.85f));
             _empty.text = "暂无节点";
             _settingsGo = NewObject("settings", _nativeContent);
@@ -538,7 +538,9 @@ namespace ProbablyStolenTools
             for (int i = nodes.Count - 1; i >= 0; i--)
             {
                 var node = nodes[i];
-                if (node.Day != day || node.IsClosed) continue;
+                if (node.Day != day) continue;
+                // 闭店的自动节点只从 ClosedNode 显示；手动节点无论开着还是关着都要列出来。
+                if (node.IsClosed && !node.IsManual) continue;
                 Bind(_rows[_shown++], node, node.At, CustomerCheckpoint.Name(node), node.Cash,
                     node.Id == _activeId ? "当前" : CustomerCheckpoint.IsFuture(node) ? "后续" : "", true);
             }

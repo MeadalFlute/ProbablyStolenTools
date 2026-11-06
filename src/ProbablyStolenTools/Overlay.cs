@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using HarmonyLib;
 #if !MONO
 using Il2CppInterop.Runtime.Injection;
@@ -37,7 +37,7 @@ namespace ProbablyStolenTools
                 UnityEngine.Object.DontDestroyOnLoad(_go);
                 _go.AddComponent<RewindOverlay>();
                 _go.AddComponent<CheckpointPanel>();
-                Plugin.LogSource.LogInfo("[Overlay] created in scene.");
+                Plugin.LogSource.LogInfo($"[Overlay] created in scene at +{Time.realtimeSinceStartup:0.00}s.");
 
                 try
                 {

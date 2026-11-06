@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -15,7 +15,7 @@ namespace ProbablyStolenTools
     internal static class CustomerCheckpoint
     {
         private static readonly CustomerBoundary Boundary = new();
-        private static readonly CheckpointHistory<Snapshot> History = new(10, node => !node.IsClosed);
+        private static readonly CheckpointHistory<Snapshot> History = new(20, node => !node.IsClosed);
         private static Snapshot _active;
         internal static Snapshot ClosedNode { get; private set; }
         private static bool _closeArmed, _outside;
@@ -79,6 +79,7 @@ namespace ProbablyStolenTools
             internal string Label;
             internal string DisplayName;
             internal bool IsClosed;
+            internal bool IsManual;
             internal string ExpiredReason;
             internal int Day, Cash, Scene;
             internal IntPtr Store, Client;
@@ -219,6 +220,7 @@ namespace ProbablyStolenTools
 
         internal static string Name(Snapshot node)
         {
+            if (node.IsManual) return "手动";
             if (node.IsClosed) return "闭店";
             // displayName is the exact resolved name used by the game's dialogue/recorder.
             return string.IsNullOrWhiteSpace(node.DisplayName) ? "顾客" : node.DisplayName;
@@ -512,6 +514,7 @@ namespace ProbablyStolenTools
                     Label = manual ? "手动" : closed ? "closed" : store.currentClientInstance.GetClientBlueprint().identifier,
                     DisplayName = manual ? null : closed ? null : store.currentClientInstance.GetClientBlueprint().displayName,
                     IsClosed = closed,
+                    IsManual = manual,
                     Day = Boundary.Day, Scene = Boundary.Scene, Store = Boundary.Store, Client = Boundary.Client,
                     Cash = store.GetCash(), At = DateTime.Now, Random = RNG.random
                 };

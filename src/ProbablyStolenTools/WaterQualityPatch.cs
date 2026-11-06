@@ -34,7 +34,7 @@ namespace ProbablyStolenTools
         private static string Describe(LiquidComposition.Analysis analysis, Quality quality)
         {
             if (analysis == null) return null;
-            if (analysis.Empty) return " -空瓶（" + analysis.SizeName + "）";
+            if (analysis.Empty) return null;
             if (analysis.WaterTop)
                 return quality == null ? null
                     : " -" + InspectionText.Water(quality.Declared, quality.Actual, quality.Matches);
@@ -78,14 +78,10 @@ namespace ProbablyStolenTools
                 if (builder == null) return;
                 var analysis = LiquidComposition.Analyze(item);
                 if (analysis == null) return;
+                // 空瓶不显示水质：尺寸改由悬浮说明的标题行体现。
+                if (analysis.Empty) return;
                 var quality = Read(item);
                 builder.Add("水质：");
-                if (analysis.Empty)
-                {
-                    builder.Add("空瓶（" + analysis.SizeName + "）", RenderHandler.ColorPalette.LightBlue);
-                    builder.NextLine();
-                    return;
-                }
                 if (analysis.AlcoholTop)
                 {
                     builder.Add(LiquidComposition.AlcoholLabel(analysis), RenderHandler.ColorPalette.LightBlue);

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using HarmonyLib;
 #if !MONO
@@ -182,6 +182,7 @@ namespace ProbablyStolenTools
 #endif
         {
             Instance = this;
+            float initStarted = Time.realtimeSinceStartup;
             LogSource = new ModLogger();
 #if MONO
             // 指南要求：日志走游戏的 ModLog，控制台里会带 [模组名] 前缀。
@@ -273,7 +274,7 @@ namespace ProbablyStolenTools
             CfgHistory = Config.Bind("History", "Enabled", true,
                 "Observation-only business event log (no save writes, no state changes). Writes PSTools_history.log.");
             CfgCustomerCheckpoint = Config.Bind("CustomerCheckpoint", "Enabled", true,
-                "Keep the latest 10 customer checkpoints within the current day. F6 resets the current customer; F7 keeps day-start restore.");
+                "Keep the latest 20 customer/manual checkpoints within the current day. F6 resets the current customer; F7 keeps day-start restore.");
             CfgPanelX = Config.Bind("Panel", "X", 16f, "Panel left position in reference canvas units.");
             CfgPanelY = Config.Bind("Panel", "Y", 16f, "Panel top position in reference canvas units.");
             CfgPanelWidth = Config.Bind("Panel", "Width", 480f, "Panel width in reference canvas units.");
@@ -309,6 +310,7 @@ namespace ProbablyStolenTools
                 LogSource.LogError($"Overlay bootstrap failed: {e}");
             }
 
+            LogSource.LogInfo($"[Tools] init took {((Time.realtimeSinceStartup - initStarted) * 1000f):0} ms (game up {initStarted:0.00}s)");
             LogSource.LogInfo("Loaded.");
         }
 
