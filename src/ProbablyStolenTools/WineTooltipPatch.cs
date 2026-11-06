@@ -15,6 +15,10 @@ namespace ProbablyStolenTools
             if (__instance == null || __result == null) return;
             try
             {
+                string warning = WineAppraisal.WaterWarning(__instance);
+                if (!string.IsNullOrEmpty(warning))
+                    __result.AddLine(warning, true, RenderHandler.ColorPalette.LightRed, false, false, false, false,
+                        RenderHandler.ColorPalette.None, RenderHandler.ColorPalette.None, RenderHandler.ColorPalette.None);
                 string line = WineAppraisal.Describe(__instance);
                 if (!string.IsNullOrEmpty(line))
                     __result.AddLine(line, true, RenderHandler.ColorPalette.None, false, false, false, false,

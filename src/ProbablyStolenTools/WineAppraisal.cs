@@ -43,6 +43,19 @@ namespace ProbablyStolenTools
         // ---------------- 物品描述用的一行结论 ----------------
 
         /// <summary>写进物品描述的精简结论；与酿酒无关时返回 null。</summary>
+        /// <summary>水量不足单独成行；水量足够时返回 null。</summary>
+        internal static string WaterWarning(GameItem item)
+        {
+            try
+            {
+                if (!IsUnfermentedBottle(item)) return null;
+                int waterMl = WaterHelper.GetCurrentCapacityML(item);
+                if (waterMl >= MinWaterMl) return null;
+                return InspectionLocale.Text($"水量不足：{waterMl}/{MinWaterMl} ml",
+                    $"Not enough water: {waterMl}/{MinWaterMl} ml");
+            }
+            catch { return null; }
+        }
         /// <summary>未发酵酒瓶里放了违禁酵母（阴光莓果酿）。</summary>
         internal static bool IsIllegalBottle(GameItem item)
         {
@@ -112,14 +125,10 @@ namespace ProbablyStolenTools
                 string grade, gradeEn;
                 if (total < 0) { grade = "酿造失败"; gradeEn = "Brewing failed"; }
                 else grade = InspectionLocale.Text(GradeName(total, out gradeEn), gradeEn);
-                string waterNote = lowWater
-                    ? InspectionLocale.Text($"水{Signed(waterScore)}（水量不足 {waterMl}/{MinWaterMl}ml）",
-                        $"water {Signed(waterScore)} (low water {waterMl}/{MinWaterMl}ml)")
-                    : InspectionLocale.Text($"水{Signed(waterScore)}", $"water {Signed(waterScore)}");
                 return InspectionLocale.Text(
-                    $"预计：{grade}（{total} 分｜{waterNote} 莓{Signed(berryScore)}"
+                    $"预计：{grade}（{total} 分｜水{Signed(waterScore)} 莓{Signed(berryScore)}"
                     + (bonus > 0 ? "+1" : "") + (yeast ? " 酵母+1" : "") + "）",
-                    $"Expected: {grade} ({total} pts | {(lowWater ? $"water {Signed(waterScore)} (low {waterMl}/{MinWaterMl}ml)" : $"water {Signed(waterScore)}")}, berries {Signed(berryScore)}"
+                    $"Expected: {grade} ({total} pts | water {Signed(waterScore)}, berries {Signed(berryScore)}"
                     + (bonus > 0 ? ", two-berry +1" : "") + (yeast ? ", yeast +1" : "") + ")");
             }
             catch (Exception e)
