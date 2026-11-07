@@ -22,6 +22,9 @@ namespace ProbablyStolenTools
         private const string Fat = "fat";
         private const string PlantMatter = "plant_matter";
         private const string Debris = "debris";
+        private const string DreamCapMush = "dream_cap_mush";
+        private const string NightmareCapMush = "nightmare_cap_mush";
+        private const string CoffeeMush = "coffee_mush";
 
         internal sealed class Analysis
         {
@@ -31,7 +34,8 @@ namespace ProbablyStolenTools
             internal string TopName;
             internal string TopIdentifier;
             internal double TopPercent;   // 该成分占全液的比例
-            internal int AlcoholPercent;  // 酒精占全液比例
+            internal int AlcoholPercent;  // 酒精占全液比例（四舍五入，用于医用酒精判定）
+            internal double AlcoholShare; // 酒精占全液比例（显示用，未取整）
             internal double Purity;       // 预期提纯后的产物纯度
             internal string Grade;
             internal string GradeColor;
@@ -93,7 +97,8 @@ namespace ProbablyStolenTools
                 if (result.Empty) return result;
 
                 // 酒精占全液比例（用于 75% 医用酒精判定）
-                result.AlcoholPercent = (int)Math.Round(alcohol * 100.0 / total);
+                result.AlcoholShare = alcohol * 100.0 / total;
+                result.AlcoholPercent = (int)Math.Round(result.AlcoholShare);
                 // 水占比超过 65% 才算“水为主”；否则按化学/其它成分处理。
                 // 65% 是为了让游戏自带的 70% 酒精小瓶仍判定为酒精为主。
                 if (water * 100.0 / total > 65.0)
@@ -149,7 +154,8 @@ namespace ProbablyStolenTools
                 if (amount <= 0) continue;
                 string id = liquids[i]?.identifier;
                 if (id == Water || id == Alcohol || id == Lipobond || id == Physical || id == Microbe || id == Fat
-                    || id == PlantMatter || id == Debris) continue;
+                    || id == PlantMatter || id == Debris
+                    || id == DreamCapMush || id == NightmareCapMush || id == CoffeeMush) continue;
                 // parts 的单位是微升：规则是“保留不满 1ml 的部分”，即 1000µL 以下不扣除。
                 if ((id == Protein || id == Acid || id == Base) && amount >= 1000) continue;
                 if (id == Chemical) { chemical += amount; continue; }
@@ -185,8 +191,13 @@ namespace ProbablyStolenTools
             return "大";
         }
 
-        /// <summary>酒精最高时的显示名：75% 视为医用酒精。</summary>
+        /// <summary>酒精最高时的显示名：纯酒精为脱水乙醇，75%±1 为医用酒精，其余为酒精。</summary>
         internal static string AlcoholLabel(Analysis a)
-            => a != null && a.AlcoholTop && a.AlcoholPercent >= 74 && a.AlcoholPercent <= 76 ? "医用酒精" : "酒精";
+        {
+            if (a == null || !a.AlcoholTop) return "酒精";
+            if (a.AlcoholShare >= 99.95) return "脱水乙醇";
+            if (a.AlcoholPercent >= 74 && a.AlcoholPercent <= 76) return "医用酒精";
+            return "酒精";
+        }
     }
 }

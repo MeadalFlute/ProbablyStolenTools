@@ -72,8 +72,10 @@ namespace ProbablyStolenTools
                 if (analysis == null) return;
                 // 空瓶：把尺寸写进名字（水质行不再重复）。
                 if (analysis.Empty) { __result = "空瓶（" + analysis.SizeName + "）"; return; }
-                // 水/酒精最高时保留原物品名；其它成分最高时用成分名替换。
-                if (!analysis.WaterTop && !analysis.AlcoholTop && !string.IsNullOrEmpty(analysis.TopName))
+                // 酒精最高：名字显示 酒精 / 医用酒精 / 脱水乙醇。
+                if (analysis.AlcoholTop) { __result = LiquidComposition.AlcoholLabel(analysis); return; }
+                // 水最高时保留原物品名；其它成分最高时用成分名替换。
+                if (!analysis.WaterTop && !string.IsNullOrEmpty(analysis.TopName))
                     __result = analysis.TopName;
             }
             catch { }

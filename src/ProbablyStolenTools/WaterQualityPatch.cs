@@ -38,7 +38,9 @@ namespace ProbablyStolenTools
             if (analysis.WaterTop)
                 return quality == null ? null
                     : " -" + InspectionText.Water(quality.Declared, quality.Actual, quality.Matches);
-            if (analysis.AlcoholTop) return " -" + LiquidComposition.AlcoholLabel(analysis);
+            if (analysis.AlcoholTop)
+                return " -" + LiquidComposition.AlcoholLabel(analysis)
+                    + "（" + InspectionText.Number(analysis.AlcoholShare) + "%）";
             if (analysis.TopName == null) return null;
             return " -" + InspectionText.Component(analysis.TopName, analysis.TopPercent,
                 analysis.Purity, analysis.Grade, analysis.GradeColor);
@@ -84,7 +86,8 @@ namespace ProbablyStolenTools
                 builder.Add("水质：");
                 if (analysis.AlcoholTop)
                 {
-                    builder.Add(LiquidComposition.AlcoholLabel(analysis), RenderHandler.ColorPalette.LightBlue);
+                    builder.Add(LiquidComposition.AlcoholLabel(analysis)
+                        + "（" + InspectionText.Number(analysis.AlcoholShare) + "%）", RenderHandler.ColorPalette.LightBlue);
                     builder.NextLine();
                     return;
                 }
