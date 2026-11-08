@@ -31,6 +31,8 @@
 - 空瓶：名字显示 `空瓶（迷你/小/标准/大）`（250/450/750/2000ml 档），**不显示水质行**。滴管、量筒/量杯、容量 <200mL 的容器**都不改名**（`LiquidComposition.NoRename`）。
 - 违禁酵母：只用原版样式单独一行（`mech_contraband_low`，LightRed、粗体），**不要真的打 `CONTRABAND_ITEM_TAG`**，也不要再拼进名字。
 
+- **`isGeneScannerScanning` 是基因扫描仪设施的开关状态（每秒由设施重新置 true，`OneSecPrefixFunction` 置 false），不是“正在扫描某个顾客”的瞬态状态。不要把任何回溯/建节点/鉴定门控挂在它上面**（0.8.6 起已全部移除）。扫描仪开关本身在快照里，恢复时会一起还原。
+- 恢复后要把 `GameItemElement` 视图重新挂回 `parentInventory` 对应的 `PixelElement`（`SetRenderingParent`）。否则玩家把物品卖进/放入展示柜后再回溯，数据回到了旧库存，但视图还留在新容器的节点下，表现为展示柜物品“错位”（实际槽位正确）。
 ### 工具提示
 - 追加说明行走原生 `ModHook.OnCreateTooltipLate`（`TooltipHooks`，`Plugin.Initialize` 订阅、`OnDisable` 取消），不要再新增 `GameItemElement.GetTooltipBasic` / `WaterFeatureHelper.CreateWaterFeatureTooltip` 补丁。
 - 名称替换必须在 `GetTooltipBasic` 之前生效，所以保留 `TooltipNameScopePatch`（Prefix/Postfix 作用域）+ `TooltipComponentNamePatch`（`GameItem.GetDisplayName`），只在悬浮说明构建期间改写。

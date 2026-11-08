@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using HarmonyLib;
@@ -72,7 +72,7 @@ namespace ProbablyStolenTools
                     if (store.lockAllInventoryFlag > 0) why.Append("lockInv ");
                     if (store.isHandlingShootout) why.Append("shootout ");
                     if (store.isClientBeingArrested) why.Append("arrest ");
-                    if (store.isGeneScannerScanning) why.Append("geneScan ");
+    
                 }
                 if (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem) why.Append("dragging ");
                 if (ItemSelectHandler.current != null && ItemSelectHandler.current.IsEquipped) why.Append("equipped ");

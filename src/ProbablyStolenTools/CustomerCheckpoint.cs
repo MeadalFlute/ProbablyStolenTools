@@ -160,7 +160,7 @@ namespace ProbablyStolenTools
             var ui = StoreUIManager.Instance;
             bool legitimatelyBusy = (dialog != null && (dialog.currentDialog != null || dialog.isConversationActiveFlag != 0))
                 || (mono != null && mono.IsMoving())
-                || store.isHandlingShootout || store.isClientBeingArrested || store.isGeneScannerScanning
+                || store.isHandlingShootout || store.isClientBeingArrested
                 || (ui != null && (ui.isAboutToStartMainDialog || ui.isShootingMode))
                 || (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem)
                 || GameFields.PhoneBusy(PhoneUIManager.Instance);
@@ -306,7 +306,7 @@ namespace ProbablyStolenTools
                 && shutter != null && GameFields.Get<bool>(shutter, "isClosed")
                 && GameFields.Get<float>(shutter, "elapsedTime") >= GameFields.Get<float>(shutter, "duration")
                 && mono != null && !mono.IsMoving() && !store.isHandlingShootout
-                && !store.isClientBeingArrested && !store.isGeneScannerScanning
+                && !store.isClientBeingArrested
                 && StoreUIManager.Instance != null && !StoreUIManager.Instance.isAboutToStartMainDialog
                 && (ItemMouseDragHandler.current == null || !ItemMouseDragHandler.current.IsDraggingItem)
                 && !GameFields.PhoneBusy(PhoneUIManager.Instance);
@@ -344,8 +344,6 @@ namespace ProbablyStolenTools
             if (store == null) { PanelNotice.Show("无法建立节点：商店数据未就绪", true); return; }
             if (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem)
             { PanelNotice.Show("无法建立节点：正在拖拽物品", true); return; }
-            if (store.isGeneScannerScanning)
-            { PanelNotice.Show("无法建立节点：正在基因扫描", true); return; }
             if (Time.unscaledTime - _lastManualAt < 1.5f) return;
             _lastManualAt = Time.unscaledTime;
             Observe();
@@ -448,7 +446,6 @@ namespace ProbablyStolenTools
                 case "dayChanged": return "已经跨天";
                 case "arrested": return "顾客正在被逮捕";
                 case "shootout": return "正在发生枪战";
-                case "geneScan": return "正在基因扫描";
                 case "outside": return "当前在店外";
                 case "noUI": return "商店界面未就绪";
                 case "shootingMode": return "处于射击模式";
@@ -657,7 +654,6 @@ namespace ProbablyStolenTools
                 if (state != 0 && state != 1 && !(target.IsManual && sameState)) blockers.Add("state=" + state);
                 if (store.isClientBeingArrested) blockers.Add("arrested");
                 if (store.isHandlingShootout) blockers.Add("shootout");
-                if (store.isGeneScannerScanning) blockers.Add("geneScan");
                 // 允许回到更早的顾客节点：PlayerStore.currentClientInstance 在快照里，
                 // 恢复后当前顾客会被换成节点记录的那一位，模型贴图也随 CustomerVisual 一起还原。
                 // 这里只记录“跨顾客”，不再拦截。
@@ -765,6 +761,23 @@ namespace ProbablyStolenTools
                 foreach (var view in target.Visuals) view.Restore();
                 target.Shop.Restore();
                 target.Customer.Restore();
+                // 恢复后把物品视图重新挂回它所属的库存容器：玩家卖出/放入展示柜后回溯，
+                // 数据已经回到旧库存，但视图还留在新容器的节点下，看起来就会“错位”。
+                int reparented = 0;
+                foreach (var restored in target.RenderedItems.Values)
+                {
+                    try
+                    {
+                        if (restored == null || restored.IsDestroyed()) continue;
+                        var inventory = restored.parentInventory;
+                        if (!(inventory is PixelElement holder)) continue;
+                        if (!(restored is PixelElement element)) continue;
+                        if (element.SetRenderingParent(holder)) reparented++;
+                    }
+                    catch { }
+                }
+                if (reparented > 0)
+                    EventLog.Write($"[QuickSL/Customer] reparented {reparented} item view(s) to their restored inventories");
                 foreach (var item in target.RenderedItems.Values)
                 {
                     GameFields.Set(item, "validateLock", false);
