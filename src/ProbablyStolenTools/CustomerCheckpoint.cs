@@ -533,6 +533,7 @@ namespace ProbablyStolenTools
         {
             Snapshot candidate = null;
             var timing = System.Diagnostics.Stopwatch.StartNew();
+            string phase = "access";
             try
             {
                 var access = Access(store, out var roots);
@@ -548,8 +549,10 @@ namespace ProbablyStolenTools
                     Day = Boundary.Day, Scene = Boundary.Scene, Store = Boundary.Store, Client = Boundary.Client,
                     Cash = store.GetCash(), At = DateTime.Now, Random = RNG.random
                 };
+                phase = "walk";
                 candidate.Graph = StateGraph.Capture(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
                 long tWalk = timing.ElapsedMilliseconds;
+                phase = "items";
                 candidate.Customer = new CustomerVisual();
                 candidate.Shop = new ShopPhaseVisual();
                 var visualIds = new HashSet<IntPtr>();
@@ -618,16 +621,20 @@ namespace ProbablyStolenTools
                 }
                 if (candidate.RenderedItems.Count == 0) throw new InvalidOperationException("No live inventory items reached from snapshot roots.");
                 long tItems = timing.ElapsedMilliseconds;
+                phase = "verify";
                 var diff = candidate.Graph.Differences();
                 if (diff.Count != 0) throw new InvalidOperationException("Capture changed while reading: " + string.Join(", ", diff));
                 long tVerify = timing.ElapsedMilliseconds;
+                phase = "history";
                 if (closed)
                 {
                     History.Remove(ClosedNode);
                     ClosedNode = candidate;
                 }
                 LogItemGeometry(candidate, "capture");
+                long tBeforeHistory = timing.ElapsedMilliseconds;
                 History.Add(candidate, commitBranch: !closed);
+                long tHistory = timing.ElapsedMilliseconds;
                 if (ClosedNode?.Graph == null) ClosedNode = null;
                 _active = candidate;
                 candidate = null;
@@ -635,22 +642,28 @@ namespace ProbablyStolenTools
                 _failureNoticeKey = null;
                 _failureRevision++;
                 RebuildRetainedItems();
+                long tRetain = timing.ElapsedMilliseconds;
+                phase = "finish";
                 // 手动节点不能改写“当前顾客已捕获”的边界，否则会挡掉该顾客稍后的自动节点。
                 if (!manual) Boundary.MarkReady();
                 Status = "Checkpoint: " + Name(_active);
                 if (manual) PanelNotice.Show("已建立手动节点 #" + _active.Id);
 #if MONO
-                string readers = " " + SnapshotFieldReader.Summary + " " + access.ArraySchemaSummary;
+                string readers = " " + SnapshotFieldReader.Summary + " " + access.ArraySchemaSummary +
+                    (Plugin.CfgVerboseLog?.Value == true ? " " + access.WorkloadSummary() : "");
 #else
                 string readers = "";
 #endif
+                long tFinish = timing.ElapsedMilliseconds;
                 EventLog.Write($"[Customer] CAPTURE id={_active.Id} client={_active.Label} history={CustomerCount}/20 " +
                     $"objects={_active.Graph.ObjectCount} slots={_active.Graph.SlotCount} bytes={_active.Graph.ByteCount} " +
                     $"items={_active.Items.Count} renderedItems={_active.RenderedItems.Count} windows={_active.Windows.Count} " +
                     $"arrivalWaitSeconds={(manual || closed ? 0 : Time.unscaledTime - _arrivedAt):0.00} " +
-                    $"captureMs={timing.ElapsedMilliseconds} " +
+                    $"captureMs={tFinish} " +
                     $"ms(access={tAccess},walk={tWalk - tAccess},items={tItems - tWalk}," +
-                    $"verify={tVerify - tItems},total={timing.ElapsedMilliseconds})" + readers);
+                    $"verify={tVerify - tItems},prepareHistory={tBeforeHistory - tVerify}," +
+                    $"history={tHistory - tBeforeHistory},retain={tRetain - tHistory}," +
+                    $"finish={tFinish - tRetain},total={tFinish})" + readers);
                 TraceBargain("CAPTURE");
             }
             catch (Exception e)
@@ -658,7 +671,7 @@ namespace ProbablyStolenTools
                 candidate?.Dispose();
                 Boundary.Invalidate();
                 Status = "Capture failed: " + e.Message;
-                EventLog.Write($"[Customer] CAPTURE FAILED elapsedMs={timing.ElapsedMilliseconds} " +
+                EventLog.Write($"[Customer] CAPTURE FAILED phase={phase} elapsedMs={timing.ElapsedMilliseconds} " +
                     $"limits(objects={MaxSnapshotObjects},slots={MaxSnapshotSlots},bytes={MaxSnapshotBytes}): " + e);
                 RecordFailure(closed, manual, e);
             }
@@ -766,6 +779,15 @@ namespace ProbablyStolenTools
 
             StateGraph current = null;
             bool wrote = false;
+            bool completed = false;
+            string phase = "preflight";
+            var timing = System.Diagnostics.Stopwatch.StartNew();
+            long tValidate = 0, tCensus = 0, tPreflight = 0, tWrite = 0, tRefresh = 0;
+            long tReconcile = 0, tVerify = 0, tCleanup = 0;
+            int censusObjects = 0, censusSlots = 0;
+            int finalDifferences = -1;
+            long censusBytes = 0;
+            string workload = "";
             Restoring = true;
             float scale = Time.timeScale;
             try
@@ -774,8 +796,18 @@ namespace ProbablyStolenTools
                 foreach (var view in target.Visuals) view.Validate();
                 target.Customer.Validate();
                 target.Shop.Validate();
+                tValidate = timing.ElapsedMilliseconds;
+                phase = "census";
                 var access = Access(store, out var roots);
                 current = StateGraph.Census(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
+                tCensus = timing.ElapsedMilliseconds;
+                censusObjects = current.ObjectCount;
+                censusSlots = current.SlotCount;
+                censusBytes = current.ByteCount;
+#if MONO
+                if (Plugin.CfgVerboseLog?.Value == true) workload = " " + access.WorkloadSummary();
+#endif
+                phase = "target-preflight";
                 target.Graph.Differences();
                 TraceBargain("BEFORE RESTORE");
                 var newItems = new List<GameItemElement>();
@@ -795,6 +827,8 @@ namespace ProbablyStolenTools
                         newWindows.Add(new PixelWindow(id));
 #endif
                 }
+                tPreflight = timing.ElapsedMilliseconds;
+                phase = "write";
                 Time.timeScale = 0;
                 wrote = true;
                 ++_epoch;
@@ -809,6 +843,8 @@ namespace ProbablyStolenTools
                 int countersBefore = CounterCount();
                 target.Graph.Restore();
                 RNG.random = target.Random;
+                tWrite = timing.ElapsedMilliseconds;
+                phase = "native-refresh";
                 foreach (var id in target.RenderedItems.Keys) Deleted.Remove(id);
                 foreach (var view in target.Visuals) view.Restore();
                 target.Shop.Restore();
@@ -841,6 +877,8 @@ namespace ProbablyStolenTools
                 BargainUIManager.Instance.Update();
 #endif
                 UnityRandomState.Restore(target.UnityRandom);
+                tRefresh = timing.ElapsedMilliseconds;
+                phase = "reconcile";
                 var diff = target.Graph.Differences();
                 if (diff.Count != 0)
                 {
@@ -855,9 +893,14 @@ namespace ProbablyStolenTools
                 // 旋转/翻转/锚点/尺寸以快照里的原生 RectTransform 为准：几何恢复之后再套一次，
                 // 避免 UpdateRectTransform() 用被清零的 modifiedShape.orientation 覆盖旋转。
                 foreach (var view in target.Visuals) view.RestoreTransforms();
+                tReconcile = timing.ElapsedMilliseconds;
+                phase = "final-verify";
                 diff = target.Graph.Differences();
+                finalDifferences = diff.Count;
                 if (diff.Count != 0)
                     throw new InvalidOperationException("Final restore differs from checkpoint: " + string.Join(", ", diff));
+                tVerify = timing.ElapsedMilliseconds;
+                phase = "cleanup";
                 LogItemGeometry(target, "restore-post");
                 // Only discard abandoned views after the restored business graph passes validation.
                 foreach (var w in newWindows)
@@ -887,12 +930,14 @@ namespace ProbablyStolenTools
                 catch (Exception e) { Plugin.LogSource.LogWarning("[Recorder] refresh failed: " + e.Message); }
                 Status = "Restored checkpoint: " + Name(target);
                 PanelNotice.Show("已回溯至 " + Name(target));
-                EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={diff.Count}");
                 TraceBargain("AFTER RESTORE");
+                tCleanup = timing.ElapsedMilliseconds;
+                completed = true;
             }
             catch (Exception e)
             {
-                EventLog.Write("[Customer] RESTORE FAILED" + (wrote ? " AFTER WRITE" : " (preflight)") + ": " + e);
+                EventLog.Write("[Customer] RESTORE FAILED" + (wrote ? " AFTER WRITE" : " (preflight)") +
+                    $" phase={phase} elapsedMs={timing.ElapsedMilliseconds}: " + e);
                 if (wrote)
                 {
                     // A partial write may have relinked these items. Never destroy their retained views.
@@ -907,9 +952,22 @@ namespace ProbablyStolenTools
             }
             finally
             {
-                current?.Dispose();
-                Time.timeScale = scale;
-                Restoring = false;
+                try { current?.Dispose(); }
+                finally
+                {
+                    Time.timeScale = scale;
+                    Restoring = false;
+                }
+                if (completed)
+                {
+                    long tFinish = timing.ElapsedMilliseconds;
+                    EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
+                        $"census(objects={censusObjects},slots={censusSlots},bytes={censusBytes}) " +
+                        $"ms(validate={tValidate},census={tCensus - tValidate},preflight={tPreflight - tCensus}," +
+                        $"write={tWrite - tPreflight},refresh={tRefresh - tWrite},reconcile={tReconcile - tRefresh}," +
+                        $"finalVerify={tVerify - tReconcile},cleanup={tCleanup - tVerify}," +
+                        $"release={tFinish - tCleanup},total={tFinish})" + workload);
+                }
             }
         }
 

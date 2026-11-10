@@ -68,6 +68,40 @@ namespace ProbablyStolenTools
         internal string ArraySchemaSummary => $"arraySchemas(cached={_arraySchemas.Count}," +
             $"hits={_arraySchemaHits},slotsReused={_arraySlotsReused})";
 
+        internal string WorkloadSummary()
+        {
+            var types = new Dictionary<Type, (int Objects, long Slots, long Capacity, int MaxArray)>();
+            (int Objects, long Slots, long Capacity, int MaxArray) other = default;
+            foreach (var pair in _retained)
+            {
+                var type = pair.Value.GetType();
+                long slots = _storage.TryGetValue(pair.Key, out var stores) ? stores.Length : 0;
+                int capacity = pair.Value is Array array ? array.Length : 0;
+                if (!types.TryGetValue(type, out var counts) && types.Count >= 128)
+                {
+                    other = (other.Objects + 1, other.Slots + slots, other.Capacity + capacity,
+                        Math.Max(other.MaxArray, capacity));
+                    continue;
+                }
+                types[type] = (counts.Objects + 1, counts.Slots + slots, counts.Capacity + capacity,
+                    Math.Max(counts.MaxArray, capacity));
+            }
+            var ordered = types.OrderByDescending(p => p.Value.Slots)
+                .ThenBy(p => p.Key.FullName, StringComparer.Ordinal).ToArray();
+            foreach (var pair in ordered.Skip(6))
+                other = (other.Objects + pair.Value.Objects, other.Slots + pair.Value.Slots,
+                    other.Capacity + pair.Value.Capacity, Math.Max(other.MaxArray, pair.Value.MaxArray));
+            string Counts((int Objects, long Slots, long Capacity, int MaxArray) counts)
+                => $"objects={counts.Objects},slots={counts.Slots},arrayCapacity={counts.Capacity},maxArray={counts.MaxArray}";
+            string Name(Type type)
+            {
+                string name = type.Name;
+                return name.Length <= 96 ? name : name.Substring(0, 93) + "...";
+            }
+            return "typesBySlots=[" + string.Join(";", ordered.Take(6)
+                .Select(p => Name(p.Key) + "(" + Counts(p.Value) + ")")) + "] otherTypes(" + Counts(other) + ")";
+        }
+
         internal ManagedStateAccess(Type unityObject = null, string gameAssembly = "Assembly-CSharp")
             : this(unityObject, gameAssembly, true) { }
 

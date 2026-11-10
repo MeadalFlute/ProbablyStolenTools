@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**103 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**104 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -150,6 +150,8 @@ docs/workshop/                     创意工坊文本
 - 收集问题请同时取同次游玩的 `PSTools*.log` 及轮转归档、`PSTools.settings.xml`、`Player.log`、`mod-audit.log`，并提供操作步骤和语言代码。
 - 游戏内「设置 → 查看日志」用官方 `CustomUIManager.Window(...)` 构建（`LAYER_OVERLAY`、`BeginScrollFlexible`、`AddLabel`、`AddButton`），显示末尾 400 行。
 - `[QuickSL/Geom]` 只在物品视图异常（DESTROYED / MISSING / NOSPRITE / HIDDEN / MISPLACED）时输出，是排查贴图问题的第一入口。
+- CAPTURE 仍一行摘要：access/walk/items/verify 后补 prepareHistory/history/retain/finish，history 包含正常历史淘汰。RESTORE OK 仍一行：validate/census/preflight/write/refresh/reconcile/finalVerify/cleanup/release/total，包含当前普查释放，但不包含入口拒绝门控和摘要日志自身 I/O。失败输出 phase 与 elapsedMs。
+- 仅 `Logging.Verbose=true` 时同一摘要追加 typesBySlots：最多展开 128 种类型、输出槽位前六类，其余合计；统计对象数、槽数、数组容量与最大数组长度。只读已有描述，不调用业务属性、不新增值令牌。它不是实际内存估算，也不代表集合有效条目数。
 
 ---
 
@@ -218,5 +220,9 @@ docs/workshop/                     创意工坊文本
 - `research/2026-11-10-snapshot-optimization-step1.md`：第一步标量校验减重、回归与隔离基准。
 - `research/2026-11-11-snapshot-optimization-step2.md`：第二步数组预算提前检查及前两步合并部署记录。
 - `research/2026-11-11-snapshot-optimization-step3.md`：本机最新耗时分布、同形数组描述复用、第三步验证和部署记录。
+- `research/2026-11-11-locale-review.md`：本轮多语言评审、英语表优先回退、标注缓存和自有检查点用量。
+- `research/2026-11-11-snapshot-optimization-step4.md`：对象发现预算提前检查。
+- `research/2026-11-11-snapshot-optimization-step5.md`：恢复前只读对象普查及对照验证。
+- `research/2026-11-11-snapshot-optimization-step6.md`：完整阶段计时、可选类型汇总与本轮停止边界。
 - `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
 - `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。

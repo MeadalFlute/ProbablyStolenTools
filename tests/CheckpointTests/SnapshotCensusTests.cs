@@ -23,6 +23,18 @@ internal static class SnapshotCensusTests
 
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
+        test("optional workload summary reports array capacity and slots without reading or retaining values", () =>
+        {
+            var root = new object[] { new int[3], new int[5], new object() };
+            var access = Access();
+            var id = ManagedObjects.Id(root); access.AddRoot(id);
+            using var census = StateGraph.Census(access, new[] { id });
+            string summary = access.WorkloadSummary();
+            check(summary.Contains("Int32[](objects=2,slots=8,arrayCapacity=8,maxArray=5)"));
+            check(summary.Contains("Object[](objects=1,slots=3,arrayCapacity=3,maxArray=3)"));
+            check(Field<IDictionary>(access, "_values").Count == 0 && census.SlotCount == 11);
+            check(summary == access.WorkloadSummary());
+        });
         test("census matches full graph identities paths slot and byte budgets without retaining values", () =>
         {
             foreach (bool fast in new[] { false, true })
