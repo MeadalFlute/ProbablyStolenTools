@@ -10,6 +10,7 @@ void Check(bool condition) { if (!condition) throw new Exception("Assertion fail
 ManagedSnapshotTests.Run(Test, Check);
 SnapshotOptimizationTests.Run(Test, Check);
 SnapshotValueComparisonTests.Run(Test, Check);
+SnapshotArrayBudgetTests.Run(Test, Check);
 ItemLayoutTests.Run(Test, Check);
 ReportRegressionTests.Run(Test, Check);
 AnnotationLocaleTests.Run(Test, Check);

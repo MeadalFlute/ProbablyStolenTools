@@ -32,6 +32,20 @@ namespace ProbablyStolenTools
         bool ValueEquals(IntPtr id, StateSlot slot, byte[] captured);
     }
 
+    internal interface IBudgetedStateDescription
+    {
+        IReadOnlyList<StateSlot> Describe(IntPtr id, int remainingSlots, long remainingBytes);
+    }
+
+    internal sealed class SnapshotDescriptionLimitException : InvalidOperationException
+    {
+        internal readonly string Kind;
+        internal readonly int RequiredSlots;
+        internal readonly long RequiredBytes;
+        internal SnapshotDescriptionLimitException(string kind, int slots, long bytes)
+        { Kind = kind; RequiredSlots = slots; RequiredBytes = bytes; }
+    }
+
     internal sealed class StateGraph : IDisposable
     {
         private readonly record struct Entry(IntPtr Owner, StateSlot Slot, byte[] Bytes, IntPtr Reference);
@@ -55,6 +69,7 @@ namespace ProbablyStolenTools
             try
             {
                 var pending = new Queue<IntPtr>();
+                var budgeted = access as IBudgetedStateDescription;
                 // Register all roots first so an earlier root's links cannot replace their root paths.
                 foreach (var root in roots)
                     if (root != IntPtr.Zero && graph._sources.TryAdd(root, (IntPtr.Zero, "root")))
@@ -67,7 +82,19 @@ namespace ProbablyStolenTools
                         throw new SnapshotLimitException("object", graph.ObjectCount, graph.SlotCount, graph.ByteCount,
                             maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id));
                     access.Retain(id);
-                    foreach (var slot in access.Describe(id))
+                    IReadOnlyList<StateSlot> description;
+                    try
+                    {
+                        description = budgeted == null ? access.Describe(id)
+                            : budgeted.Describe(id, maxSlots - graph.SlotCount, maxBytes - graph.ByteCount);
+                    }
+                    catch (SnapshotDescriptionLimitException e)
+                    {
+                        throw new SnapshotLimitException(e.Kind, graph.ObjectCount, graph.SlotCount, graph.ByteCount,
+                            maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id) +
+                            $" -> array requires slots={e.RequiredSlots}, bytes={e.RequiredBytes} before expansion");
+                    }
+                    foreach (var slot in description)
                     {
                         if (graph._entries.Count >= maxSlots)
                             throw new SnapshotLimitException("slot", graph.ObjectCount, graph.SlotCount, graph.ByteCount,

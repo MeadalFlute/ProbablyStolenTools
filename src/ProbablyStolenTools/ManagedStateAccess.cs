@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer
+    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IBudgetedStateDescription
     {
         private readonly struct Storage
         {
@@ -79,6 +79,12 @@ namespace ProbablyStolenTools
         }
 
         public IReadOnlyList<StateSlot> Describe(IntPtr id)
+            => DescribeWithinBudget(id, int.MaxValue, long.MaxValue);
+
+        IReadOnlyList<StateSlot> IBudgetedStateDescription.Describe(IntPtr id, int remainingSlots, long remainingBytes)
+            => DescribeWithinBudget(id, remainingSlots, remainingBytes);
+
+        private IReadOnlyList<StateSlot> DescribeWithinBudget(IntPtr id, int remainingSlots, long remainingBytes)
         {
             var value = _retained[id];
             var type = value.GetType();
@@ -114,7 +120,17 @@ namespace ProbablyStolenTools
                 }
                 bool vector = type == elementType.MakeArrayType();
                 int stride = element.Stores.Length;
-                var slots = new StateSlot[checked(array.Length * stride)];
+                int count = checked(array.Length * stride);
+                long elementBytes = 0;
+                foreach (var slot in element.Slots)
+                    elementBytes += slot.IsReference ? IntPtr.Size : slot.Size;
+                long bytes = array.Length * elementBytes;
+                // Reject impossible arrays before allocating per-element descriptors and names.
+                if (count > remainingSlots)
+                    throw new SnapshotDescriptionLimitException("slot", count, bytes);
+                if (bytes > remainingBytes)
+                    throw new SnapshotDescriptionLimitException("byte", count, bytes);
+                var slots = new StateSlot[count];
                 var stores = new Storage[slots.Length];
                 for (int i = 0; i < array.Length; i++)
                 {

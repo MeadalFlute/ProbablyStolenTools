@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**80 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**85 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -30,6 +30,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 - 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**（0.8.12 → 0.8.13）。
 - README / AGENT 等纯文档更新**不推进版本号**。
 - 发布流程：改两个版本号 → 构建 → 两组测试 → 部署 → 游戏内验收 → 提交 → 推送。
+- 快照优化按步骤独立提交；用户要求每轮验证通过后部署，便于游戏内测试，不自动启动游戏。未推送的测试轮次保持现有版本号。
 - 推送需要用户临时 token；网络不稳时用带超时的 `git push`，交替 `http.sslVersion`（tlsv1.2 / tlsv1.3）与 `http.version`（HTTP/1.1 / HTTP/2），必要时用 GitHub API 确认远端 HEAD。
 
 ---
@@ -67,6 +68,7 @@ docs/workshop/                     创意工坊文本
 - 普通字段用反射读；同一路径累计读取 32 次后尝试生成只读委托，失败则回退。字段/类型缓存上限 4096，跨节点复用；每份快照的值/根/数组索引缓存相互隔离，卸载时清理。
 - 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`，默认 **200000 / 3000000 / 256**。
 - 超限跳过本次捕获，释放半成品并保留旧节点；不使用不完整快照，不自动无限加大上限。面板显示失败、提示去重，日志包含实际计数、各上限及来源路径。
+- Mono 数组通过 `IBudgetedStateDescription` 在逐元素描述分配前检查剩余槽位/逻辑字节预算。提前拒绝时计数是已捕获部分，`array requires ... before expansion` 单独记录整个数组需求；不是实际内存估算。成功快照仍保留全容量，空数组和非法数组规则不变。
 - 捕获仍在同一回调同步完成；**未启用分帧快照**。任何跨帧实现须独立提交，并解决业务图一致性，不能只靠 `timeScale=0`。
 - 捕获后必须跑完整 `Differences()`；差异非空就视为恢复失败，不能再报成功。
 - Mono 标量校验走 `IStateValueComparer`，只比较捕获值，不往节点值表登记新值；float/double 按位比较，保留正负零和 NaN 差别。其他后端仍走原字节比较；差异消息达到上限也必须扫描完整图。
@@ -208,6 +210,7 @@ docs/workshop/                     创意工坊文本
 - `research/2026-11-10-player-report.md`：报告证据、计时误读、日志/存储/语言修复与分帧暂缓理由。
 - `research/2026-11-10-native-annotation-locales.md`：后续改用原版语言键、资源表验证与英文回退。
 - `research/2026-10-31-snapshot-performance.md`：快照性能与 UI 布局规则。
-- `research/2026-11-10-snapshot-optimization-step1.md`：第一步标量校验减重、回归与隔离基准，尚未部署。
+- `research/2026-11-10-snapshot-optimization-step1.md`：第一步标量校验减重、回归与隔离基准。
+- `research/2026-11-11-snapshot-optimization-step2.md`：第二步数组预算提前检查及前两步合并部署记录。
 - `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
 - `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。
