@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -786,6 +786,18 @@ namespace ProbablyStolenTools
                     GameFields.Set(item, "validateLock", false);
                     item.ValidatePartialSprite();
                     item.Validate();
+                    // Validate() 在 validateLock 异常残留时会被整段跳过；这里按还原后的
+                    // modifiedShape / modifiedXOrigin 强制重排一次，保证贴图与格子一致。
+                    try { item.UpdateRectTransform(); } catch { }
+                    try
+                    {
+                        int grid = UISettings.current != null ? UISettings.current.gridSize : 16;
+                        int xo = GameFields.Get<int>(item, "modifiedXOrigin");
+                        int yo = GameFields.Get<int>(item, "modifiedYOrigin");
+                        var back = item.background?.rectTransform;
+                        if (back != null) back.anchoredPosition = new Vector2(xo * grid, yo * grid);
+                    }
+                    catch { }
                 }
                 try { OverlayHandler.current?.UpdateInventoryStateUIImmediately(); } catch { }
                 LogItemGeometry(target, "restore-post");
