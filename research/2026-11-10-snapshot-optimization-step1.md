@@ -31,7 +31,7 @@
 ```powershell
 dotnet build src/ProbablyStolenTools/ProbablyStolenTools.csproj -c Release
 dotnet run -c Release --project tests/CheckpointTests/CheckpointTests.csproj -- --value-comparison-benchmark
-dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.csproj -- "E:\SteamLibrary\steamapps\common\Probably Stolen" src/ProbablyStolenTools/bin/Release/Mono/ProbablyStolenTools.dll release/manifest.xml
+dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.csproj -- "<GAME_DIR>" src/ProbablyStolenTools/bin/Release/Mono/ProbablyStolenTools.dll release/manifest.xml
 dotnet run -c Release --no-build --project tests/CheckpointTests/CheckpointTests.csproj -- --benchmark
 ```
 

@@ -4,7 +4,7 @@
 
 ## 证据边界
 
-玩家附件位于 `D:\Program\GameProject\logs\Probably Stolen`，只有：
+玩家附件位于 `logs\Probably Stolen`，只有：
 
 - `Player.log`：119516 bytes。
 - `mod-audit.log`：280087 bytes。
@@ -74,3 +74,32 @@
 保持 0.8.13，未推送；后续发布须按版本规则递增并重新部署验收。
 
 仍需玩家补交**问题发生的同次游玩**的 `PSTools.log` 及轮转归档、`PSTools.settings.xml`，并说明“语言问题”是乱码、错译、语言被改、缺失文本还是启动异常，附界面截图和触发操作。不能仅凭俄语代码认定问题原因。
+
+## 第三批附件复核
+
+用户后续提供 `logs\Probably Stolen\3`，说明是其他 mod 的反馈经熟人转交，目前无法联系原玩家。本轮仅只读检查附件，未修改运行代码或游戏文件。
+
+| 文件 | 大小（字节） | 实际内容 |
+| --- | ---: | --- |
+| `$RNEPFRJ.log` | 119516 | Probably Stolen 的 Unity Player 日志，与第一批 Player.log、第二批同名文件 SHA256 完全一致 |
+| `$R3ZCYB4.txt` | 776896 | Slay the Spire 2 / MegaDot 日志，不是本游戏 |
+| `$RWGKTKZ.log` | 1327847 | Slay the Spire 2 / MegaDot 日志，不是本游戏 |
+
+第三批唯一的 Probably Stolen 日志 SHA256：
+`F5DAA32DFF738A71548B4ED22F3D2534CC68B1EDCFB0BF59B1F094E1A2E6384C`。
+
+两个其他游戏文件开头均出现 `MegaDot v4.5.1.m.14.mono.custom_build` 和 `Slay the Spire 2\release_info.json`，不能把其中的语言代码、异常或硬件信息用于 Probably Stolen 分析。
+
+第二批三个文件也分别与第一批 Player / audit / watchdog 的哈希一致。因此第三批没有新增本游戏的独立运行样本，仍没有 PSTools 日志、设置或本 mod 加载/运行记录。
+
+重复的 Player 日志继续支持以下有限结论：
+
+- `:136–177`：TraitsProbablyFun 打补丁期间，IngotPurityHelper / ItemConditionList 静态初始化进入原版本地化并报无效操作句柄，随后初始化失败。
+- `:180–197`：WolfCompanion 的本地化预加载失败，但该 mod 随后仍记录初始化成功，不能把两者混同。
+- `:233–273`：More Device Upgrades 打补丁期间，Liquid 静态初始化报同类异常，随后初始化失败。
+- `:1492–1493`：原版 MainMenu 两个键也出现句柄错误；不是仅有某条 mod 翻译缺失。
+- `:1494`：Ledger 观测到 `ru`，不代表已知玩家实际看到的界面症状。
+
+这些栈表明异常路径涉及启动期同步等待本地化资源，但不足以确认最初是谁破坏句柄、是否有加载时序/重入问题，或与证书错误是否存在因果关系。不能直接归责于某个 mod，也不能将本批用于证明本 mod 快照造成卡顿。
+
+当前将此反馈标记为“附件混入其他游戏，相关日志重复，原始症状不明，归因待证据”。没有理由仅凭本批附件新增全局本地化补丁或调整快照逻辑。

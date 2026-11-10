@@ -16,8 +16,8 @@ CAPTURE 日志增加 access / walk / items / verify / total 各阶段毫秒数�
 
 ```powershell
 dotnet build src/ProbablyStolenTools/ProbablyStolenTools.csproj -c Release
-dotnet run -c Release --project tests/CheckpointTests/CheckpointTests.csproj -- "C:\Users\Paper\AppData\LocalLow\Questing Goose Studio\Probably Stolen\save_0.es3" --benchmark
-dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.csproj -- "E:\SteamLibrary\steamapps\common\Probably Stolen" src/ProbablyStolenTools/bin/Release/Mono/ProbablyStolenTools.dll release/manifest.xml
+dotnet run -c Release --project tests/CheckpointTests/CheckpointTests.csproj -- "%LOCALAPPDATA%Low\Questing Goose Studio\Probably Stolen\save_0.es3" --benchmark
+dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.csproj -- "<GAME_DIR>" src/ProbablyStolenTools/bin/Release/Mono/ProbablyStolenTools.dll release/manifest.xml
 ```
 
 - Mono Release：0 警告、0 错误。
@@ -48,7 +48,7 @@ dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.
 
 ## 部署记录
 
-已通过 `scripts/Deploy-FullRelease.ps1` 部署至正式版的 `Mods\ProbablyStolenTools`。备份目录为 `D:\Program\GameProject\ProbablyStolenMod\out\full-release-deploy-20261031-134640`，含 SaveData、原 Mods 与 deployment.json。
+已通过 `scripts/Deploy-FullRelease.ps1` 部署至正式版的 `Mods\ProbablyStolenTools`。备份目录为 `out\full-release-deploy-20261031-134640`，含 SaveData、原 Mods 与 deployment.json。
 
 DLL SHA256：`3CC042F1E4B20AE6D13C89BF013E42BE80F16D85C66342C0BAB69D6F06A7ED33`。部署文件与构建产物一致；原存档目录 229 个文件、游戏 Managed 和其他 Mod 文件逐一校验不变，SettingsImported=False，GameStarted=False。未提交或发布工坊更新，游戏实测仍待用户执行。
 
@@ -92,7 +92,7 @@ DLL SHA256：`3CC042F1E4B20AE6D13C89BF013E42BE80F16D85C66342C0BAB69D6F06A7ED33`�
 
 额外检查旧 Demo 构建失败，10 个错误在本轮未改动的 DoubleClickInspectionPatch / Panel / Rewind：IL2CPP 集合与托管集合不兼容、GetLayerRoot API 缺失、Action 转换不兼容。未修复或部署 Demo；正式版验证不受此旧目标检查结果替代。
 
-第二轮已部署正式版，备份 `D:\Program\GameProject\ProbablyStolenMod\out\full-release-deploy-20261031-140156`；DLL SHA256：`E61742FA25C1B854DB1240C9662AE382CE14A8F99786F98222A043D2D8EEF6AA`。脚本校验原存档目录 230 个文件、游戏 Managed 及其他 Mod 不变，SettingsImported=False，GameStarted=False；未修改信任/启用记录，未提交或发布工坊更新。
+第二轮已部署正式版，备份 `out\full-release-deploy-20261031-140156`；DLL SHA256：`E61742FA25C1B854DB1240C9662AE382CE14A8F99786F98222A043D2D8EEF6AA`。脚本校验原存档目录 230 个文件、游戏 Managed 及其他 Mod 不变，SettingsImported=False，GameStarted=False；未修改信任/启用记录，未提交或发布工坊更新。
 
 用户验收仍为按原生流程确认新增动态代码权限后，自然接待两三位顾客，比较首次/后续节点卡顿，交易、物品移动和议价后往返恢复，重点确认没有幽灵物品及读取异常。
 

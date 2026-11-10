@@ -6,7 +6,7 @@
 
 用户授权只读分析本机日志。来源：
 
-`C:\Users\Paper\AppData\LocalLow\Questing Goose Studio\Probably Stolen\PSTools.log`
+`%LOCALAPPDATA%Low\Questing Goose Studio\Probably Stolen\PSTools.log`
 
 本次读取时该文件 56343 字节，包含两个场次；最新场次启动于 **2026-11-11 00:25:42**，晚于前两步合并部署的 00:23:53。相应 Player.log 中有本 mod 正常加载记录。
 
@@ -88,7 +88,7 @@ dotnet run -c Release --project tests/CheckpointTests/CheckpointTests.csproj -- 
 
 标准脚本 `scripts/Deploy-FullRelease.ps1` 已执行：
 
-- 目录：`E:\SteamLibrary\steamapps\common\Probably Stolen\Mods\ProbablyStolenTools`
+- 目录：`<GAME_DIR>\Mods\ProbablyStolenTools`
 - 完整备份：`out/full-release-deploy-20261111-010214`
 - DLL SHA256：`0EA677A36ED945EFD4FD89ED02BE24C7D00F9D365013E69676FABD912F9F27E2`
 - 77 个既有存档目录文件、游戏程序集及其他 mod 校验未变。

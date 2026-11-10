@@ -55,10 +55,10 @@
 已执行标准部署脚本：
 
 ```powershell
-.\scripts\Deploy-FullRelease.ps1 -GameDir "E:\SteamLibrary\steamapps\common\Probably Stolen"
+.\scripts\Deploy-FullRelease.ps1 -GameDir "<GAME_DIR>"
 ```
 
-- 部署目录：`E:\SteamLibrary\steamapps\common\Probably Stolen\Mods\ProbablyStolenTools`
+- 部署目录：`<GAME_DIR>\Mods\ProbablyStolenTools`
 - 完整备份：`out/full-release-deploy-20261111-002350`
 - DLL SHA256：`829344887942048E188437C1565692D34BD9CD9313CF31C06FF5B212B812EAC8`
 - 校验 77 个既有存档目录文件未变，游戏程序集与其他 mod 未变，SettingsImported=False。
