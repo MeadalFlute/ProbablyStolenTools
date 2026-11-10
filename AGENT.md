@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**71 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**76 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -44,6 +44,7 @@ src/ProbablyStolenTools/           Mod 本体
   StateGraph.cs                    槽位/对象/引用序列化与差异校验
   SnapshotFieldReader.cs           只读字段读取委托（dynamic-code）
   LiquidComposition.cs             成分、纯度、评级、空瓶/容量判定
+  AnnotationLabels.cs              原版水质/化学/酿酒语言键与回退文本
   WaterQualityPatch.cs / WineAppraisal.cs / TooltipHooks.cs / TooltipNamePatch.cs
   Panel.cs / PanelModel.cs / NativeUi.cs / LogWindow.cs
 tests/CheckpointTests/             快照往返、布局与渲染回归
@@ -126,7 +127,8 @@ docs/workshop/                     创意工坊文本
 - 名称替换靠作用域：`TooltipNameScopePatch`（`GetTooltipBasic`）+ `TooltipNameScopeUsePatch`（`RichTextGenerator.UseItemOnOtherItem`）+ `TooltipNameScopeInsertPatch`（`RichTextGenerator.InsertItemInOtherItem`），作用域用**嵌套深度** `Push/Pop`。
 - 作用域退出走 Harmony **Finalizer**，通过 `__state` 只退出本次已进入的作用域；不要吞掉原生异常，也不要改回仅成功时执行的 Postfix。
 - `GameItem.GetDisplayName` 的后缀只在作用域内改名为成分名 / 空瓶尺寸 / 酒精标签；背包、交易列表、任务文本保持原名。
-- 仅中/英文追加化学、水质与酿酒名称说明；其他语言或本地化未就绪时保留原版名称/提示。本 mod 自有文字回退英文，不修改游戏语言、表或存档。Mono 读取 `SelectedLocaleAsync` 的已完成结果，不同步等待本地化初始化。
+- 水质、化学成分/评级与酿酒品质优先用 `AnnotationLabels` 的原版 `Mechanic` / `Item` 键，**不再按中/英文限制标注**。缺键、空翻译、读取失败时用内置中/英文回退；本 mod 自有预测句、莓果品相、空瓶尺寸与脱水乙醇在其他语言下回退英文，不维护额外翻译表。
+- 本地化未就绪时保留原版名称/提示，不修改游戏语言、表或存档。Mono 只读已完成的 `SelectedLocaleAsync` 和 `GetTableAsync`，仅格式化已加载的条目；不调用同步等待。成分名按当前语言重新查键，不能直接依赖 `Liquid.displayName` 的旧语言静态缓存；注意 microbe/fat/coffee_mush 等 ID 与键名不一致。
 - 双击快速鉴定只选自有 `MAGNIFYING_GLASS`，不自动使用钥匙卡；诊断也不调用其他工具的 targeting 回调。
 
 ---
@@ -193,6 +195,7 @@ docs/workshop/                     创意工坊文本
 5. 液体：水质行、占比/纯度/评级、空瓶、酒精标签、医用酒精、脱水乙醇、三种糊糊不计入纯度。
 6. 工具提示：悬浮说明与拖拽“使用/倒入”提示的名字替换正确；小容器不改名。
 7. 面板：拒绝原因逐条显示、损坏节点悬停原因、日志窗口、设置滚动与改键。
+8. 语言：中/英/俄/日等切换后重开提示和交易行，水质、成分、化学等级、酒品质跟随原版语言；预测句允许回退英文。缺失翻译/加载中的表不阻塞、不抛出到游戏、不显示键名。
 
 ---
 
@@ -202,6 +205,7 @@ docs/workshop/                     创意工坊文本
 - `research/2026-11-10-item-render-rewind.md`：贴图/容器回溯问题与修复记录。
 - `research/2026-11-10-native-save-rewind.md`：只加载不写回的文件回溯。
 - `research/2026-11-10-player-report.md`：报告证据、计时误读、日志/存储/语言修复与分帧暂缓理由。
+- `research/2026-11-10-native-annotation-locales.md`：后续改用原版语言键、资源表验证与英文回退。
 - `research/2026-10-31-snapshot-performance.md`：快照性能与 UI 布局规则。
 - `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
 - `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。

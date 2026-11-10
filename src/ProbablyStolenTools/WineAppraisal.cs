@@ -28,7 +28,7 @@ namespace ProbablyStolenTools
         /// <summary>返回要追加到鉴定摘要里的行；不相关时返回 null。</summary>
         internal static List<string> Lines(GameItem item)
         {
-            if (!InspectionLocale.SupportsAnnotations) return null;
+            if (!InspectionLocale.AnnotationsReady) return null;
             if (Plugin.CfgWineAppraisal != null && !Plugin.CfgWineAppraisal.Value) return null;
             try
             {
@@ -48,7 +48,7 @@ namespace ProbablyStolenTools
         /// <summary>通过原生 ModHook.OnCreateTooltip 追加到悬浮说明：水位警告 / 预期品质 / 违禁品。</summary>
         internal static void AddTooltip(RichTextBuilder builder, GameItem item)
         {
-            if (!InspectionLocale.SupportsAnnotations) return;
+            if (!InspectionLocale.AnnotationsReady) return;
             if (builder == null) return;
             if (Plugin.CfgWineAppraisal != null && !Plugin.CfgWineAppraisal.Value) return;
             try
@@ -63,7 +63,7 @@ namespace ProbablyStolenTools
                         RenderHandler.ColorPalette.None, RenderHandler.ColorPalette.None, RenderHandler.ColorPalette.None);
                 if (IsIllegalBottle(item))
                 {
-                    string tag = LocHelper.GetLocalizedMechanic("mech_contraband_low");
+                    string tag = InspectionLocale.Label(AnnotationLabels.Contraband);
                     if (!string.IsNullOrEmpty(tag))
                         builder.AddLine(tag, true, RenderHandler.ColorPalette.LightRed, true, false, false, false,
                             RenderHandler.ColorPalette.Black, RenderHandler.ColorPalette.Black, RenderHandler.ColorPalette.Black);
@@ -80,7 +80,7 @@ namespace ProbablyStolenTools
                 int waterMl = WaterHelper.GetCurrentCapacityML(item);
                 if (waterMl >= MinWaterMl) return null;
                 // 容器自己会显示水量，这里只提示“不足”。
-                return InspectionLocale.Text("水量不足", "Not enough water");
+                return InspectionLocale.Label(AnnotationLabels.NotEnoughWater);
             }
             catch { return null; }
         }
@@ -117,10 +117,6 @@ namespace ProbablyStolenTools
                 }
                 if (!IsUnfermentedBottle(item)) return null;
 
-                int waterMl = 0;
-                try { waterMl = WaterHelper.GetCurrentCapacityML(item); } catch { }
-                bool lowWater = waterMl < MinWaterMl;
-
                 int waterScore = 0;
                 try { waterScore = WineHelper.GetWaterQualityScore(item); } catch { }
 
@@ -150,9 +146,8 @@ namespace ProbablyStolenTools
                 int bonus = berryCount >= BerryBonusThreshold ? 1 : 0;
                 int total = waterScore + berryScore + bonus + (yeast ? 1 : 0);
                 // 预期品质为负：直接判定酿造失败（水量不足也会走到这里，不再提前返回）。
-                string grade, gradeEn;
-                if (total < 0) { grade = "酿造失败"; gradeEn = "Brewing failed"; }
-                else grade = InspectionLocale.Text(GradeName(total, out gradeEn), gradeEn);
+                string grade = total < 0 ? InspectionLocale.Text("酿造失败", "Brewing failed")
+                    : InspectionLocale.Label(AnnotationLabels.WineGrade(total));
                 return InspectionLocale.Text(
                     $"预计：{grade}（{total} 分｜水{Signed(waterScore)} 莓{Signed(berryScore)}"
                     + (bonus > 0 ? "+1" : "") + (yeast ? " 酵母+1" : "") + "）",
@@ -208,9 +203,7 @@ namespace ProbablyStolenTools
             try { waterMl = WaterHelper.GetCurrentCapacityML(bottle); } catch { }
             if (waterMl < MinWaterMl)
             {
-                lines.Add(InspectionLocale.Text(
-                    $"水量不足 {waterMl}/{MinWaterMl} ml，无法酿酒",
-                    $"Not enough water {waterMl}/{MinWaterMl} ml - cannot brew"));
+                lines.Add(InspectionLocale.Label(AnnotationLabels.NotEnoughWater) + $" ({waterMl}/{MinWaterMl} ml)");
                 return lines;
             }
 
@@ -248,8 +241,10 @@ namespace ProbablyStolenTools
 
             if (illegalYeast)
             {
-                lines.Add(InspectionLocale.Text("[酿造] 阴光莓果酿（违禁品，不计分）",
-                    "[Brew] GloomBerry Wine (contraband, not scored)"));
+                string wine = InspectionLocale.Label(AnnotationLabels.GloomWine);
+                string contraband = InspectionLocale.Label(AnnotationLabels.Contraband);
+                lines.Add(InspectionLocale.Text($"[酿造] {wine}（{contraband}，不计分）",
+                    $"[Brew] {wine} ({contraband}, not scored)"));
                 return lines;
             }
 
@@ -257,9 +252,9 @@ namespace ProbablyStolenTools
             int yeastScore = hasYeast ? 1 : 0;
             int total = waterScore + berryScore + doubleBonus + yeastScore;
 
-            string gradeCn = GradeName(total, out string gradeEn);
-            lines.Add(InspectionLocale.Text($"[酿造] 预计品相：{gradeCn}（{total} 分）",
-                $"[Brew] Expected: {gradeEn} ({total} points)"));
+            string grade = InspectionLocale.Label(AnnotationLabels.WineGrade(total));
+            lines.Add(InspectionLocale.Text($"[酿造] 预计品相：{grade}（{total} 分）",
+                $"[Brew] Expected: {grade} ({total} points)"));
             lines.Add(InspectionLocale.Text("  水质：", "  Water: ") + waterName + " " + Signed(waterScore)
                 + $"（{waterMl} ml）");
             if (berryCount > 0)
@@ -273,36 +268,14 @@ namespace ProbablyStolenTools
             return lines;
         }
 
-        private static string GradeName(int score, out string english)
-        {
-            if (score >= 6) { english = "Master Vintage"; return "琼浆玉液"; }
-            if (score == 5) { english = "Reserve"; return "臻品窖藏"; }
-            if (score >= 3) { english = "Production Wine"; return "量产酒液"; }
-            if (score == 2) { english = "Homebrew"; return "手工自酿"; }
-            if (score == 1) { english = "Rough Barrel Brew"; return "粗糙桶酿"; }
-            english = "Undrinkable";
-            return "难以下咽";
-        }
-
         private static string WaterName(GameItem bottle)
         {
-            int purity = 0;
-            try { purity = WaterHelper.GetWaterPurity(bottle); } catch { }
             try
             {
-                int index = WaterFeatureHelper.GetPurityArrayIndex(purity);
-                switch (index)
-                {
-                    case 0: return InspectionLocale.Text("纯水", "Pure water");
-                    case 1: return InspectionLocale.Text("优质水", "High quality water");
-                    case 2: return InspectionLocale.Text("基础水", "Base water");
-                    case 3: return InspectionLocale.Text("幽灵水", "Ghost water");
-                    case 4: return InspectionLocale.Text("铁锈水", "Rust water");
-                    case 5: return InspectionLocale.Text("沟渠水", "Gutter water");
-                }
+                return InspectionLocale.Label(AnnotationLabels.Water(WaterHelper.GetWaterPurity(bottle)));
             }
             catch { }
-            return InspectionLocale.Text("水质未知", "unknown water");
+            return InspectionLocale.Label(AnnotationLabels.Water(-1));
         }
 
         private static string Signed(int value) => (value >= 0 ? "+" : "") + value;

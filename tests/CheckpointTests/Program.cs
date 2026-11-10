@@ -11,6 +11,7 @@ ManagedSnapshotTests.Run(Test, Check);
 SnapshotOptimizationTests.Run(Test, Check);
 ItemLayoutTests.Run(Test, Check);
 ReportRegressionTests.Run(Test, Check);
+AnnotationLocaleTests.Run(Test, Check);
 
 Test("cycle and shared object keep original identity", () =>
 {

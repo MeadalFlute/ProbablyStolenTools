@@ -20,6 +20,7 @@
     <Compile Include="../../src/ProbablyStolenTools/RollingLog.cs" Link="RollingLog.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CheckpointStorage.cs" Link="CheckpointStorage.cs" />
     <Compile Include="../../src/ProbablyStolenTools/LocalePolicy.cs" Link="LocalePolicy.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/AnnotationLabels.cs" Link="AnnotationLabels.cs" />
     <Reference Include="MelonLoader">
       <HintPath>$(MelonDir)\MelonLoader.dll</HintPath>
     </Reference>

@@ -25,9 +25,9 @@ namespace ProbablyStolenTools
             if (visible == null) return null;
             int claimed = visible.customValue;
             int actual = WaterHelper.GetWaterPurity(item);
-            return new Quality(WaterFeatureHelper.GetWaterDisplayName(claimed),
-                WaterFeatureHelper.GetWaterDisplayName(actual),
-                WaterFeatureHelper.GetPurityArrayIndex(claimed) == WaterFeatureHelper.GetPurityArrayIndex(actual));
+            return new Quality(InspectionLocale.Label(AnnotationLabels.Water(claimed)),
+                InspectionLocale.Label(AnnotationLabels.Water(actual)),
+                AnnotationLabels.WaterTier(claimed) == AnnotationLabels.WaterTier(actual));
         }
 
         /// <summary>水质一栏的文字：空瓶 / 酒精 / 水（保留原水质）/ 最高成分（占比 | 纯度 | 评级）。</summary>
@@ -48,7 +48,7 @@ namespace ProbablyStolenTools
         }
         internal static void UpdateFeatures(NegociationUIManager ui, GameItem item)
         {
-            if (!InspectionLocale.SupportsAnnotations) return;
+            if (!InspectionLocale.AnnotationsReady) return;
             try
             {
 #if MONO
@@ -80,7 +80,7 @@ namespace ProbablyStolenTools
 
         internal static void AddTooltip(RichTextBuilder builder, GameItem item)
         {
-            if (!InspectionLocale.SupportsAnnotations) return;
+            if (!InspectionLocale.AnnotationsReady) return;
             try
             {
                 if (builder == null) return;
@@ -95,7 +95,7 @@ namespace ProbablyStolenTools
                 if (analysis.AlcoholTop)
                 {
                     if (!chemistry) return;
-                    builder.Add(InspectionLocale.Text("水质：", "Water: "));
+                    builder.Add(InspectionLocale.Label(AnnotationLabels.WaterHeading) + ": ");
                     builder.Add(LiquidComposition.AlcoholLabel(analysis)
                         + "（" + InspectionText.Number(analysis.AlcoholShare) + "%）", RenderHandler.ColorPalette.LightBlue);
                     builder.NextLine();
@@ -104,10 +104,10 @@ namespace ProbablyStolenTools
                 if (!analysis.WaterTop)
                 {
                     if (!chemistry || analysis.TopName == null) return;
-                    builder.Add(InspectionLocale.Text("水质：", "Contents: "));
+                    builder.Add(InspectionLocale.Label(AnnotationLabels.WaterHeading) + ": ");
                     builder.Add(InspectionText.Plain(analysis.TopName), RenderHandler.ColorPalette.Orange);
                     builder.Add(" (" + InspectionText.Number(analysis.TopPercent) + "% | "
-                        + InspectionLocale.Text("纯度 ", "Purity ") + InspectionText.Number(analysis.Purity) + "% | ", RenderHandler.ColorPalette.White);
+                        + InspectionLocale.Label(AnnotationLabels.PurityHeading) + " " + InspectionText.Number(analysis.Purity) + "% | ", RenderHandler.ColorPalette.White);
                     builder.Add("<color=" + analysis.GradeColor + ">" + InspectionText.Plain(analysis.Grade) + "</color>",
                         RenderHandler.ColorPalette.None);
                     builder.Add(")", RenderHandler.ColorPalette.White);
@@ -115,7 +115,7 @@ namespace ProbablyStolenTools
                     return;
                 }
                 if (!water || quality == null) return;
-                builder.Add(InspectionLocale.Text("水质：", "Water: "));
+                builder.Add(InspectionLocale.Label(AnnotationLabels.WaterHeading) + ": ");
                 builder.Add(InspectionText.Plain(quality.Declared), quality.Matches
                     ? RenderHandler.ColorPalette.Green : RenderHandler.ColorPalette.Red);
                 if (!quality.Matches)

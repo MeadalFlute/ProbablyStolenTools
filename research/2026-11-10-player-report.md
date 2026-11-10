@@ -1,5 +1,7 @@
 # 玩家报告排查与修复（2026-11-10）
 
+> 后续语言策略已按用户要求改为复用原版语言键，见 `2026-11-10-native-annotation-locales.md`。本文“非中英文停用”的描述是 `41ff21f` 时的历史方案。
+
 ## 证据边界
 
 玩家附件位于 `D:\Program\GameProject\logs\Probably Stolen`，只有：

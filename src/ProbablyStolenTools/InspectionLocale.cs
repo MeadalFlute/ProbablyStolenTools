@@ -14,7 +14,7 @@ namespace ProbablyStolenTools
             string code = Code;
             if (string.IsNullOrEmpty(code) || code == _reportedCode) return;
             _reportedCode = code;
-            EventLog.Write($"[Locale] code={code} annotations={SupportsAnnotations}; native locale/tables are not modified");
+            EventLog.Write($"[Locale] code={code} annotations={AnnotationsReady} nativeKeys=true fallback=en; native locale/tables are not modified");
         }
 
         internal static string Code
@@ -36,26 +36,26 @@ namespace ProbablyStolenTools
             }
         }
 
-        internal static bool SupportsAnnotations => LocalePolicy.SupportsAnnotations(Code);
+        internal static bool AnnotationsReady => !string.IsNullOrWhiteSpace(Code);
         internal static string Text(string chinese, string english) => LocalePolicy.Text(Code, chinese, english);
 
         internal static string UI(string key, string chinese, string english)
+            => Label(new NativeLabel("UI", key, chinese, english));
+
+        internal static string Label(NativeLabel label)
+            => InspectionText.Plain(label.Resolve(Code, Read));
+
+        private static string Read(string tableName, string key)
         {
-            try
-            {
 #if MONO
-                if (string.IsNullOrWhiteSpace(Code)) return Text(chinese, english);
-                var table = LocalizationSettings.StringDatabase.GetTableAsync("UI");
-                if (!table.IsValid() || !table.IsDone || table.Status != AsyncOperationStatus.Succeeded
-                    || table.Result == null || table.Result.GetEntry(key) == null) return Text(chinese, english);
+            var table = LocalizationSettings.StringDatabase.GetTableAsync(tableName);
+            if (!table.IsValid() || !table.IsDone || table.Status != AsyncOperationStatus.Succeeded)
+                return null;
+            // Format only an already-loaded entry. Never synchronously wait for localization.
+            return table.Result?.GetEntry(key)?.GetLocalizedString();
+#else
+            return LocHelper.GetLocalized(tableName, key);
 #endif
-                string value = LocHelper.GetLocalizedUI(key, Array.Empty<Il2CppSystem.Object>());
-                if (!string.IsNullOrWhiteSpace(value) && value != key
-                    && !LocHelper.TryParseMissingTranslation(value, out _, out _))
-                    return InspectionText.Plain(value);
-            }
-            catch { }
-            return Text(chinese, english);
         }
 
         internal static string Verdict(bool passed)

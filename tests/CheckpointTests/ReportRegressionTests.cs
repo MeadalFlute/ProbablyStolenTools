@@ -141,12 +141,11 @@ internal static class ReportRegressionTests
             foreach (string code in new[] { "zh", "zh-CN", "zh-Hans", "ZH_hant" })
             {
                 check(LocalePolicy.Text(code, "cn", "en") == "cn");
-                check(LocalePolicy.SupportsAnnotations(code));
             }
             foreach (string code in new[] { "en", "en-US", "en_GB" })
-                check(LocalePolicy.Text(code, "cn", "en") == "en" && LocalePolicy.SupportsAnnotations(code));
+                check(LocalePolicy.Text(code, "cn", "en") == "en");
             foreach (string code in new[] { null, "", "ru", "de-DE", "fr", "ja", "unknown-zh-text" })
-                check(LocalePolicy.Text(code, "cn", "en") == "en" && !LocalePolicy.SupportsAnnotations(code));
+                check(LocalePolicy.Text(code, "cn", "en") == "en");
         });
     }
 

@@ -64,7 +64,7 @@ namespace ProbablyStolenTools
         [HarmonyPostfix]
         private static void Postfix(GameItem __instance, ref string __result)
         {
-            if (!TooltipNameScope.Active || __instance == null || !InspectionLocale.SupportsAnnotations) return;
+            if (!TooltipNameScope.Active || __instance == null || !InspectionLocale.AnnotationsReady) return;
             if (Plugin.CfgChemistry != null && !Plugin.CfgChemistry.Value) return;
             try
             {
