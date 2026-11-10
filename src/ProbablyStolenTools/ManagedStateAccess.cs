@@ -26,13 +26,21 @@ namespace ProbablyStolenTools
             internal readonly Storage[] Stores;
             internal TypeSchema(List<StateSlot> slots, List<Storage> stores)
             { Slots = slots.ToArray(); Stores = stores.ToArray(); }
+            internal TypeSchema(StateSlot[] slots, Storage[] stores)
+            { Slots = slots; Stores = stores; }
         }
 
+        private const int ArraySchemaLimit = 4096;
+        private const int ArraySchemaSlotLimit = 65536;
         private readonly Dictionary<IntPtr, object> _retained = new();
         private readonly Dictionary<IntPtr, HashSet<string>> _roots = new();
         private readonly Dictionary<IntPtr, Storage[]> _storage = new();
         private readonly Dictionary<Type, TypeSchema> _schemas = new();
         private readonly Dictionary<Type, TypeSchema> _elementSchemas = new();
+        private readonly Dictionary<(Type Type, int Length), TypeSchema> _arraySchemas = new();
+        private int _arraySchemaSlots;
+        private int _arraySchemaHits;
+        private long _arraySlotsReused;
         private readonly Dictionary<Type, bool> _traversable = new();
         private readonly Dictionary<object, byte[]> _values = new();
         private readonly Dictionary<long, object> _savedValues = new();
@@ -56,15 +64,22 @@ namespace ProbablyStolenTools
         private readonly Type _unityObject;
         private readonly string _gameAssembly;
         private readonly bool _fastReads;
+        private readonly bool _reuseArraySchemas;
+        internal string ArraySchemaSummary => $"arraySchemas(cached={_arraySchemas.Count}," +
+            $"hits={_arraySchemaHits},slotsReused={_arraySlotsReused})";
 
         internal ManagedStateAccess(Type unityObject = null, string gameAssembly = "Assembly-CSharp")
             : this(unityObject, gameAssembly, true) { }
 
         internal ManagedStateAccess(Type unityObject, string gameAssembly, bool fastReads)
+            : this(unityObject, gameAssembly, fastReads, true) { }
+
+        internal ManagedStateAccess(Type unityObject, string gameAssembly, bool fastReads, bool reuseArraySchemas)
         {
             _unityObject = unityObject;
             _gameAssembly = gameAssembly;
             _fastReads = fastReads;
+            _reuseArraySchemas = reuseArraySchemas;
         }
 
         internal void AddRoot(IntPtr id, params string[] fields)
@@ -130,6 +145,14 @@ namespace ProbablyStolenTools
                     throw new SnapshotDescriptionLimitException("slot", count, bytes);
                 if (bytes > remainingBytes)
                     throw new SnapshotDescriptionLimitException("byte", count, bytes);
+                var key = (type, array.Length);
+                if (_reuseArraySchemas && _arraySchemas.TryGetValue(key, out var cached))
+                {
+                    _storage[id] = cached.Stores;
+                    _arraySchemaHits++;
+                    _arraySlotsReused += count;
+                    return cached.Slots;
+                }
                 var slots = new StateSlot[count];
                 var stores = new Storage[slots.Length];
                 for (int i = 0; i < array.Length; i++)
@@ -145,6 +168,13 @@ namespace ProbablyStolenTools
                     }
                 }
                 _storage[id] = stores;
+                // Only immutable offsets/paths/readers are shared, never an array or its values.
+                if (_reuseArraySchemas && _arraySchemas.Count < ArraySchemaLimit
+                    && count <= ArraySchemaSlotLimit - _arraySchemaSlots)
+                {
+                    _arraySchemas.Add(key, new TypeSchema(slots, stores));
+                    _arraySchemaSlots += count;
+                }
                 return slots;
             }
             if (value is Delegate action)
@@ -373,6 +403,8 @@ namespace ProbablyStolenTools
         {
             _retained.Clear(); _storage.Clear(); _roots.Clear(); _values.Clear(); _savedValues.Clear();
             _schemas.Clear(); _elementSchemas.Clear(); _traversable.Clear();
+            _arraySchemas.Clear();
+            _arraySchemaSlots = 0; _arraySchemaHits = 0; _arraySlotsReused = 0;
         }
     }
 }

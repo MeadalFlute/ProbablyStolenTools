@@ -1,6 +1,6 @@
 # Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.8.13**（2026-11-10，含待发布的报告修复）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
+> 适用源码：正式版 **0.8.13**（2026-11-11，含待发布的报告修复与分步快照优化）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
 > 旧版本文档（0.2.1–0.6.0、Demo、性能优化过程）已归档到 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
 本文只写当前仍然成立的事实。历史细节看 `research/`，实现细节以源码为准。
@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**85 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**90 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -69,6 +69,7 @@ docs/workshop/                     创意工坊文本
 - 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`，默认 **200000 / 3000000 / 256**。
 - 超限跳过本次捕获，释放半成品并保留旧节点；不使用不完整快照，不自动无限加大上限。面板显示失败、提示去重，日志包含实际计数、各上限及来源路径。
 - Mono 数组通过 `IBudgetedStateDescription` 在逐元素描述分配前检查剩余槽位/逻辑字节预算。提前拒绝时计数是已捕获部分，`array requires ... before expansion` 单独记录整个数组需求；不是实际内存估算。成功快照仍保留全容量，空数组和非法数组规则不变。
+- 同一 Mono 访问器内，数组类型与长度都相同的只读描述可复用；缓存最多 4096 种形状、累计 65536 个描述槽，超过后正常展开，已有缓存仍可命中。每个数组的值/引用/对象身份分别保存，预算按每个数组计，不因复用打折；不跨节点共享。CAPTURE 追加 `arraySchemas(cached=...,hits=...,slotsReused=...)`，仅表示描述复用量，不是减少了业务槽位或节省了等量字节。
 - 捕获仍在同一回调同步完成；**未启用分帧快照**。任何跨帧实现须独立提交，并解决业务图一致性，不能只靠 `timeScale=0`。
 - 捕获后必须跑完整 `Differences()`；差异非空就视为恢复失败，不能再报成功。
 - Mono 标量校验走 `IStateValueComparer`，只比较捕获值，不往节点值表登记新值；float/double 按位比较，保留正负零和 NaN 差别。其他后端仍走原字节比较；差异消息达到上限也必须扫描完整图。
@@ -212,5 +213,6 @@ docs/workshop/                     创意工坊文本
 - `research/2026-10-31-snapshot-performance.md`：快照性能与 UI 布局规则。
 - `research/2026-11-10-snapshot-optimization-step1.md`：第一步标量校验减重、回归与隔离基准。
 - `research/2026-11-11-snapshot-optimization-step2.md`：第二步数组预算提前检查及前两步合并部署记录。
+- `research/2026-11-11-snapshot-optimization-step3.md`：本机最新耗时分布、同形数组描述复用、第三步验证和部署记录。
 - `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
 - `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。

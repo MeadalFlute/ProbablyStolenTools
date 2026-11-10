@@ -640,7 +640,7 @@ namespace ProbablyStolenTools
                 Status = "Checkpoint: " + Name(_active);
                 if (manual) PanelNotice.Show("已建立手动节点 #" + _active.Id);
 #if MONO
-                string readers = " " + SnapshotFieldReader.Summary;
+                string readers = " " + SnapshotFieldReader.Summary + " " + access.ArraySchemaSummary;
 #else
                 string readers = "";
 #endif
