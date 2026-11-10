@@ -27,6 +27,11 @@ namespace ProbablyStolenTools
         void Validate();
     }
 
+    internal interface IStateValueComparer
+    {
+        bool ValueEquals(IntPtr id, StateSlot slot, byte[] captured);
+    }
+
     internal sealed class StateGraph : IDisposable
     {
         private readonly record struct Entry(IntPtr Owner, StateSlot Slot, byte[] Bytes, IntPtr Reference);
@@ -120,11 +125,13 @@ namespace ProbablyStolenTools
         internal IReadOnlyList<string> Differences(int max = 12)
         {
             var result = new List<string>();
+            var comparer = _access as IStateValueComparer;
             _access.Validate();
             foreach (var e in _entries)
             {
                 bool same;
                 if (e.Slot.IsReference) same = _access.ReadReference(e.Owner, e.Slot) == e.Reference;
+                else if (comparer != null) same = comparer.ValueEquals(e.Owner, e.Slot, e.Bytes);
                 else
                 {
                     var value = _access.ReadValue(e.Owner, e.Slot);

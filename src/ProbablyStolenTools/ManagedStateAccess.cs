@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess
+    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer
     {
         private readonly struct Storage
         {
@@ -321,8 +321,22 @@ namespace ProbablyStolenTools
                 _values.Add(key, saved);
                 _savedValues.Add(token, value);
             }
-            // StateGraph treats returned bytes as immutable; reuse equal tokens, including verification reads.
+            // StateGraph treats returned bytes as immutable; equal captured values share a token.
             return saved;
+        }
+
+        public bool ValueEquals(IntPtr id, StateSlot slot, byte[] captured)
+        {
+            object expected = _savedValues[BitConverter.ToInt64(captured, 0)];
+            object actual = Read(id, slot) ?? NullValue;
+            // Match capture's value interning, including distinct signed zero and NaN bit patterns.
+            if (expected is float single)
+                return actual is float otherSingle
+                    && BitConverter.SingleToInt32Bits(single) == BitConverter.SingleToInt32Bits(otherSingle);
+            if (expected is double number)
+                return actual is double otherNumber
+                    && BitConverter.DoubleToInt64Bits(number) == BitConverter.DoubleToInt64Bits(otherNumber);
+            return Equals(expected, actual);
         }
 
         public IntPtr ReadReference(IntPtr id, StateSlot slot) => ManagedObjects.Id(Read(id, slot));

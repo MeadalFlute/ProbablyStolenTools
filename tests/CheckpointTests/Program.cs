@@ -9,6 +9,7 @@ void Check(bool condition) { if (!condition) throw new Exception("Assertion fail
 
 ManagedSnapshotTests.Run(Test, Check);
 SnapshotOptimizationTests.Run(Test, Check);
+SnapshotValueComparisonTests.Run(Test, Check);
 ItemLayoutTests.Run(Test, Check);
 ReportRegressionTests.Run(Test, Check);
 AnnotationLocaleTests.Run(Test, Check);
@@ -515,6 +516,7 @@ Test("inspection checks follow the current item and do not retain previous issue
         && !string.IsNullOrWhiteSpace(c.English) && !string.IsNullOrWhiteSpace(c.LocalizationKey)));
 });
 if (args.Contains("--benchmark")) SnapshotOptimizationTests.Benchmark();
+if (args.Contains("--value-comparison-benchmark")) SnapshotValueComparisonTests.Benchmark();
 if (args.Length > 0 && !args[0].StartsWith("--", StringComparison.Ordinal))
 {
     Test("real ES3 save metadata (read only)", () =>
