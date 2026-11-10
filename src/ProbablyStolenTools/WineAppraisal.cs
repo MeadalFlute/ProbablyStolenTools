@@ -28,6 +28,7 @@ namespace ProbablyStolenTools
         /// <summary>返回要追加到鉴定摘要里的行；不相关时返回 null。</summary>
         internal static List<string> Lines(GameItem item)
         {
+            if (Plugin.CfgWineAppraisal != null && !Plugin.CfgWineAppraisal.Value) return null;
             try
             {
                 if (IsBerry(item)) return BerryLines(item);
@@ -47,6 +48,7 @@ namespace ProbablyStolenTools
         internal static void AddTooltip(RichTextBuilder builder, GameItem item)
         {
             if (builder == null) return;
+            if (Plugin.CfgWineAppraisal != null && !Plugin.CfgWineAppraisal.Value) return;
             try
             {
                 string warning = WaterWarning(item);

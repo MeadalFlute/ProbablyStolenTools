@@ -7,7 +7,7 @@ using MelonLoader;
 using UnityEngine;
 
 #if !MONO
-[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "Probably Stolen Tools", "0.8.12", "Probably Stolen Tools contributors")]
+[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "Probably Stolen Tools", "0.8.13", "Probably Stolen Tools contributors")]
 [assembly: MelonLoader.HarmonyDontPatchAll]
 #endif
 
@@ -21,7 +21,7 @@ namespace ProbablyStolenTools
 #endif
     {
         public const string Guid = "dsh.probablystolen.tools";
-        public const string Version = "0.8.12";
+        public const string Version = "0.8.13";
 
         internal static ModLogger LogSource;
         internal static Plugin Instance;
@@ -37,6 +37,9 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgSkipCustomerDialogue;
         internal static ConfigEntry<bool> CfgDoubleClickInspection;
         internal static ConfigEntry<bool> CfgQuickInspection;
+        internal static ConfigEntry<bool> CfgWaterQuality;
+        internal static ConfigEntry<bool> CfgChemistry;
+        internal static ConfigEntry<bool> CfgWineAppraisal;
         internal static ConfigEntry<float> CfgInspectionX, CfgInspectionY;
 
         // ---- rewind / checkpoints ----
@@ -219,6 +222,14 @@ namespace ProbablyStolenTools
             CfgInspectionY = Config.Bind("Inspection", "SummaryPositionY", 1f,
                 "Quick inspection vertical position within its available travel, from 0 (top) to 1 (bottom).");
             CfgQuickInspection.SettingChanged += (_, _) => QuickInspectionPatch.SettingsChanged();
+            CfgWaterQuality = Config.Bind("WaterQuality", "Enabled", true,
+                "Show water-quality names and mismatch highlights on liquid containers.");
+            CfgWaterQuality.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
+            CfgChemistry = Config.Bind("Chemistry", "Enabled", true,
+                "Show the composition / share / purity / grade row and rename liquid containers by their main component.");
+            CfgChemistry.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
+            CfgWineAppraisal = Config.Bind("Wine", "Enabled", true,
+                "Show glowberry condition and unfermented-bottle quality annotations.");
             CfgAutoAppraisal.SettingChanged += (_, _) => AppraisalPatch.Reset();
             CfgAutoSubmit.SettingChanged += (_, _) => AppraisalPatch.Reset();
             CfgAlwaysOverwrite.SettingChanged += (_, _) => AppraisalPatch.Reset();

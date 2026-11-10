@@ -276,6 +276,9 @@ namespace ProbablyStolenTools
             NewSetting("跳过顾客对话", Plugin.CfgSkipCustomerDialogue);
             NewSetting(InspectionLocale.Text("双击物品快速鉴定", "Double-click to inspect"), Plugin.CfgDoubleClickInspection);
             NewSetting(InspectionLocale.Text("显示快速鉴定摘要", "Show quick inspection summary"), Plugin.CfgQuickInspection);
+            NewSetting(InspectionLocale.Text("水质标注", "Water quality labels"), Plugin.CfgWaterQuality);
+            NewSetting(InspectionLocale.Text("化学辅助", "Chemistry assist"), Plugin.CfgChemistry);
+            NewSetting(InspectionLocale.Text("酿酒标注", "Wine annotations"), Plugin.CfgWineAppraisal);
             NewSetting(InspectionLocale.Text("整日回退需确认", "Confirm whole-day rewind"), Plugin.CfgConfirmWholeDay);
             _keysHeading = Text("keys-heading", _settingsContent, 13, new Color(0.55f, 0.85f, 1f));
             _keysHeading.text = InspectionLocale.Text("快捷键", "Hotkeys");

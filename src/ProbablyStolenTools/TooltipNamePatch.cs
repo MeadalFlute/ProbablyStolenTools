@@ -65,6 +65,7 @@ namespace ProbablyStolenTools
         private static void Postfix(GameItem __instance, ref string __result)
         {
             if (!TooltipNameScope.Active || __instance == null) return;
+            if (Plugin.CfgChemistry != null && !Plugin.CfgChemistry.Value) return;
             try
             {
                 if (LiquidComposition.NoRename(__instance)) return;
