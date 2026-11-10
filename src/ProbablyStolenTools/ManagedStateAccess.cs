@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IBudgetedStateDescription
+    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription
     {
         private readonly struct Storage
         {
@@ -383,6 +383,12 @@ namespace ProbablyStolenTools
                 return actual is double otherNumber
                     && BitConverter.DoubleToInt64Bits(number) == BitConverter.DoubleToInt64Bits(otherNumber);
             return Equals(expected, actual);
+        }
+
+        public int ProbeValue(IntPtr id, StateSlot slot)
+        {
+            Read(id, slot);
+            return 8; // Same logical token width as ReadValue, without retaining a value/token.
         }
 
         public IntPtr ReadReference(IntPtr id, StateSlot slot) => ManagedObjects.Id(Read(id, slot));

@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**97 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**103 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -81,6 +81,8 @@ docs/workshop/                     创意工坊文本
 ## 4. 恢复流程（当前实现）
 
 顺序不能乱：
+
+写入前：验证目标视觉状态；当前业务图用 `StateGraph.Census` 完整普查（同根、同引用覆盖、逐字段读取、同预算），只为寻找新增物品/窗口，不保存 Entry 或 Mono 值令牌。目标 `Differences()` 完整读取预检仍保留。普查结果禁止 Restore/Differences，失败不写入。
 
 1. 还原业务图（`StateGraph.Restore`，必要时第二次还原，因为原生 Validate/UI 刷新可能改动业务图）。
 2. `foreach (var view in target.Visuals) view.Restore();`

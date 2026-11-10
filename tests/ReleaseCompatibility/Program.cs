@@ -261,6 +261,32 @@ try
     int compiledReaders = readers.Values.Cast<object>().Count(reader =>
         (bool)reader.GetType().GetProperty("Compiled", dataFlags).GetValue(reader));
     if (compiledReaders == 0) throw new Exception("Actual game field readers were not exercised.");
+    var censusAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+        .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+    foreach (var root in new[] { player, station, itemArray })
+        accessType.GetMethod("AddRoot", dataFlags).Invoke(censusAccess, new object[] { Identity(root), Array.Empty<string>() });
+    var census = graphType.GetMethod("Census", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { censusAccess, new[] { Identity(player), Identity(station), Identity(itemArray) },
+            50000, 1000000, 64L * 1024 * 1024 });
+    try
+    {
+        foreach (string name in new[] { "ObjectCount", "SlotCount", "ByteCount" })
+            if (!Equals(graphType.GetProperty(name, dataFlags).GetValue(graph),
+                graphType.GetProperty(name, dataFlags).GetValue(census)))
+                throw new Exception("Actual game census differs in " + name);
+        var capturedIds = ((IEnumerable<IntPtr>)graphType.GetProperty("Objects", dataFlags).GetValue(graph)).ToHashSet();
+        var censusIds = (IEnumerable<IntPtr>)graphType.GetProperty("Objects", dataFlags).GetValue(census);
+        if (!capturedIds.SetEquals(censusIds)) throw new Exception("Actual game census changed object coverage.");
+        foreach (var id in capturedIds)
+            if (!Equals(graphType.GetMethod("SourceOf", dataFlags).Invoke(graph, new object[] { id }),
+                graphType.GetMethod("SourceOf", dataFlags).Invoke(census, new object[] { id })))
+                throw new Exception("Actual game census changed source paths.");
+        if (((System.Collections.ICollection)graphType.GetField("_entries", dataFlags).GetValue(census)).Count != 0
+            || ((System.Collections.IDictionary)accessType.GetField("_savedValues", dataFlags).GetValue(censusAccess)).Count != 0)
+            throw new Exception("Actual game census retained unused values.");
+        Console.WriteLine("PASS real game census matches capture coverage, source paths and budgets without value tokens");
+    }
+    finally { ((IDisposable)census).Dispose(); }
     foreach (var element in items)
         if (!(bool)graphType.GetMethod("Contains", dataFlags).Invoke(graph, new object[] { Identity(element) }))
             throw new Exception("An item beyond the first array element was not captured.");

@@ -32,6 +32,11 @@ namespace ProbablyStolenTools
         bool ValueEquals(IntPtr id, StateSlot slot, byte[] captured);
     }
 
+    internal interface IStateValueProbe
+    {
+        int ProbeValue(IntPtr id, StateSlot slot);
+    }
+
     internal interface IBudgetedStateDescription
     {
         IReadOnlyList<StateSlot> Describe(IntPtr id, int remainingSlots, long remainingBytes);
@@ -50,26 +55,38 @@ namespace ProbablyStolenTools
     {
         private readonly record struct Entry(IntPtr Owner, StateSlot Slot, byte[] Bytes, IntPtr Reference);
         private readonly IStateAccess _access;
+        private readonly bool _captureValues;
         private readonly List<Entry> _entries = new();
         private readonly HashSet<IntPtr> _objects = new();
         private readonly Dictionary<IntPtr, (IntPtr Parent, string Field)> _sources = new();
         private bool _disposed;
         internal int ObjectCount => _objects.Count;
-        internal int SlotCount => _entries.Count;
+        internal int SlotCount { get; private set; }
         internal long ByteCount { get; private set; }
         internal IEnumerable<IntPtr> Objects => _objects;
         internal bool Contains(IntPtr id) => _objects.Contains(id);
 
-        private StateGraph(IStateAccess access) { _access = access; }
+        private StateGraph(IStateAccess access, bool captureValues)
+        { _access = access; _captureValues = captureValues; }
 
         internal static StateGraph Capture(IStateAccess access, IEnumerable<IntPtr> roots,
             int maxObjects = 200000, int maxSlots = 3000000, long maxBytes = 256L * 1024 * 1024)
+            => Walk(access, roots, maxObjects, maxSlots, maxBytes, true);
+
+        // A census still reads every field, but is never a restorable checkpoint.
+        internal static StateGraph Census(IStateAccess access, IEnumerable<IntPtr> roots,
+            int maxObjects = 200000, int maxSlots = 3000000, long maxBytes = 256L * 1024 * 1024)
+            => Walk(access, roots, maxObjects, maxSlots, maxBytes, false);
+
+        private static StateGraph Walk(IStateAccess access, IEnumerable<IntPtr> roots,
+            int maxObjects, int maxSlots, long maxBytes, bool captureValues)
         {
-            var graph = new StateGraph(access);
+            var graph = new StateGraph(access, captureValues);
             try
             {
                 var pending = new Queue<IntPtr>();
                 var budgeted = access as IBudgetedStateDescription;
+                var probe = captureValues ? null : access as IStateValueProbe;
                 void Discover(IntPtr id, IntPtr parent, string field)
                 {
                     if (id == IntPtr.Zero || graph._sources.ContainsKey(id)) return;
@@ -104,22 +121,29 @@ namespace ProbablyStolenTools
                     }
                     foreach (var slot in description)
                     {
-                        if (graph._entries.Count >= maxSlots)
+                        if (graph.SlotCount >= maxSlots)
                             throw new SnapshotLimitException("slot", graph.ObjectCount, graph.SlotCount, graph.ByteCount,
                                 maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id) + " -> " + slot.Name,
                                 graph._sources.Count);
                         if (slot.IsReference)
                         {
                             var value = access.ReadReference(id, slot);
-                            graph._entries.Add(new Entry(id, slot, null, value));
+                            if (captureValues) graph._entries.Add(new Entry(id, slot, null, value));
+                            graph.SlotCount++;
                             graph.ByteCount += IntPtr.Size;
                             Discover(value, id, slot.Name);
                         }
                         else
                         {
-                            var value = access.ReadValue(id, slot);
-                            graph._entries.Add(new Entry(id, slot, value, IntPtr.Zero));
-                            graph.ByteCount += value.Length;
+                            if (probe != null)
+                                graph.ByteCount += probe.ProbeValue(id, slot);
+                            else
+                            {
+                                var value = access.ReadValue(id, slot);
+                                if (captureValues) graph._entries.Add(new Entry(id, slot, value, IntPtr.Zero));
+                                graph.ByteCount += value.Length;
+                            }
+                            graph.SlotCount++;
                         }
                         if (graph.ByteCount > maxBytes)
                             throw new SnapshotLimitException("byte", graph.ObjectCount, graph.SlotCount, graph.ByteCount,
@@ -149,7 +173,7 @@ namespace ProbablyStolenTools
 
         internal void Restore()
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(StateGraph));
+            RequireCheckpoint();
             _access.Validate();
             // All original objects/arrays are retained. Restore their contents first and links second.
             foreach (var e in _entries)
@@ -160,6 +184,7 @@ namespace ProbablyStolenTools
 
         internal IReadOnlyList<string> Differences(int max = 12)
         {
+            RequireCheckpoint();
             var result = new List<string>();
             var comparer = _access as IStateValueComparer;
             _access.Validate();
@@ -178,11 +203,18 @@ namespace ProbablyStolenTools
             return result;
         }
 
+        private void RequireCheckpoint()
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(StateGraph));
+            if (!_captureValues) throw new InvalidOperationException("An object census is not a checkpoint.");
+        }
+
         public void Dispose()
         {
             if (_disposed) return;
             _disposed = true;
             _entries.Clear();
+            SlotCount = 0;
             _objects.Clear();
             _sources.Clear();
             _access.Dispose();

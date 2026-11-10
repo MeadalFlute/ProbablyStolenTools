@@ -775,7 +775,7 @@ namespace ProbablyStolenTools
                 target.Customer.Validate();
                 target.Shop.Validate();
                 var access = Access(store, out var roots);
-                current = StateGraph.Capture(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
+                current = StateGraph.Census(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
                 target.Graph.Differences();
                 TraceBargain("BEFORE RESTORE");
                 var newItems = new List<GameItemElement>();
