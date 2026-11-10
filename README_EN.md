@@ -1,8 +1,8 @@
-# Probably Stolen Tools
+﻿# Probably Stolen Tools
 
 English | [中文](README.md)
 
-A helper mod for **Probably Stolen**, targeting the full release **0.8.6**.
+A helper mod for **Probably Stolen**, targeting the full release **0.8.12**.
 The full release runs Unity 2021.3.45f2 / Mono / x64 (game 0.46D) and provides its own **IMod / Harmony** loader — MelonLoader and BepInEx are not required.
 
 ---
@@ -83,9 +83,15 @@ All keys are rebindable: `F8` → Settings → Hotkeys. Click a row and press th
 
 ---
 
-## Installation
+## Download and installation
 
-1. Put the `ProbablyStolenTools` folder into `<game folder>\Mods\` (or subscribe on the Workshop).
+**Recommended: Steam Workshop** — [Probably Stolen Tools](https://steamcommunity.com/sharedfiles/filedetails/?id=3829188627)
+
+Click Subscribe on the Workshop page, then enable the mod in the game's Mods menu. Steam keeps it up to date.
+
+Manual installation:
+
+1. Download the `ProbablyStolenTools` folder from the releases and put it into `<game folder>\Mods\`.
 2. Enable **Probably Stolen Tools** in the game's Mods menu and restart when prompted.
 3. Load a save, enter the shop and press `F8`.
 
@@ -150,14 +156,14 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-Current baseline: 0 warnings / 0 errors; `CheckpointTests` passes **60** tests; the release build passes **55** Harmony targets, **68** fields and the official mod scanner. Offline tests are not a substitute for in-game verification.
+Current baseline: 0 warnings / 0 errors; `CheckpointTests` passes **62** tests; the release build passes **55** Harmony targets, **73** fields and the official mod scanner. Offline tests are not a substitute for in-game verification.
 
 ---
 
 ## Versioning
 
 - The single source of truth is `ModVersion` in `release/manifest.xml`.
-- Rule: **major and minor versions are manual; the patch version increments before every `git push`** (for example 0.8.6 → 0.8.7).
+- Rule: **major and minor versions are manual; the patch version increments before every `git push`** (for example 0.8.12 → 0.8.13).
 - README-only changes do not bump the version.
 
 ---

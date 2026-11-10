@@ -1,8 +1,8 @@
-# Probably Stolen Tools
+﻿# Probably Stolen Tools
 
 [English](README_EN.md) | 中文
 
-《深空当铺 / Probably Stolen》的自研辅助 Mod，适配正式版 **0.8.6**。
+《深空当铺 / Probably Stolen》的自研辅助 Mod，适配正式版 **0.8.12**。
 正式版为 Unity 2021.3.45f2 / Mono / x64（游戏 0.46D），使用游戏自带的 **IMod / Harmony** 加载器，不需要 MelonLoader 或 BepInEx。
 
 ---
@@ -83,9 +83,15 @@
 
 ---
 
-## 安装
+## 下载与安装
 
-1. 把 `ProbablyStolenTools` 文件夹放进 `<游戏目录>\Mods\`（工坊版本直接订阅）。
+**推荐：Steam 创意工坊** —— [Probably Stolen Tools](https://steamcommunity.com/sharedfiles/filedetails/?id=3829188627)
+
+在 Steam 创意工坊页面点击「订阅」，启动游戏后在「模组」菜单启用即可，更新由 Steam 自动完成。
+
+手动安装：
+
+1. 下载 release 中的 `ProbablyStolenTools` 文件夹，放进 `<游戏目录>\Mods\`。
 2. 在游戏「模组」菜单启用 **Probably Stolen Tools**，按提示重启。
 3. 读档进店后按 `F8` 打开面板。
 
@@ -150,14 +156,14 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：编译 0 警告 / 0 错误；`CheckpointTests` **60 项**通过；正式版 **55 个** Harmony 入口、**68 个**字段与官方 Mod 扫描器通过。离线测试不能代替游戏内验收。
+当前基线：编译 0 警告 / 0 错误；`CheckpointTests` **62 项**通过；正式版 **55 个** Harmony 入口、**73 个**字段与官方 Mod 扫描器通过。离线测试不能代替游戏内验收。
 
 ---
 
 ## 版本管理
 
 - **唯一真源是 `release/manifest.xml` 的 `ModVersion`**。
-- 版本规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**（例如 0.8.6 → 0.8.7）。
+- 版本规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**（例如 0.8.12 → 0.8.13）。
 - README 文案更新不推进版本号。
 
 ---
