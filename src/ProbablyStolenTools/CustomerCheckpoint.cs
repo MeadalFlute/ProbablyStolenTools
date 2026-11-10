@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -580,6 +580,7 @@ namespace ProbablyStolenTools
                     History.Remove(ClosedNode);
                     ClosedNode = candidate;
                 }
+                LogItemGeometry(candidate, "capture");
                 History.Add(candidate, commitBranch: !closed);
                 if (ClosedNode?.Graph == null) ClosedNode = null;
                 _active = candidate;
@@ -795,15 +796,18 @@ namespace ProbablyStolenTools
                 }
                 if (hiddenFakes > 0)
                     EventLog.Write($"[QuickSL/Customer] hid {hiddenFakes} stale fake item node(s) after restore");
+                LogItemGeometry(target, "restore-pre");
                 foreach (var item in target.RenderedItems.Values)
                 {
                     GameFields.Set(item, "validateLock", false);
-                    item.Validate();
-                    // Validate only reloads the image when spriteChanged is true. That flag
-                    // is normally false in a settled snapshot, even if the live image changed.
+                    // modifiedShape / modifiedXOrigin / modifiedYOrigin 是派生字段：
+                    // 从还原后的标签重新计算一次，避免贴图锚点与格子形状不一致。
+                    try { item.SyncModifiedState(); } catch { }
                     item.ValidatePartialSprite();
+                    item.Validate();
                 }
                 try { OverlayHandler.current?.UpdateInventoryStateUIImmediately(); } catch { }
+                LogItemGeometry(target, "restore-post");
                 var inspect = InspectionUIManager.Instance;
                 if (inspect.panel != null) inspect.panel.SetActive(false);
                 if (inspect.appraisalPanel != null) inspect.appraisalPanel.SetActive(false);
@@ -921,6 +925,41 @@ namespace ProbablyStolenTools
             }
             catch { return 0; }
         }
+        /// <summary>诊断：记录物品形状与视图锚点，用于定位恢复后的贴图错位。</summary>
+        private static void LogItemGeometry(Snapshot snapshot, string phase)
+        {
+            if (snapshot == null) return;
+            int logged = 0;
+            try
+            {
+                foreach (var item in snapshot.RenderedItems.Values)
+                {
+                    if (logged >= 8) break;
+                    try
+                    {
+                        if (item == null || item.IsDestroyed()) continue;
+                        var shape = item.modifiedShape;
+                        string shapeText = shape == null ? "null"
+                            : $"({shape.minX},{shape.minY} {shape.width}x{shape.height} rot={shape.orientation} flip={shape.flipped})";
+                        int xo = GameFields.Get<int>(item, "modifiedXOrigin");
+                        int yo = GameFields.Get<int>(item, "modifiedYOrigin");
+                        var handler = item.handler?.rectTransform;
+                        var middle = item.middle?.rectTransform;
+                        var back = item.background?.rectTransform;
+                        string parent = handler != null && handler.parent != null ? handler.parent.name : "-";
+                        string inv = item.parentInventory == null ? "null" : item.parentInventory.GetType().Name;
+                        EventLog.Write($"[QuickSL/Geom] {phase} id={item.identifier} shape={shapeText} origin=({xo},{yo}) " +
+                            $"handler={Fmt(handler)} middle={Fmt(middle)} bg={Fmt(back)} parent={parent} inv={inv}");
+                        logged++;
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
+        private static string Fmt(RectTransform rect)
+            => rect == null ? "null" : $"{rect.anchoredPosition.x:0.#}/{rect.anchoredPosition.y:0.#} {rect.sizeDelta.x:0.#}x{rect.sizeDelta.y:0.#}";
         private static int CounterCount()
         {
             try
