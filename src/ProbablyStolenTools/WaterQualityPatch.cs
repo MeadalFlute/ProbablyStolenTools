@@ -48,6 +48,7 @@ namespace ProbablyStolenTools
         }
         internal static void UpdateFeatures(NegociationUIManager ui, GameItem item)
         {
+            if (!InspectionLocale.SupportsAnnotations) return;
             try
             {
 #if MONO
@@ -79,6 +80,7 @@ namespace ProbablyStolenTools
 
         internal static void AddTooltip(RichTextBuilder builder, GameItem item)
         {
+            if (!InspectionLocale.SupportsAnnotations) return;
             try
             {
                 if (builder == null) return;
@@ -93,7 +95,7 @@ namespace ProbablyStolenTools
                 if (analysis.AlcoholTop)
                 {
                     if (!chemistry) return;
-                    builder.Add("水质：");
+                    builder.Add(InspectionLocale.Text("水质：", "Water: "));
                     builder.Add(LiquidComposition.AlcoholLabel(analysis)
                         + "（" + InspectionText.Number(analysis.AlcoholShare) + "%）", RenderHandler.ColorPalette.LightBlue);
                     builder.NextLine();
@@ -102,17 +104,18 @@ namespace ProbablyStolenTools
                 if (!analysis.WaterTop)
                 {
                     if (!chemistry || analysis.TopName == null) return;
-                    builder.Add("水质：");
+                    builder.Add(InspectionLocale.Text("水质：", "Contents: "));
                     builder.Add(InspectionText.Plain(analysis.TopName), RenderHandler.ColorPalette.Orange);
-                    builder.Add("（" + InspectionText.Number(analysis.TopPercent) + "% | 纯度 " + InspectionText.Number(analysis.Purity) + "% | ", RenderHandler.ColorPalette.White);
+                    builder.Add(" (" + InspectionText.Number(analysis.TopPercent) + "% | "
+                        + InspectionLocale.Text("纯度 ", "Purity ") + InspectionText.Number(analysis.Purity) + "% | ", RenderHandler.ColorPalette.White);
                     builder.Add("<color=" + analysis.GradeColor + ">" + InspectionText.Plain(analysis.Grade) + "</color>",
                         RenderHandler.ColorPalette.None);
-                    builder.Add("）", RenderHandler.ColorPalette.White);
+                    builder.Add(")", RenderHandler.ColorPalette.White);
                     builder.NextLine();
                     return;
                 }
                 if (!water || quality == null) return;
-                builder.Add("水质：");
+                builder.Add(InspectionLocale.Text("水质：", "Water: "));
                 builder.Add(InspectionText.Plain(quality.Declared), quality.Matches
                     ? RenderHandler.ColorPalette.Green : RenderHandler.ColorPalette.Red);
                 if (!quality.Matches)

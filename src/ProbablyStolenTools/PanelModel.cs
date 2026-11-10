@@ -27,7 +27,8 @@ namespace ProbablyStolenTools
         internal float HotkeySectionY => Padding + SectionHeight + ToggleCount * RowHeight + Gap;
         internal float ResetY => HotkeySectionY + SectionHeight + KeyCount * RowHeight + Gap;
         internal float LogY => ResetY + RowHeight + Gap;
-        internal float ContentHeight => LogY + RowHeight + Padding;
+        internal float StorageY => LogY + RowHeight + Gap;
+        internal float ContentHeight => StorageY + RowHeight * 2 + Padding;
         internal PanelBounds Toggle(int index)
             => new(Padding, Padding + SectionHeight + index * RowHeight, RowWidth, RowHeight - 2);
         internal PanelBounds Key(int index)

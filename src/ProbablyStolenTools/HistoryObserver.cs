@@ -28,7 +28,7 @@ namespace ProbablyStolenTools
             {
                 _seq++;
                 string line = $"{DateTime.Now:HH:mm:ss.fff} #{_seq} [{kind}] {detail}";
-                File.AppendAllText(LogPath, line + Environment.NewLine);
+                RollingLog.Append(LogPath, line);
             }
             catch { }
 
@@ -46,29 +46,26 @@ namespace ProbablyStolenTools
         private static int _windowCount;
         private static int _dropped;
         private const int MaxPerSecond = 120;
-        private const long MaxFileBytes = 8L * 1024 * 1024;
 
         private static bool AllowNow()
         {
-            int sec = DateTime.Now.Second;
-            if (sec != _windowSecond) { _windowSecond = sec; _windowCount = 0; }
+            int sec = unchecked((int)(DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond));
+            if (sec != _windowSecond)
+            {
+                if (_dropped > 0)
+                {
+                    try { RollingLog.Append(LogPath, $"{DateTime.Now:HH:mm:ss.fff} [LOG:RATE-LIMIT] suppressed {_dropped} records"); }
+                    catch { }
+                    _dropped = 0;
+                }
+                _windowSecond = sec; _windowCount = 0;
+            }
 
             if (++_windowCount > MaxPerSecond)
             {
-                if (_dropped++ % 1000 == 0)
-                {
-                    try { File.AppendAllText(LogPath, $"{DateTime.Now:HH:mm:ss.fff} [LOG:RATE-LIMIT] suppressed {_dropped} records{Environment.NewLine}"); }
-                    catch { }
-                }
+                _dropped++;
                 return false;
             }
-
-            try
-            {
-                var fi = new FileInfo(LogPath);
-                if (fi.Exists && fi.Length > MaxFileBytes) return false;
-            }
-            catch { }
 
             return true;
         }
@@ -231,7 +228,8 @@ namespace ProbablyStolenTools
 
             try
             {
-                File.AppendAllText(HistoryObserver.LogPath, summary + Environment.NewLine);
+                if (Plugin.CfgHistory?.Value != true) return;
+                RollingLog.Append(HistoryObserver.LogPath, summary);
                 Plugin.LogSource.LogInfo($"[Hist] {summary}");
             }
             catch { }

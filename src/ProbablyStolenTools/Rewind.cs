@@ -32,6 +32,11 @@ namespace ProbablyStolenTools
         private static IntPtr _captureStore;
         private static int _captureDay = -1;
         private static float _nextCapture;
+        private static float _nextStorageCheck;
+        private static string _lastStorageError;
+        private static long _rejectedFileBytes;
+        internal static CheckpointDiskUsage DiskUsage { get; private set; }
+        internal static long MaxDiskBytes => (long)Math.Clamp(Plugin.CfgMaxDiskMb?.Value ?? 256, 16, 16384) * 1024 * 1024;
         internal static void Saved() { _captureDay = -1; _nextCapture = Time.unscaledTime + 1f; }
 
         /// <summary>
@@ -55,6 +60,11 @@ namespace ProbablyStolenTools
             _nextCapture = Time.unscaledTime + 2f;
             var store = Plugin.Store();
             if (store == null || MainMenuUIController.Instance != null || StoreUIManager.Instance == null) return;
+            if (Time.unscaledTime >= _nextStorageCheck)
+            {
+                _nextStorageCheck = Time.unscaledTime + 60f;
+                MaintainStorage();
+            }
             int day = StoreStation.GetDayCounter();
             if (_captureStore == Id(store) && _captureDay == day) return;
             if (Capture("开业前", true))
@@ -65,6 +75,28 @@ namespace ProbablyStolenTools
         }
 
         internal static string Root => Path.Combine(Application.persistentDataPath, "PSTools_Checkpoints");
+
+        private static void MaintainStorage(string newest = null)
+        {
+            try
+            {
+                DiskUsage = CheckpointStorage.Prune(Root, Math.Clamp(Plugin.CfgMaxPoints.Value, 1, 1000),
+                    MaxDiskBytes, new[] { newest, PendingPoint?.Path });
+                Points.RemoveAll(point => !File.Exists(point.Path));
+                if (DiskUsage.Deleted > 0)
+                    EventLog.Write($"[Rewind] storage cleaned deleted={DiskUsage.Deleted} files={DiskUsage.Files} " +
+                        $"bytes={DiskUsage.Bytes}/{MaxDiskBytes}");
+                if (DiskUsage.Error != null && DiskUsage.Error != _lastStorageError)
+                    EventLog.Write("[Rewind] storage cleanup failed: " + DiskUsage.Error);
+                _lastStorageError = DiskUsage.Error;
+            }
+            catch (Exception e)
+            {
+                DiskUsage = DiskUsage with { Error = e.Message };
+                if (_lastStorageError != e.Message) EventLog.Write("[Rewind] storage cleanup failed: " + e.Message);
+                _lastStorageError = e.Message;
+            }
+        }
 
         // ---------- 槽位文件定位 ----------
 
@@ -123,6 +155,17 @@ namespace ProbablyStolenTools
                 if (metadata.Day != StoreStation.GetDayCounter() || metadata.State != 2 || metadata.Slot != slot
                     || string.IsNullOrEmpty(metadata.RunId) || metadata.RunId != Plugin.Store().runID)
                     return false;
+                if (bytes.LongLength > MaxDiskBytes)
+                {
+                    if (_rejectedFileBytes != bytes.LongLength)
+                    {
+                        EventLog.Write($"[Rewind] file checkpoint failed: fileBytes={bytes.LongLength} exceeds disk budget={MaxDiskBytes}; existing checkpoints retained");
+                        PanelNotice.Show(InspectionLocale.Text("存档节点超过磁盘容量上限，已跳过", "File checkpoint exceeds the disk budget; skipped"), true);
+                    }
+                    _rejectedFileBytes = bytes.LongLength;
+                    return false;
+                }
+                _rejectedFileBytes = 0;
                 System.IO.Directory.CreateDirectory(Root);
                 string safe = Sanitize(label);
                 string dst = Path.Combine(Root, $"{DateTime.Now:yyyyMMdd_HHmmss_fffffff}_{safe}.es3");
@@ -143,13 +186,7 @@ namespace ProbablyStolenTools
                 };
                 Points.Add(p);
 
-                int max = Math.Max(1, Plugin.CfgMaxPoints.Value);
-                while (Points.Count > max)
-                {
-                    var old = Points[0];
-                    Points.RemoveAt(0);
-                    try { if (File.Exists(old.Path)) File.Delete(old.Path); } catch { }
-                }
+                MaintainStorage(dst);
 
                 Plugin.LogSource.LogInfo($"[Rewind] checkpoint '{label}' saved ({Points.Count} total, cash={p.Cash}).");
                 return true;
@@ -387,6 +424,7 @@ namespace ProbablyStolenTools
                 const string stageName = "pstools_restore.es3";
                 try { File.Copy(p.Path, Path.Combine(Application.persistentDataPath, stageName), true); }
                 catch (Exception e) { EventLog.Write("[Rewind] stage copy failed: " + e.Message); return; }
+                try { CheckpointStorage.Touch(Root, p.Path); } catch { }
                 PendingLoadFile = stageName;
 
                 // 给当前状态留一份备份（只复制，不改动原存档）
@@ -564,15 +602,30 @@ namespace ProbablyStolenTools
     {
         internal static string Path => System.IO.Path.Combine(Application.persistentDataPath, "PSTools.log");
 
+        internal static void Debug(string msg)
+        {
+            if (Plugin.CfgVerboseLog?.Value == true) Write(msg);
+        }
+
         internal static void Write(string msg)
         {
             string line = WithBrand(msg);
+            bool error = line.IndexOf("FAILED", StringComparison.OrdinalIgnoreCase) >= 0
+                || line.IndexOf("failed:", StringComparison.OrdinalIgnoreCase) >= 0;
+            string record = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {line}";
             try
             {
-                System.IO.File.AppendAllText(Path, $"[{DateTime.Now:HH:mm:ss}] {line}{Environment.NewLine}");
+                RollingLog.Append(Path, record);
             }
             catch { }
-            Plugin.LogSource.LogInfo(line);
+            if (error)
+            {
+                try { RollingLog.Append(System.IO.Path.Combine(Application.persistentDataPath,
+                    "PSTools_errors.log"), record, 1024 * 1024, 2); }
+                catch { }
+            }
+            if (error) Plugin.LogSource?.LogError(line);
+            else Plugin.LogSource?.LogInfo(line);
         }
 
         /// <summary>

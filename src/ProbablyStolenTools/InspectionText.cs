@@ -29,7 +29,7 @@ namespace ProbablyStolenTools
 
         /// <summary>水质行里的成分摘要：占比 | 纯度 | 评级。</summary>
         internal static string Component(string name, double percent, double purity, string grade, string gradeColor)
-            => $"<color={ComponentColor}>{Plain(name)}</color>（{Number(percent)}% | 纯度 {Number(purity)}% | <color={gradeColor}>{Plain(grade)}</color>）";
+            => $"<color={ComponentColor}>{Plain(name)}</color> ({Number(percent)}% | {InspectionLocale.Text("纯度", "Purity")} {Number(purity)}% | <color={gradeColor}>{Plain(grade)}</color>)";
 
         /// <summary>最多两位小数、去掉末尾 0：99.63 / 100 / 0.17。</summary>
         internal static string Number(double value)

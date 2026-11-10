@@ -45,6 +45,7 @@ namespace ProbablyStolenTools
         // ---- rewind / checkpoints ----
         internal static ConfigEntry<bool> CfgRewind;
         internal static ConfigEntry<int> CfgMaxPoints;
+        internal static ConfigEntry<int> CfgMaxDiskMb;
         internal static ConfigEntry<int> CfgMaxObjects, CfgMaxSlots, CfgMaxBytesMb;
         internal static ConfigEntry<KeyCode> CfgKeyPrev;
         internal static ConfigEntry<KeyCode> CfgKeyManual;
@@ -163,6 +164,7 @@ namespace ProbablyStolenTools
 
         // ---- diagnostics ----
         internal static ConfigEntry<bool> CfgDiag;
+        internal static ConfigEntry<bool> CfgVerboseLog;
         internal static ConfigEntry<bool> CfgSelfTest;
         internal static ConfigEntry<bool> CfgPreviewPanel;
         internal static ConfigEntry<bool> CfgHistory;
@@ -237,7 +239,9 @@ namespace ProbablyStolenTools
             CfgRewind = Config.Bind("Rewind", "Enabled", true,
                 "Record a checkpoint before opening the shop and whenever a new client arrives.");
             CfgMaxPoints = Config.Bind("Rewind", "MaxCheckpoints", 20,
-                "How many checkpoints to keep.");
+                "Maximum file checkpoints across sessions. In-memory customer history keeps 20 nodes.");
+            CfgMaxDiskMb = Config.Bind("Rewind", "MaxDiskMB", 256,
+                "Total file-checkpoint budget in MiB. Only timestamped checkpoints in PSTools_Checkpoints are cleaned, least recently used first.");
             CfgMaxObjects = Config.Bind("Snapshot", "MaxObjects", 200000,
                 "Snapshot object limit. Raise it if a heavily modded game fails with 'Snapshot object limit exceeded'.");
             CfgMaxSlots = Config.Bind("Snapshot", "MaxSlots", 3000000,
@@ -281,6 +285,8 @@ namespace ProbablyStolenTools
 
             CfgDiag = Config.Bind("Debug", "Diagnostics", false,
                 "Run one-shot API diagnostics at the main menu (log only).");
+            CfgVerboseLog = Config.Bind("Logging", "Verbose", false,
+                "Include additional diagnostics. Errors, captures, restores and changed wait conditions are always logged. PSTools logs rotate at 4 MiB with three archives.");
             CfgSelfTest = Config.Bind("Debug", "SelfTest", false,
                 "Automated end-to-end test: continue save -> capture checkpoint -> restore. Logs to PSTools.log.");
             CfgPreviewPanel = Config.Bind("Debug", "PreviewPanel", false,
@@ -325,6 +331,9 @@ namespace ProbablyStolenTools
             }
 
             TooltipHooks.Enable();
+            EventLog.Write($"[Session] version={Version} game={Application.version} locale=deferred " +
+                $"snapshotLimits(objects={CfgMaxObjects.Value},slots={CfgMaxSlots.Value},MiB={CfgMaxBytesMb.Value}) " +
+                $"verbose={CfgVerboseLog.Value}; arrivalWaitSeconds is not capture duration; use captureMs");
             LogSource.LogInfo("Loaded.");
         }
 

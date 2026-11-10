@@ -22,6 +22,7 @@ namespace ProbablyStolenTools
         private static CustomUIWindow _window;
         private const string WindowId = "ProbablyStolenTools.inspection";
         private static TextMeshProUGUI _text;
+        private static TMP_FontAsset _nativeFont;
         private static CustomUIElement _label;
         private static GameObject _ownerPanel;
         private static ScrollRect _scroll;
@@ -206,6 +207,7 @@ namespace ProbablyStolenTools
             builder.AddLabel(_result, null);
             _label = builder.Last;
             _text = _label.text;
+            _nativeFont = _text.font;
             _text.enableAutoSizing = false;
             _text.enableWordWrapping = true;
             _text.richText = true;
@@ -228,7 +230,9 @@ namespace ProbablyStolenTools
         {
             try
             {
-                var font = FontLoader.Instance?.simplifiedChineseFont;
+                if (_nativeFont == null) _nativeFont = _text.font;
+                var font = LocalePolicy.IsLanguage(InspectionLocale.Code, "zh")
+                    ? FontLoader.Instance?.simplifiedChineseFont : _nativeFont;
                 if (font != null && Id(_text.font) != Id(font))
                 {
                     _text.font = font;
@@ -315,6 +319,7 @@ namespace ProbablyStolenTools
             _manager = null;
             _go = null;
             _text = null;
+            _nativeFont = null;
             _label = null;
             _ownerPanel = null;
             _scroll = null;

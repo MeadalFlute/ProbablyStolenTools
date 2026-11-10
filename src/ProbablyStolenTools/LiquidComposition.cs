@@ -174,30 +174,30 @@ namespace ProbablyStolenTools
 
         internal static void Grade(double purity, out string grade, out string color)
         {
-            if (purity >= 99) { grade = "纯品级"; color = "#7B3F9E"; }
-            else if (purity >= 90) { grade = "药用级"; color = "#B0337A"; }
-            else if (purity >= 80) { grade = "近药用级"; color = "#E8A0BE"; }
-            else if (purity >= 60) { grade = "街头标准级"; color = "#8A8FA3"; }
-            else if (purity >= 45) { grade = "掺兑级"; color = "#A0522D"; }
-            else if (purity >= 30) { grade = "垃圾级"; color = "#E05A2B"; }
-            else { grade = "淀粉级"; color = "#E8B08A"; }
+            if (purity >= 99) { grade = InspectionLocale.Text("纯品级", "Pure grade"); color = "#7B3F9E"; }
+            else if (purity >= 90) { grade = InspectionLocale.Text("药用级", "Pharmaceutical grade"); color = "#B0337A"; }
+            else if (purity >= 80) { grade = InspectionLocale.Text("近药用级", "Near pharmaceutical grade"); color = "#E8A0BE"; }
+            else if (purity >= 60) { grade = InspectionLocale.Text("街头标准级", "Street grade"); color = "#8A8FA3"; }
+            else if (purity >= 45) { grade = InspectionLocale.Text("掺兑级", "Cut grade"); color = "#A0522D"; }
+            else if (purity >= 30) { grade = InspectionLocale.Text("垃圾级", "Junk grade"); color = "#E05A2B"; }
+            else { grade = InspectionLocale.Text("淀粉级", "Starch grade"); color = "#E8B08A"; }
         }
 
         internal static string SizeFor(int capacityMl)
         {
-            if (capacityMl <= 250) return "迷你";
-            if (capacityMl <= 450) return "小";
-            if (capacityMl <= 750) return "标准";
-            return "大";
+            if (capacityMl <= 250) return InspectionLocale.Text("迷你", "Mini");
+            if (capacityMl <= 450) return InspectionLocale.Text("小", "Small");
+            if (capacityMl <= 750) return InspectionLocale.Text("标准", "Standard");
+            return InspectionLocale.Text("大", "Large");
         }
 
         /// <summary>酒精最高时的显示名：纯酒精为脱水乙醇，75%±1 为医用酒精，其余为酒精。</summary>
         internal static string AlcoholLabel(Analysis a)
         {
-            if (a == null || !a.AlcoholTop) return "酒精";
-            if (a.AlcoholShare >= 99.95) return "脱水乙醇";
-            if (a.AlcoholPercent >= 74 && a.AlcoholPercent <= 76) return "医用酒精";
-            return "酒精";
+            if (a == null || !a.AlcoholTop) return InspectionLocale.Text("酒精", "Alcohol");
+            if (a.AlcoholShare >= 99.95) return InspectionLocale.Text("脱水乙醇", "Anhydrous ethanol");
+            if (a.AlcoholPercent >= 74 && a.AlcoholPercent <= 76) return InspectionLocale.Text("医用酒精", "Medical alcohol");
+            return InspectionLocale.Text("酒精", "Alcohol");
         }
     }
 }

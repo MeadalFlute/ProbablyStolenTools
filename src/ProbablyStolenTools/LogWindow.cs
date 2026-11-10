@@ -31,7 +31,7 @@ namespace ProbablyStolenTools
             }
             catch (Exception e)
             {
-                PanelNotice.Show("无法打开日志窗口：" + e.Message + "\n路径：" + EventLog.Path, true);
+                PanelNotice.Show(InspectionLocale.Text("无法打开日志窗口：", "Cannot open log: ") + e.Message + "\n" + EventLog.Path, true);
             }
         }
 
@@ -40,7 +40,7 @@ namespace ProbablyStolenTools
             var builder = CustomUIManager.Window(WindowId, "运行日志 / Log", CustomUIManager.LAYER_OVERLAY);
             if (builder == null)
             {
-                PanelNotice.Show("无法创建日志窗口\n路径：" + EventLog.Path, true);
+                PanelNotice.Show(InspectionLocale.Text("无法创建日志窗口\n", "Cannot create log window\n") + EventLog.Path, true);
                 return;
             }
             _window = builder
@@ -53,7 +53,7 @@ namespace ProbablyStolenTools
                 .End()
                 .BeginRow(8f, TextAnchor.MiddleRight)
                     .AddFlexibleSpace()
-                    .AddButton("关闭", Close, "close")
+                    .AddButton(InspectionLocale.Text("关闭", "Close"), Close, "close")
                 .End()
                 .Show();
         }
@@ -72,7 +72,7 @@ namespace ProbablyStolenTools
         private static string ReadTail()
         {
             string path = EventLog.Path;
-            if (!File.Exists(path)) return "日志还没有生成：\n" + path;
+            if (!File.Exists(path)) return InspectionLocale.Text("日志还没有生成：\n", "Log not created yet:\n") + path;
             var lines = new System.Collections.Generic.List<string>(MaxLines);
             try
             {
@@ -94,10 +94,13 @@ namespace ProbablyStolenTools
             }
             catch (Exception e)
             {
-                return "读取日志失败：" + e.Message + "\n" + path;
+                return InspectionLocale.Text("读取日志失败：", "Cannot read log: ") + e.Message + "\n" + path;
             }
             var sb = new StringBuilder();
-            sb.Append("日志文件：").Append(path).Append('\n').Append('\n');
+            sb.Append(InspectionLocale.Text("日志文件：", "Log: ")).Append(path).Append('\n');
+            sb.Append(InspectionLocale.Text(
+                "回报问题请附上 PSTools.log 及 .1-.3、PSTools_errors.log 及 .1-.2、设置文件和 Player.log。\n\n",
+                "Reports: include PSTools.log and .1-.3, PSTools_errors.log and .1-.2, settings and Player.log.\n\n"));
             for (int i = 0; i < lines.Count; i++)
             {
                 string line = lines[i];

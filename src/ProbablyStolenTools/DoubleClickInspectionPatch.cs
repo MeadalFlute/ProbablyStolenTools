@@ -47,14 +47,8 @@ namespace ProbablyStolenTools
                         int unitCount = -1;
                         try { unitCount = item.unitCount; } catch { }
                         why.Append($"notInspectable(id={id} state={hasState}/{stateTag} modified={hasModified}/{modifiedTag} units={unitCount}) ");
-                        try
-                        {
-                            var e2 = EmporiumEntry.Instance;
-                            if (e2 != null)
-                                why.Append("cand(").Append(Describe(e2.GetInvItems(), item)).Append("|")
-                                   .Append(Describe(e2.GetCountersItems(), item)).Append(") ");
-                        }
-                        catch (Exception e2x) { why.Append("candErr:").Append(e2x.GetType().Name).Append(' '); }
+                        // Non-inspectable items belong to the native/other-mod action path.
+                        // Do not query arbitrary tools: their targeting callbacks may have side effects.
                     }
                 }
 
@@ -106,7 +100,7 @@ namespace ProbablyStolenTools
 
         private static bool Finish(StringBuilder why, bool consumed)
         {
-            if (_diagnostics < 12)
+            if (Plugin.CfgVerboseLog?.Value == true && _diagnostics < 12)
             {
                 ++_diagnostics;
                 Plugin.LogSource.LogInfo($"[DoubleClick] consumed={consumed} {(why.Length == 0 ? "ok" : why.ToString().Trim())}");
@@ -127,12 +121,12 @@ namespace ProbablyStolenTools
                 try { id = tool.identifier; } catch { continue; }
                 bool tag = false, owned = false, may = false, can = false, disabled = false;
                 try { tag = tool.IsTag("MAGNIFYING_GLASS"); } catch { }
+                if (!tag) continue;
                 try { owned = GeneralHelper.IsItemOwned(tool); } catch { }
                 try { may = tool.MayTarget(target); } catch { }
                 try { can = tool.CanTarget(target); } catch { }
                 try { disabled = tool.forceDisableUse; } catch { }
-                if (tag || may || can)
-                    sb.Append(id).Append("[tag=").Append(tag ? 1 : 0)
+                sb.Append(id).Append("[tag=").Append(tag ? 1 : 0)
                       .Append(",own=").Append(owned ? 1 : 0)
                       .Append(",may=").Append(may ? 1 : 0)
                       .Append(",can=").Append(can ? 1 : 0)

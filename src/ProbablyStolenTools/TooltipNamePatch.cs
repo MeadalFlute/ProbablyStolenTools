@@ -14,7 +14,7 @@ namespace ProbablyStolenTools
 
         internal static bool Active => _depth > 0;
 
-        internal static void Push() { if (_depth < 8) _depth++; }
+        internal static void Push() { _depth++; }
 
         internal static void Pop() { if (_depth > 0) _depth--; }
 
@@ -25,10 +25,10 @@ namespace ProbablyStolenTools
     internal static class TooltipNameScopePatch
     {
         [HarmonyPrefix]
-        private static void Prefix() => TooltipNameScope.Push();
+        private static void Prefix(out bool __state) { TooltipNameScope.Push(); __state = true; }
 
-        [HarmonyPostfix]
-        private static void Postfix() => TooltipNameScope.Pop();
+        [HarmonyFinalizer]
+        private static void Finalizer(bool __state) { if (__state) TooltipNameScope.Pop(); }
     }
 
     /// <summary>
@@ -39,10 +39,10 @@ namespace ProbablyStolenTools
     internal static class TooltipNameScopeUsePatch
     {
         [HarmonyPrefix]
-        private static void Prefix() => TooltipNameScope.Push();
+        private static void Prefix(out bool __state) { TooltipNameScope.Push(); __state = true; }
 
-        [HarmonyPostfix]
-        private static void Postfix() => TooltipNameScope.Pop();
+        [HarmonyFinalizer]
+        private static void Finalizer(bool __state) { if (__state) TooltipNameScope.Pop(); }
     }
 
     /// <summary>
@@ -52,10 +52,10 @@ namespace ProbablyStolenTools
     internal static class TooltipNameScopeInsertPatch
     {
         [HarmonyPrefix]
-        private static void Prefix() => TooltipNameScope.Push();
+        private static void Prefix(out bool __state) { TooltipNameScope.Push(); __state = true; }
 
-        [HarmonyPostfix]
-        private static void Postfix() => TooltipNameScope.Pop();
+        [HarmonyFinalizer]
+        private static void Finalizer(bool __state) { if (__state) TooltipNameScope.Pop(); }
     }
 
     [HarmonyPatch(typeof(GameItem), nameof(GameItem.GetDisplayName))]
@@ -64,7 +64,7 @@ namespace ProbablyStolenTools
         [HarmonyPostfix]
         private static void Postfix(GameItem __instance, ref string __result)
         {
-            if (!TooltipNameScope.Active || __instance == null) return;
+            if (!TooltipNameScope.Active || __instance == null || !InspectionLocale.SupportsAnnotations) return;
             if (Plugin.CfgChemistry != null && !Plugin.CfgChemistry.Value) return;
             try
             {
@@ -72,7 +72,11 @@ namespace ProbablyStolenTools
                 var analysis = LiquidComposition.Analyze(__instance);
                 if (analysis == null) return;
                 // 空瓶：把尺寸写进名字（水质行不再重复）。
-                if (analysis.Empty) { __result = "空瓶（" + analysis.SizeName + "）"; return; }
+                if (analysis.Empty)
+                {
+                    __result = InspectionLocale.Text("空瓶（" + analysis.SizeName + "）", "Empty bottle (" + analysis.SizeName + ")");
+                    return;
+                }
                 // 酒精最高：名字显示 酒精 / 医用酒精 / 脱水乙醇。
                 if (analysis.AlcoholTop) { __result = LiquidComposition.AlcoholLabel(analysis); return; }
                 // 水最高时保留原物品名；其它成分最高时用成分名替换。

@@ -1,6 +1,6 @@
 # Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.8.12**（2026-11-10）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
+> 适用源码：正式版 **0.8.13**（2026-11-10，含待发布的报告修复）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
 > 旧版本文档（0.2.1–0.6.0、Demo、性能优化过程）已归档到 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
 本文只写当前仍然成立的事实。历史细节看 `research/`，实现细节以源码为准。
@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**62 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**71 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -65,6 +65,8 @@ docs/workshop/                     创意工坊文本
 - **数组偏移必须在元素内部计算** `offset = i * stride + j`，并记录 `Storage.Index = i`。把偏移提到循环外会让所有元素都读成第一个元素，而且 `diff=0` 也可能掩盖（读写共用同一错误读取器）。
 - 普通字段用反射读；同一路径累计读取 32 次后尝试生成只读委托，失败则回退。字段/类型缓存上限 4096，跨节点复用；每份快照的值/根/数组索引缓存相互隔离，卸载时清理。
 - 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`，默认 **200000 / 3000000 / 256**。
+- 超限跳过本次捕获，释放半成品并保留旧节点；不使用不完整快照，不自动无限加大上限。面板显示失败、提示去重，日志包含实际计数、各上限及来源路径。
+- 捕获仍在同一回调同步完成；**未启用分帧快照**。任何跨帧实现须独立提交，并解决业务图一致性，不能只靠 `timeScale=0`。
 - 捕获后必须跑完整 `Differences()`；差异非空就视为恢复失败，不能再报成功。
 - `Storage`、`StateGraph.Entry` 是只读值类型；普通字段索引为 `-1`，不能依赖结构体默认值 `0`。
 
@@ -96,6 +98,8 @@ docs/workshop/                     创意工坊文本
 - 允许跨顾客回溯；当前顾客不同时只写 `[QuickSL/Customer] F6 cross-client rewind`，不再拦截。`currentClientInstance` 与顾客贴图一起还原。
 - 剧情/对话类顾客（`ClientIntent.DIALOGUE` 等）**跳过建节点但不清空历史**。
 - 节点上限 **20**（`CheckpointHistory<Snapshot>`），面板行数 **24**，必须同步修改。手动建立的闭店节点要正常列入面板。
+- settle 保留原生事件触发，并以 0.1 秒轮询兜底；日志按状态变化输出，未变化每 60 秒一条并统计压制次数。
+- `captureMs` / `ms(...total=...)` 才是捕获耗时；旧 `after=...s`（新名 `arrivalWaitSeconds`）是顾客到达后的等待时间，不能用来统计卡顿。
 
 ### 不要挂的门控
 
@@ -120,7 +124,10 @@ docs/workshop/                     创意工坊文本
 
 - 追加说明行走原生 `ModHook.OnCreateTooltipLate`（`TooltipHooks`）；不要再新增 `GetTooltipBasic` / `CreateWaterFeatureTooltip` 补丁做正文追加。
 - 名称替换靠作用域：`TooltipNameScopePatch`（`GetTooltipBasic`）+ `TooltipNameScopeUsePatch`（`RichTextGenerator.UseItemOnOtherItem`）+ `TooltipNameScopeInsertPatch`（`RichTextGenerator.InsertItemInOtherItem`），作用域用**嵌套深度** `Push/Pop`。
+- 作用域退出走 Harmony **Finalizer**，通过 `__state` 只退出本次已进入的作用域；不要吞掉原生异常，也不要改回仅成功时执行的 Postfix。
 - `GameItem.GetDisplayName` 的后缀只在作用域内改名为成分名 / 空瓶尺寸 / 酒精标签；背包、交易列表、任务文本保持原名。
+- 仅中/英文追加化学、水质与酿酒名称说明；其他语言或本地化未就绪时保留原版名称/提示。本 mod 自有文字回退英文，不修改游戏语言、表或存档。Mono 读取 `SelectedLocaleAsync` 的已完成结果，不同步等待本地化初始化。
+- 双击快速鉴定只选自有 `MAGNIFYING_GLASS`，不自动使用钥匙卡；诊断也不调用其他工具的 targeting 回调。
 
 ---
 
@@ -128,6 +135,9 @@ docs/workshop/                     创意工坊文本
 
 - `EventLog.Write` 统一品牌头：`[QuickSL]` 或 `[QuickSL/子系统]`（`Customer`、`Rewind`、`Shutter` 等），并转发到 `Plugin.LogSource`。
 - 文件：`%LOCALAPPDATA%Low\Questing Goose Studio\Probably Stolen\PSTools.log`、`PSTools_history.log`、`Player.log`。
+- 主日志与历史日志各按 **4 MiB + 3 份归档**（`.1`–`.3`）轮转；失败另外写 `PSTools_errors.log`（**1 MiB + 2 份归档**），不受详细日志开关控制。旧超大日志首次轮转可能大于新上限，后续自然淘汰。
+- `Logging.Verbose=false` 默认关闭额外双击/无业务上下文诊断；捕获、恢复、失败、业务上下文变化和 settle 状态变化始终保留。历史日志仍受 `History.Enabled` 与每秒 120 条限流控制，但不再达到 8 MiB 后永久停写。
+- 收集问题请同时取同次游玩的 `PSTools*.log` 及轮转归档、`PSTools.settings.xml`、`Player.log`、`mod-audit.log`，并提供操作步骤和语言代码。
 - 游戏内「设置 → 查看日志」用官方 `CustomUIManager.Window(...)` 构建（`LAYER_OVERLAY`、`BeginScrollFlexible`、`AddLabel`、`AddButton`），显示末尾 400 行。
 - `[QuickSL/Geom]` 只在物品视图异常（DESTROYED / MISSING / NOSPRITE / HIDDEN / MISPLACED）时输出，是排查贴图问题的第一入口。
 
@@ -150,6 +160,7 @@ docs/workshop/                     创意工坊文本
 
 - **绝不主动调用 `PlayerEngine.SaveGame()`**，不修改存档文件。
 - 顾客节点是纯内存恢复。「回到开业前 / 上一天」**只加载、不写回**：快照复制为 `pstools_restore.es3`，通过 `NewGameData.saveFile` 读取，载入结束后清理；仍保留 `.pre_restore` 备份。
+- `Rewind.MaxCheckpoints=20` 控制跨会话文件节点数量，`Rewind.MaxDiskMB=256` 控制该目录总容量（与单份内存快照 `Snapshot.MaxBytesMB` 无关）；设置页显示用量。每 60 秒及新建后按 LRU 清理本 mod 时间戳文件；恢复使用时更新文件时间，不改 ES3 内容。只处理目录直接子文件，跳过链接、未知文件和待恢复节点，不递归清理。未知文件占用仍计入容量，不能清理时报告错误。
 - 部署用 `scripts/Deploy-FullRelease.ps1`：备份存档与 Mods、校验存档/游戏程序集/其他 Mod 不变、按完整路径关闭游戏、不自动启动。
 - 不 `Process.Start` / `Application.OpenURL`；不修改加载器、信任记录、Steam 类型；不打包 `0Harmony`。
 - 能力声明保持 `files`、`reflection-external`、`dynamic-code`，新增反射/动态代码必须同步清单并让用户按原生流程确认。
@@ -190,6 +201,7 @@ docs/workshop/                     创意工坊文本
 - `research/archive/AGENT-0.6.0-history.md`：旧交接文档（0.2.1–0.6.0、Demo/MelonLoader、性能优化历程）。
 - `research/2026-11-10-item-render-rewind.md`：贴图/容器回溯问题与修复记录。
 - `research/2026-11-10-native-save-rewind.md`：只加载不写回的文件回溯。
+- `research/2026-11-10-player-report.md`：报告证据、计时误读、日志/存储/语言修复与分帧暂缓理由。
 - `research/2026-10-31-snapshot-performance.md`：快照性能与 UI 布局规则。
 - `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
 - `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。

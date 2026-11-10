@@ -28,6 +28,7 @@ namespace ProbablyStolenTools
         /// <summary>返回要追加到鉴定摘要里的行；不相关时返回 null。</summary>
         internal static List<string> Lines(GameItem item)
         {
+            if (!InspectionLocale.SupportsAnnotations) return null;
             if (Plugin.CfgWineAppraisal != null && !Plugin.CfgWineAppraisal.Value) return null;
             try
             {
@@ -47,6 +48,7 @@ namespace ProbablyStolenTools
         /// <summary>通过原生 ModHook.OnCreateTooltip 追加到悬浮说明：水位警告 / 预期品质 / 违禁品。</summary>
         internal static void AddTooltip(RichTextBuilder builder, GameItem item)
         {
+            if (!InspectionLocale.SupportsAnnotations) return;
             if (builder == null) return;
             if (Plugin.CfgWineAppraisal != null && !Plugin.CfgWineAppraisal.Value) return;
             try

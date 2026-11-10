@@ -46,7 +46,9 @@ namespace ProbablyStolenTools
         private readonly List<(RectTransform Rect, Toggle Toggle, ConfigEntry<bool> Config)> _settings = new();
         private readonly List<(RectTransform Rect, TextMeshProUGUI Label, CustomUIElement Element,
             Plugin.HotkeyBinding Binding)> _keyRows = new();
-        private TextMeshProUGUI _optionsHeading, _keysHeading;
+        private TextMeshProUGUI _optionsHeading, _keysHeading, _storageUsage;
+        private string _localeCode;
+        private TMP_FontAsset _noticeDefaultFont;
         private RectTransform _resetKeys, _openLog;
         private ScrollRect _settingsScroll;
         private Plugin.HotkeyBinding _captureTarget;
@@ -121,7 +123,7 @@ namespace ProbablyStolenTools
                 if (capturingAtStart) CaptureStep();
                 if (!capturingAtStart && Plugin.Down(Plugin.CfgKeyPanel)) _visible = !_visible;
                 bool stale = _built && (_manager == null || _window == null || !_window.IsAlive
-                    || Id(CustomUIManager.Instance) != Id(_manager));
+                    || Id(CustomUIManager.Instance) != Id(_manager) || _localeCode != InspectionLocale.Code);
                 if (stale) ReleaseWindow();
                 if (!_built && inGame && CustomUIManager.Instance != null && Time.unscaledTime >= _retryAt)
                     Build();
@@ -144,12 +146,19 @@ namespace ProbablyStolenTools
                     || _closedUsable != (CustomerCheckpoint.ClosedNode?.Graph != null))
                     Refresh(day);
                 string hint = (CustomerCheckpoint.CustomerCount > 0
-                    ? $"顾客节点 {CustomerCheckpoint.CustomerCount}/10"
-                        : ((int?)Plugin.Store()?.storeState == 1 ? "等待顾客节点"
-                            : (int?)Plugin.Store()?.storeState == 0 ? "已闭店" : "尚未开业"));
+                    ? InspectionLocale.Text($"顾客节点 {CustomerCheckpoint.CustomerCount}/20", $"Customer checkpoints {CustomerCheckpoint.CustomerCount}/20")
+                        : ((int?)Plugin.Store()?.storeState == 1 ? InspectionLocale.Text("等待顾客节点", "Waiting for a checkpoint")
+                            : (int?)Plugin.Store()?.storeState == 0 ? InspectionLocale.Text("已闭店", "Closed") : InspectionLocale.Text("尚未开业", "Not open")));
+                if (CustomerCheckpoint.LastCaptureError != null)
+                    hint = InspectionLocale.Text("最近节点建立失败，旧节点仍保留；请查看日志", "Latest capture failed; earlier nodes retained. See log.");
                 if (_hint.text != hint) _hint.text = hint;
                 if (_settingsOpen)
                 {
+                    var disk = Rewind.DiskUsage;
+                    _storageUsage.text = InspectionLocale.Text(
+                        $"存档节点：{disk.Files} 文件，{disk.Bytes / 1048576d:0.0} / {Rewind.MaxDiskBytes / 1048576} MiB",
+                        $"File checkpoints: {disk.Files} files, {disk.Bytes / 1048576d:0.0} / {Rewind.MaxDiskBytes / 1048576} MiB")
+                        + (disk.Error == null ? "" : "\n" + InspectionLocale.Text("清理未完成，详见日志", "Cleanup incomplete; see log"));
                     foreach (var setting in _settings)
                     {
                         setting.Toggle.SetIsOnWithoutNotify(setting.Config.Value);
@@ -192,10 +201,11 @@ namespace ProbablyStolenTools
 
         private void Build()
         {
+            _localeCode = InspectionLocale.Code;
             _bounds = new PanelBounds(Plugin.CfgPanelX.Value, Plugin.CfgPanelY.Value,
                 Plugin.CfgPanelWidth.Value, Plugin.CfgPanelHeight.Value);
             _folded = Plugin.CfgPanelFolded.Value;
-            var builder = NativeUi.Create(WindowId, "今日回溯", _bounds.Width, _bounds.Height, true, out _window);
+            var builder = NativeUi.Create(WindowId, InspectionLocale.Text("今日回溯", "Rewind"), _bounds.Width, _bounds.Height, true, out _window);
             if (builder == null) return;
             _manager = CustomUIManager.Instance;
             _panelGo = _window.root;
@@ -210,7 +220,7 @@ namespace ProbablyStolenTools
             try { if (_title != null) _title.color = new Color(0.55f, 0.85f, 1.0f); } catch { }
             _headerControls = NewObject("commands", _panelRect).GetComponent<RectTransform>();
             ManualRect(_headerControls);
-            var fold = NativeButton(_headerControls, "收起", () =>
+            var fold = NativeButton(_headerControls, InspectionLocale.Text("收起", "Fold"), () =>
             {
                 EndCapture(null);
                 ObserveWindowPosition();
@@ -218,7 +228,7 @@ namespace ProbablyStolenTools
             });
             _foldButton = fold.Rect;
             _fold = fold.text;
-            var settingsButton = NativeButton(_headerControls, "设置", () =>
+            var settingsButton = NativeButton(_headerControls, InspectionLocale.Text("设置", "Options"), () =>
             {
                 EndCapture(null);
                 ObserveWindowPosition();
@@ -231,7 +241,8 @@ namespace ProbablyStolenTools
             _settingsButton = settingsButton.Rect;
             _body = NewObject("body", _nativeContent);
             _hint = Text("status", _body.transform, 12, new Color(0.45f, 0.72f, 0.90f));
-            foreach (string label in new[] { "时间", "节点", "现金", "状态" })
+            foreach (string label in new[] { InspectionLocale.Text("时间", "Time"), InspectionLocale.Text("节点", "Checkpoint"),
+                InspectionLocale.Text("现金", "Cash"), InspectionLocale.Text("状态", "State") })
             {
                 var text = Text("column", _body.transform, 12, new Color(0.42f, 0.62f, 0.82f));
                 text.text = label;
@@ -254,7 +265,7 @@ namespace ProbablyStolenTools
             _scroll.inertia = false;
             for (int i = 0; i < 24; i++) _rows.Add(NewRow(i));
             _empty = Text("empty", viewportGo.transform, 13, new Color(0.55f, 0.70f, 0.85f));
-            _empty.text = "暂无节点";
+            _empty.text = InspectionLocale.Text("暂无节点", "No checkpoints");
             _settingsGo = NewObject("settings", _nativeContent);
             _settingsViewport = _settingsGo.GetComponent<RectTransform>();
             var settingsHit = Raw("scrollHit", _settingsViewport, Color.clear, true);
@@ -270,16 +281,17 @@ namespace ProbablyStolenTools
             _settingsScroll.scrollSensitivity = RowH;
             _optionsHeading = Text("options-heading", _settingsContent, 13, new Color(0.55f, 0.85f, 1f));
             _optionsHeading.text = InspectionLocale.Text("辅助功能", "Options");
-            NewSetting("自动鉴定报价", Plugin.CfgAutoAppraisal);
-            NewSetting("自动提交鉴定", Plugin.CfgAutoSubmit);
-            NewSetting("始终覆盖鉴定报价", Plugin.CfgAlwaysOverwrite);
-            NewSetting("跳过顾客对话", Plugin.CfgSkipCustomerDialogue);
+            NewSetting(InspectionLocale.Text("自动鉴定报价", "Auto appraisal quote"), Plugin.CfgAutoAppraisal);
+            NewSetting(InspectionLocale.Text("自动提交鉴定", "Auto-submit appraisal"), Plugin.CfgAutoSubmit);
+            NewSetting(InspectionLocale.Text("始终覆盖鉴定报价", "Always replace appraisal quote"), Plugin.CfgAlwaysOverwrite);
+            NewSetting(InspectionLocale.Text("跳过顾客对话", "Skip customer dialogue"), Plugin.CfgSkipCustomerDialogue);
             NewSetting(InspectionLocale.Text("双击物品快速鉴定", "Double-click to inspect"), Plugin.CfgDoubleClickInspection);
             NewSetting(InspectionLocale.Text("显示快速鉴定摘要", "Show quick inspection summary"), Plugin.CfgQuickInspection);
             NewSetting(InspectionLocale.Text("水质标注", "Water quality labels"), Plugin.CfgWaterQuality);
             NewSetting(InspectionLocale.Text("化学辅助", "Chemistry assist"), Plugin.CfgChemistry);
             NewSetting(InspectionLocale.Text("酿酒标注", "Wine annotations"), Plugin.CfgWineAppraisal);
             NewSetting(InspectionLocale.Text("整日回退需确认", "Confirm whole-day rewind"), Plugin.CfgConfirmWholeDay);
+            NewSetting(InspectionLocale.Text("详细诊断日志", "Verbose diagnostics"), Plugin.CfgVerboseLog);
             _keysHeading = Text("keys-heading", _settingsContent, 13, new Color(0.55f, 0.85f, 1f));
             _keysHeading.text = InspectionLocale.Text("快捷键", "Hotkeys");
             _keyRows.Clear();
@@ -291,6 +303,8 @@ namespace ProbablyStolenTools
             var openLog = NativeButton(_settingsContent, InspectionLocale.Text("查看日志", "Open log"), Plugin.OpenLog);
             openLog.root.name = "open-log";
             _openLog = openLog.Rect;
+            _storageUsage = Text("checkpoint-storage", _settingsContent, 12, new Color(0.65f, 0.75f, 0.80f));
+            _storageUsage.enableWordWrapping = true;
             _resize = Raw("resize", _panelGo.transform, new Color(1, 1, 1, 0.04f), true);
             var grip = Text("grip", _resize.transform, 16, new Color(0.6f, 0.68f, 0.7f), TextAlignmentOptions.Center);
             grip.text = "\u25E2";
@@ -337,6 +351,7 @@ namespace ProbablyStolenTools
             _toastText.fontSize = 14;
             _toastText.alignment = TextAlignmentOptions.Center;
             _toastText.raycastTarget = false;
+            _noticeDefaultFont = _toastText.font;
             Stretch(_toastText.rectTransform);
             _toastAlpha = _toast.AddComponent<CanvasGroup>();
             _toastAlpha.interactable = false;
@@ -355,7 +370,8 @@ namespace ProbablyStolenTools
             for (int i = 0; i < PanelNotice.Message.Length; i++) if (PanelNotice.Message[i] == '\n') noticeLines++;
             var noticeRect = _toast.GetComponent<RectTransform>();
             noticeRect.sizeDelta = new Vector2(640, Mathf.Max(30, 14 + noticeLines * 20));
-            var font = FontLoader.Instance?.simplifiedChineseFont;
+            var font = LocalePolicy.IsLanguage(InspectionLocale.Code, "zh")
+                ? FontLoader.Instance?.simplifiedChineseFont : _noticeDefaultFont;
             if (font != null) { _toastText.font = font; _toastText.fontSharedMaterial = font.material; }
             _toastText.color = PanelNotice.Warning ? new Color(1, 0.8f, 0.65f) : new Color(0.78f, 0.94f, 0.86f);
             _toastAlpha.alpha = Mathf.Clamp01((PanelNotice.Until - Time.unscaledTime) / 0.55f);
@@ -391,7 +407,7 @@ namespace ProbablyStolenTools
         private static string HotkeyLabel(Plugin.HotkeyBinding binding)
             => InspectionLocale.Text(binding.Label, binding.Id == "prev" ? "Current customer"
                 : binding.Id == "day" ? "Start of this day" : binding.Id == "prevday" ? "Previous day"
-                : binding.Id == "panel" ? "Show / hide panel" : binding.Label);
+                : binding.Id == "panel" ? "Show / hide panel" : binding.Id == "manual" ? "Manual checkpoint" : binding.Label);
 
 #if !MONO
         [HideFromIl2Cpp]
@@ -534,25 +550,25 @@ namespace ProbablyStolenTools
             _shown = 0;
             var closed = CustomerCheckpoint.ClosedNode;
             if (closed != null && closed.Day == day)
-                Bind(_rows[_shown++], closed, closed.At, "闭店", closed.Cash,
-                    closed.Graph == null ? closed.ExpiredReason : closed.Id == _activeId ? "当前"
-                        : CustomerCheckpoint.IsFuture(closed) ? "后续" : "", closed.Graph != null);
+                Bind(_rows[_shown++], closed, closed.At, InspectionLocale.Text("闭店", "Closed"), closed.Cash,
+                    closed.Graph == null ? closed.ExpiredReason : closed.Id == _activeId ? InspectionLocale.Text("当前", "Current")
+                        : CustomerCheckpoint.IsFuture(closed) ? InspectionLocale.Text("后续", "Later") : "", closed.Graph != null);
             var nodes = CustomerCheckpoint.Nodes;
             for (int i = nodes.Count - 1; i >= 0; i--)
             {
                 var node = nodes[i];
-                if (node.Day != day) continue;
+                if (node.Day != day || _shown >= _rows.Count) continue;
                 // 闭店的自动节点只从 ClosedNode 显示；手动节点无论开着还是关着都要列出来。
                 if (node.IsClosed && !node.IsManual) continue;
                 Bind(_rows[_shown++], node, node.At, CustomerCheckpoint.Name(node), node.Cash,
-                    node.Id == _activeId ? "当前" : CustomerCheckpoint.IsFuture(node) ? "后续" : "", true);
+                    node.Id == _activeId ? InspectionLocale.Text("当前", "Current") : CustomerCheckpoint.IsFuture(node) ? InspectionLocale.Text("后续", "Later") : "", true);
             }
             for (int i = Rewind.Points.Count - 1; i >= 0; i--)
             {
                 var p = Rewind.Points[i];
-                if (p.Day != day || !p.IsDayStart || p.State != 2 || p.SlotId != Plugin.Store()?.saveSlotId
+                if (_shown >= _rows.Count || p.Day != day || !p.IsDayStart || p.State != 2 || p.SlotId != Plugin.Store()?.saveSlotId
                     || p.RunId != Plugin.Store()?.runID) continue;
-                Bind(_rows[_shown++], p, p.At, "开业前", p.Cash, "存档", true);
+                Bind(_rows[_shown++], p, p.At, InspectionLocale.Text("开业前", "Day start"), p.Cash, InspectionLocale.Text("存档", "File"), true);
                 break;
             }
             // 建立失败的节点也列出来：名字可见、状态为“损坏”，悬停显示失败原因。
@@ -561,7 +577,7 @@ namespace ProbablyStolenTools
             {
                 var failure = failures[i];
                 var row = _rows[_shown++];
-                Bind(row, null, failure.At, failure.Label, 0, "损坏", false);
+                Bind(row, null, failure.At, failure.Label, 0, InspectionLocale.Text("失败", "Failed"), false);
                 row.Cash.text = "—";
                 row.Bg.color = new Color(0.42f, 0.14f, 0.16f, row.IdleColor.a);
                 try { row.Element?.SetTooltip(failure.Reason); } catch { }
@@ -572,7 +588,7 @@ namespace ProbablyStolenTools
                 _rows[i].Go.SetActive(false);
                 try { _rows[i].Element?.SetTooltip(null); } catch { }
             }
-            _title.text = day < 0 ? "今日回溯" : $"今日回溯 · 第 {day} 天";
+            _title.text = day < 0 ? InspectionLocale.Text("今日回溯", "Rewind") : InspectionLocale.Text($"今日回溯 · 第 {day} 天", $"Rewind - Day {day}");
             _empty.gameObject.SetActive(_shown == 0);
             Layout();
         }
@@ -588,7 +604,7 @@ namespace ProbablyStolenTools
             row.Label.text = label;
             row.Cash.text = cash.ToString();
             row.State.text = state;
-            row.Bg.color = state == "当前" ? new Color(0.28f, 0.45f, 0.85f, row.IdleColor.a) : row.IdleColor;
+            row.Bg.color = state == InspectionLocale.Text("当前", "Current") ? new Color(0.28f, 0.45f, 0.85f, row.IdleColor.a) : row.IdleColor;
             row.Button.interactable = usable;
         }
 
@@ -606,7 +622,7 @@ namespace ProbablyStolenTools
             NativeUi.FixedSize(_window, _bounds.Width, h);
             NativeUi.Place(_window, _canvasRect, _bounds);
             RememberWindowPosition();
-            _fold.text = _folded ? "展开" : "收起";
+            _fold.text = _folded ? InspectionLocale.Text("展开", "Open") : InspectionLocale.Text("收起", "Fold");
             _resize.gameObject.SetActive(!_folded);
             PlaceHeaderButtons();
             // Keep the last expanded geometry and scroll positions while the body is hidden.
@@ -643,6 +659,8 @@ namespace ProbablyStolenTools
                 PanelSettingsLayout.RowHeight - 2);
             Place(_openLog, PanelSettingsLayout.Padding, -settingsLayout.LogY, settingsLayout.RowWidth,
                 PanelSettingsLayout.RowHeight - 2);
+            Place(_storageUsage.rectTransform, PanelSettingsLayout.Padding, -settingsLayout.StorageY,
+                settingsLayout.RowWidth, PanelSettingsLayout.RowHeight * 2);
             LayoutRebuilder.ForceRebuildLayoutImmediate(_settingsContent);
             Place(_hint.rectTransform, 4, -2, Math.Max(1, w - 16), 20);
             float labelW = w - 76 - 72 - 54 - 32;

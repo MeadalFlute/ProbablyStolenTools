@@ -137,6 +137,32 @@ foreach (string capability in detected)
     if (!declared.Contains(capability)) throw new Exception("Undeclared capability: " + capability);
 Console.WriteLine("PASS official mod scanner and manifest capabilities");
 
+var scopeType = mod.GetType("ProbablyStolenTools.TooltipNameScope", true);
+var scopeFlags = BindingFlags.NonPublic | BindingFlags.Static;
+var activeScope = scopeType.GetProperty("Active", scopeFlags);
+foreach (string patchName in new[] { "TooltipNameScopePatch", "TooltipNameScopeUsePatch", "TooltipNameScopeInsertPatch" })
+{
+    var patch = mod.GetType("ProbablyStolenTools." + patchName, true);
+    var enter = patch.GetMethod("Prefix", scopeFlags);
+    var exit = patch.GetMethod("Finalizer", scopeFlags);
+    if (exit == null || !exit.GetCustomAttributesData().Any(a => a.AttributeType.Name == "HarmonyFinalizer"))
+        throw new Exception("Tooltip scope must exit even when native localization throws: " + patchName);
+    for (int i = 0; i < 12; i++)
+    {
+        object[] state = { false };
+        enter.Invoke(null, state);
+        if (!(bool)state[0]) throw new Exception("Tooltip prefix did not record its own scope entry.");
+    }
+    exit.Invoke(null, new object[] { false });
+    for (int i = 0; i < 11; i++) exit.Invoke(null, new object[] { true });
+    if (!(bool)activeScope.GetValue(null)) throw new Exception("Nested tooltip scope ended too early.");
+    try { throw new InvalidOperationException("Modeled native localization failure"); }
+    catch (InvalidOperationException) { }
+    finally { exit.Invoke(null, new object[] { true }); }
+    if ((bool)activeScope.GetValue(null)) throw new Exception("Tooltip scope leaked after native error.");
+}
+Console.WriteLine("PASS three tooltip exception finalizers and deep nesting do not leak name-replacement scope");
+
 string testPath = Path.Combine(AppContext.BaseDirectory, "PSTools-config-" + Guid.NewGuid().ToString("N") + ".xml");
 var configType = mod.GetType("ProbablyStolenTools.ModConfig", true);
 var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;

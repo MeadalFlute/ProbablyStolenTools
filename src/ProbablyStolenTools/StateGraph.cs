@@ -4,6 +4,15 @@ using System.Linq;
 
 namespace ProbablyStolenTools
 {
+    internal sealed class SnapshotLimitException : InvalidOperationException
+    {
+        internal SnapshotLimitException(string kind, int objects, int slots, long bytes,
+            int maxObjects, int maxSlots, long maxBytes, int pending, string source)
+            : base($"Snapshot {kind} limit exceeded: objects={objects}/{maxObjects}, slots={slots}/{maxSlots}, " +
+                $"bytes={bytes}/{maxBytes}, pending={pending}, source={source}. " +
+                "This checkpoint was skipped; existing checkpoints were retained. No partial snapshot is usable.") { }
+    }
+
     // The backend exposes real storage slots, never computed/gameplay properties.
     internal readonly record struct StateSlot(int Offset, int Size, bool IsReference, string Name);
 
@@ -50,16 +59,14 @@ namespace ProbablyStolenTools
                     var id = pending.Dequeue();
                     graph._objects.Add(id);
                     if (graph._objects.Count > maxObjects)
-                        throw new InvalidOperationException(
-                            "Snapshot object limit exceeded (" + maxObjects + " objects). " +
-                            "Increase Snapshot.MaxObjects in PSTools.settings.xml.");
+                        throw new SnapshotLimitException("object", graph.ObjectCount, graph.SlotCount, graph.ByteCount,
+                            maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id));
                     access.Retain(id);
                     foreach (var slot in access.Describe(id))
                     {
                         if (graph._entries.Count >= maxSlots)
-                            throw new InvalidOperationException(
-                                "Snapshot slot limit exceeded (" + maxSlots + " slots). " +
-                                "Increase Snapshot.MaxSlots in PSTools.settings.xml.");
+                            throw new SnapshotLimitException("slot", graph.ObjectCount, graph.SlotCount, graph.ByteCount,
+                                maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id) + " -> " + slot.Name);
                         if (slot.IsReference)
                         {
                             var value = access.ReadReference(id, slot);
@@ -75,7 +82,8 @@ namespace ProbablyStolenTools
                             graph.ByteCount += value.Length;
                         }
                         if (graph.ByteCount > maxBytes)
-                            throw new InvalidOperationException("Snapshot byte limit exceeded.");
+                            throw new SnapshotLimitException("byte", graph.ObjectCount, graph.SlotCount, graph.ByteCount,
+                                maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id) + " -> " + slot.Name);
                     }
                 }
                 access.Validate();

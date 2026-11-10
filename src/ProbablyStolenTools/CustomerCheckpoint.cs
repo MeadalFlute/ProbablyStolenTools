@@ -37,7 +37,10 @@ namespace ProbablyStolenTools
         internal static IReadOnlyList<Snapshot> Nodes => History.Items;
         internal static int CustomerCount => Nodes.Count(node => !node.IsClosed);
         internal static bool IsFuture(Snapshot node) => History.IsFuture(node);
-        internal static int Revision => History.Revision;
+        private static int _failureRevision;
+        private static string _failureNoticeKey;
+        internal static string LastCaptureError { get; private set; }
+        internal static int Revision => unchecked(History.Revision + _failureRevision);
         internal static long ActiveId => _active?.Id ?? 0;
 
         /// <summary>一次捕获失败的记录：面板里以“损坏”节点显示，悬停看原因。</summary>
@@ -51,12 +54,13 @@ namespace ProbablyStolenTools
 
         internal static readonly List<Failure> Failures = new List<Failure>();
 
-        private static void RecordFailure(bool closed, Exception e)
+        private static void RecordFailure(bool closed, bool manual, Exception e)
         {
             try
             {
-                string label = closed ? "闭店" : "顾客";
-                if (!closed)
+                string label = manual ? InspectionLocale.Text("手动", "Manual")
+                    : closed ? InspectionLocale.Text("闭店", "Closed") : InspectionLocale.Text("顾客", "Customer");
+                if (!closed && !manual)
                 {
                     try
                     {
@@ -68,7 +72,13 @@ namespace ProbablyStolenTools
                 string reason = e == null ? "unknown" : e.GetType().Name + ": " + (e.Message ?? "").Trim();
                 if (reason.Length > 400) reason = reason.Substring(0, 400) + "…";
                 Failures.Insert(0, new Failure { Label = label, Reason = reason, At = DateTime.Now, Day = Boundary.Day });
-                PanelNotice.Show("节点建立失败：" + label + "\n详情请查看日志（设置中的“查看日志”）", true);
+                LastCaptureError = reason;
+                _failureRevision++;
+                string noticeKey = e is SnapshotLimitException ? "snapshot-limit" : reason;
+                if (manual || noticeKey != _failureNoticeKey)
+                    PanelNotice.Show(InspectionLocale.Text("节点建立失败，已保留旧节点：", "Checkpoint skipped; previous checkpoints retained: ")
+                        + label + "\n" + InspectionLocale.Text("详情请查看日志", "See the log for details"), true);
+                _failureNoticeKey = noticeKey;
                 while (Failures.Count > 5) Failures.RemoveAt(Failures.Count - 1);
             }
             catch { }
@@ -121,6 +131,8 @@ namespace ProbablyStolenTools
                 return;
             }
             _armed = true;
+            _captureSince = 0;
+            SettleLog.Reset();
             _arrivedAt = Time.unscaledTime;
             Status = "Waiting for the customer's opening dialogue";
             TryCapture();
@@ -129,9 +141,14 @@ namespace ProbablyStolenTools
         internal static void Tick()
         {
             if (Restoring) return;
+            if (Plugin.Store() != null) InspectionLocale.LogState();
             Observe();
             if (!Enabled) { if (History.Items.Count > 0 || ClosedNode?.Graph != null) Clear("已禁用"); return; }
-            if (_armed) TryCapture();
+            if (_armed && Time.unscaledTime >= _nextCapturePoll)
+            {
+                _nextCapturePoll = Time.unscaledTime + 0.1f;
+                TryCapture();
+            }
             if (_closeArmed) TryCaptureClosed();
             ShutterWatchdog();
         }
@@ -201,8 +218,10 @@ namespace ProbablyStolenTools
             bool contextChanged = scene != Boundary.Scene || day != Boundary.Day || Ptr(store) != Boundary.Store;
             if (contextChanged)
             {
-                EventLog.Write($"[Customer] CONTEXT CHANGED scene={Boundary.Scene}->{scene} day={Boundary.Day}->{day} " +
-                    $"store={Boundary.Store}->{Ptr(store)} nodes={History.Items.Count} -> cleared");
+                string context = $"[Customer] CONTEXT CHANGED scene={Boundary.Scene}->{scene} day={Boundary.Day}->{day} " +
+                    $"store={Boundary.Store}->{Ptr(store)} nodes={History.Items.Count} -> cleared";
+                if (store != null || Boundary.Store != IntPtr.Zero || History.Items.Count > 0) EventLog.Write(context);
+                else EventLog.Debug(context);
                 ++_epoch;
                 PendingCallbacks.Clear(); DialogueCallbacks.Clear();
                 Clear();
@@ -221,10 +240,10 @@ namespace ProbablyStolenTools
 
         internal static string Name(Snapshot node)
         {
-            if (node.IsManual) return "手动";
-            if (node.IsClosed) return "闭店";
+            if (node.IsManual) return InspectionLocale.Text("手动", "Manual");
+            if (node.IsClosed) return InspectionLocale.Text("闭店", "Closed");
             // displayName is the exact resolved name used by the game's dialogue/recorder.
-            return string.IsNullOrWhiteSpace(node.DisplayName) ? "顾客" : node.DisplayName;
+            return string.IsNullOrWhiteSpace(node.DisplayName) ? InspectionLocale.Text("顾客", "Customer") : node.DisplayName;
         }
 
         internal static void Closing()
@@ -269,6 +288,12 @@ namespace ProbablyStolenTools
         internal static void ResetAfterFileReload()
         {
             if (Restoring) return;
+            Failures.Clear();
+            LastCaptureError = null;
+            _failureNoticeKey = null;
+            _failureRevision++;
+            _captureSince = 0;
+            SettleLog.Reset();
             ReleaseAllSnapshotViews();
             History.Clear();
             if (ClosedNode != null)
@@ -332,6 +357,7 @@ namespace ProbablyStolenTools
         }
 
         private static float _captureSince;
+        private static float _nextCapturePoll;
 
         /// <summary>玩家手动建立节点（默认 F9）：复用顾客节点的捕获逻辑，不依赖是否有顾客在场。</summary>
         internal static void CaptureManual()
@@ -467,19 +493,20 @@ namespace ProbablyStolenTools
         private static int Clamp(int value, int min, int max) => value < min ? min : value > max ? max : value;
 
         private static float _settleLogAt;
+        private static readonly DiagnosticGate SettleLog = new();
 
         /// <summary>节点迟迟建不起来时，把每个判定条件打出来，便于定位到底卡在哪一步。</summary>
         private static void WatchSettle(PlayerStore store)
         {
             if (Time.unscaledTime < _settleLogAt) return;
-            _settleLogAt = Time.unscaledTime + 2f;
+            _settleLogAt = Time.unscaledTime + 1f;
             try
             {
                 var ui = StoreUIManager.Instance;
                 var dialog = DialogUIManager.Instance;
                 var mono = StoreClientMono.Instance;
                 string B(bool v) => v ? "1" : "0";
-                EventLog.Write("[Customer] settle wait: " +
+                string state =
                     "client=" + B(store != null && store.currentClientInstance != null) +
                     " arrived=" + B(store != null && store.isClientArrived) +
                     " state=" + (store == null ? -1 : (int)store.storeState) +
@@ -493,7 +520,11 @@ namespace ProbablyStolenTools
                     " moving=" + (mono == null ? -1 : (mono.IsMoving() ? 1 : 0)) +
                     " dlg=" + B(dialog != null) +
                     " cur=" + B(dialog != null && dialog.currentDialog != null) +
-                    " conv=" + (dialog == null ? -1 : dialog.isConversationActiveFlag));
+                    " conv=" + (dialog == null ? -1 : dialog.isConversationActiveFlag) +
+                    " openingDone=" + B(OpeningDialogueDone(store)) +
+                    " pending=" + PendingCallbacks.Count;
+                if (SettleLog.ShouldWrite(state, Time.unscaledTime, out int suppressed))
+                    EventLog.Write("[Customer] settle wait: " + state + " repeatedSuppressed=" + suppressed);
             }
             catch (Exception e) { EventLog.Write("[Customer] settle watch failed: " + e.Message); }
         }
@@ -501,9 +532,9 @@ namespace ProbablyStolenTools
         private static void Capture(PlayerStore store, bool closed, bool manual = false)
         {
             Snapshot candidate = null;
+            var timing = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                var timing = System.Diagnostics.Stopwatch.StartNew();
                 var access = Access(store, out var roots);
                 long tAccess = timing.ElapsedMilliseconds;
                 candidate = new Snapshot
@@ -600,6 +631,9 @@ namespace ProbablyStolenTools
                 if (ClosedNode?.Graph == null) ClosedNode = null;
                 _active = candidate;
                 candidate = null;
+                LastCaptureError = null;
+                _failureNoticeKey = null;
+                _failureRevision++;
                 RebuildRetainedItems();
                 // 手动节点不能改写“当前顾客已捕获”的边界，否则会挡掉该顾客稍后的自动节点。
                 if (!manual) Boundary.MarkReady();
@@ -610,10 +644,11 @@ namespace ProbablyStolenTools
 #else
                 string readers = "";
 #endif
-                EventLog.Write($"[Customer] CAPTURE id={_active.Id} client={_active.Label} history={CustomerCount}/10 " +
+                EventLog.Write($"[Customer] CAPTURE id={_active.Id} client={_active.Label} history={CustomerCount}/20 " +
                     $"objects={_active.Graph.ObjectCount} slots={_active.Graph.SlotCount} bytes={_active.Graph.ByteCount} " +
                     $"items={_active.Items.Count} renderedItems={_active.RenderedItems.Count} windows={_active.Windows.Count} " +
-                    $"after={(Time.unscaledTime - _arrivedAt):0.00}s " +
+                    $"arrivalWaitSeconds={(manual || closed ? 0 : Time.unscaledTime - _arrivedAt):0.00} " +
+                    $"captureMs={timing.ElapsedMilliseconds} " +
                     $"ms(access={tAccess},walk={tWalk - tAccess},items={tItems - tWalk}," +
                     $"verify={tVerify - tItems},total={timing.ElapsedMilliseconds})" + readers);
                 TraceBargain("CAPTURE");
@@ -623,8 +658,9 @@ namespace ProbablyStolenTools
                 candidate?.Dispose();
                 Boundary.Invalidate();
                 Status = "Capture failed: " + e.Message;
-                EventLog.Write("[Customer] CAPTURE FAILED: " + e);
-                RecordFailure(closed, e);
+                EventLog.Write($"[Customer] CAPTURE FAILED elapsedMs={timing.ElapsedMilliseconds} " +
+                    $"limits(objects={MaxSnapshotObjects},slots={MaxSnapshotSlots},bytes={MaxSnapshotBytes}): " + e);
+                RecordFailure(closed, manual, e);
             }
         }
 
@@ -851,7 +887,7 @@ namespace ProbablyStolenTools
                 catch (Exception e) { Plugin.LogSource.LogWarning("[Recorder] refresh failed: " + e.Message); }
                 Status = "Restored checkpoint: " + Name(target);
                 PanelNotice.Show("已回溯至 " + Name(target));
-                EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/10 diff={diff.Count}");
+                EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={diff.Count}");
                 TraceBargain("AFTER RESTORE");
             }
             catch (Exception e)
@@ -1037,6 +1073,11 @@ namespace ProbablyStolenTools
         private static void Clear(string reason = "场景切换")
         {
             Failures.Clear();
+            LastCaptureError = null;
+            _failureNoticeKey = null;
+            _failureRevision++;
+            _captureSince = 0;
+            SettleLog.Reset();
             History.Clear();
             if (ClosedNode != null)
             {

@@ -30,6 +30,8 @@
     <Reference Include="0Harmony" HintPath="$(GameDir)\Probably Stolen_Data\Managed\0Harmony.dll" Private="false" />
     <Reference Include="$(GameDir)\Probably Stolen_Data\Managed\UnityEngine*.dll" Private="false" />
     <Reference Include="Unity.TextMeshPro" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Unity.TextMeshPro.dll" Private="false" />
+    <Reference Include="Unity.Localization" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Unity.Localization.dll" Private="false" />
+    <Reference Include="Unity.ResourceManager" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Unity.ResourceManager.dll" Private="false" />
   </ItemGroup>
   <ItemGroup Condition="'$(GameRuntime)' != 'Mono'">
     <Compile Remove="ManagedStateAccess.cs;ManagedRuntime.cs;MonoModConfig.cs;SnapshotFieldReader.cs" />
