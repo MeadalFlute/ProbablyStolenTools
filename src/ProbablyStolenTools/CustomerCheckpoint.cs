@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -773,36 +773,17 @@ namespace ProbablyStolenTools
                         var inventory = restored.parentInventory;
                         if (!(inventory is PixelElement holder)) continue;
                         if (!(restored is PixelElement element)) continue;
+                        if (element.IsRenderingChildOf(holder)) continue;
                         if (element.SetRenderingParent(holder)) reparented++;
                     }
                     catch { }
                 }
                 if (reparented > 0)
                     EventLog.Write($"[QuickSL/Customer] reparented {reparented} item view(s) to their restored inventories");
-                // 恢复期间不可能正在拖拽：任何仍然激活的 fake 节点都是上一次交易留下的
-                // 幽灵副本，会在容器左上角与真实物品重叠。这里统一关掉。
-                int hiddenFakes = 0;
-                foreach (var restored in target.RenderedItems.Values)
-                {
-                    try
-                    {
-                        if (restored == null || restored.IsDestroyed()) continue;
-                        hiddenFakes += HideFakeNode(restored.fakeMiddle);
-                        hiddenFakes += HideFakeNode(restored.fakeRotator);
-                        hiddenFakes += HideFakeNode(restored.fakeBackground);
-                        hiddenFakes += HideFakeNode(restored.fakeInner);
-                    }
-                    catch { }
-                }
-                if (hiddenFakes > 0)
-                    EventLog.Write($"[QuickSL/Customer] hid {hiddenFakes} stale fake item node(s) after restore");
                 LogItemGeometry(target, "restore-pre");
                 foreach (var item in target.RenderedItems.Values)
                 {
                     GameFields.Set(item, "validateLock", false);
-                    // modifiedShape / modifiedXOrigin / modifiedYOrigin 是派生字段：
-                    // 从还原后的标签重新计算一次，避免贴图锚点与格子形状不一致。
-                    try { item.SyncModifiedState(); } catch { }
                     item.ValidatePartialSprite();
                     item.Validate();
                 }
@@ -914,41 +895,44 @@ namespace ProbablyStolenTools
             RebuildRetainedItems();
             if (removed > 0) EventLog.Write($"[Customer] BRANCH committed on next customer; removed={removed}");
         }
-        /// <summary>恢复后关闭残留的 fake（拖拽/展示）节点，返回实际关闭数量。</summary>
-        private static int HideFakeNode(TreeNodeRender node)
-        {
-            try
-            {
-                if (node == null || node.gameObject == null || !node.gameObject.activeSelf) return 0;
-                node.gameObject.SetActive(false);
-                return 1;
-            }
-            catch { return 0; }
-        }
-        /// <summary>诊断：记录物品形状与视图锚点，用于定位恢复后的贴图错位。</summary>
+        /// <summary>诊断：只记录异常的物品视图（丢失 / 无贴图 / 锚点与格子不符）。</summary>
         private static void LogItemGeometry(Snapshot snapshot, string phase)
         {
             if (snapshot == null) return;
             int logged = 0;
             try
             {
+                int gridSize = UISettings.current != null ? UISettings.current.gridSize : 16;
                 foreach (var item in snapshot.RenderedItems.Values)
                 {
-                    if (logged >= 8) break;
+                    if (logged >= 30) break;
                     try
                     {
-                        if (item == null || item.IsDestroyed()) continue;
+                        if (item == null) continue;
                         var shape = item.modifiedShape;
+                        var handler = item.handler?.rectTransform;
+                        var middle = item.middle?.rectTransform;
+                        var back = item.background?.rectTransform;
+                        bool destroyed = item.IsDestroyed();
+                        bool missing = handler == null || middle == null || back == null || item.handler?.gameObject == null;
+                        bool noSprite = item.background == null || item.background.image == null
+                            || item.background.image.sprite == null;
+                        float expectedX = shape == null ? 0 : shape.minX * gridSize;
+                        float expectedY = shape == null ? 0 : -shape.minY * gridSize;
+                        bool misplaced = middle != null && shape != null
+                            && (Math.Abs(middle.anchoredPosition.x - expectedX) > 0.5f
+                                || Math.Abs(middle.anchoredPosition.y - expectedY) > 0.5f);
+                        if (!destroyed && !missing && !noSprite && !misplaced) continue;
                         string shapeText = shape == null ? "null"
                             : $"({shape.minX},{shape.minY} {shape.width}x{shape.height} rot={shape.orientation} flip={shape.flipped})";
                         int xo = GameFields.Get<int>(item, "modifiedXOrigin");
                         int yo = GameFields.Get<int>(item, "modifiedYOrigin");
-                        var handler = item.handler?.rectTransform;
-                        var middle = item.middle?.rectTransform;
-                        var back = item.background?.rectTransform;
                         string parent = handler != null && handler.parent != null ? handler.parent.name : "-";
                         string inv = item.parentInventory == null ? "null" : item.parentInventory.GetType().Name;
-                        EventLog.Write($"[QuickSL/Geom] {phase} id={item.identifier} shape={shapeText} origin=({xo},{yo}) " +
+                        string flags = (destroyed ? "DESTROYED " : "") + (missing ? "MISSING " : "")
+                            + (noSprite ? "NOSPRITE " : "")
+                            + (misplaced ? "MISPLACED(expect " + expectedX.ToString("0.#") + "/" + expectedY.ToString("0.#") + ") " : "");
+                        EventLog.Write($"[QuickSL/Geom] {phase} {flags}id={item.identifier} shape={shapeText} origin=({xo},{yo}) " +
                             $"handler={Fmt(handler)} middle={Fmt(middle)} bg={Fmt(back)} parent={parent} inv={inv}");
                         logged++;
                     }
