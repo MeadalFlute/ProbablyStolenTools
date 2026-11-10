@@ -46,6 +46,13 @@ namespace ProbablyStolenTools
             "PlayerStore.lockAllFlag",
             "PlayerStore.lockAllInventoryFlag",
         };
+        // These describe native RectTransforms, not business state. Restoring them
+        // without those transforms makes UpdateRectTransform skip a required layout.
+        private static readonly HashSet<string> ItemLayoutCache = new(StringComparer.Ordinal)
+        {
+            "appliedMinX", "appliedMinY", "appliedOrientation",
+            "appliedGridSize", "appliedFlipped", "validateLock",
+        };
         private readonly Type _unityObject;
         private readonly string _gameAssembly;
         private readonly bool _fastReads;
@@ -155,6 +162,7 @@ namespace ProbablyStolenTools
                 {
                     if (selected != null && !selected.Contains(field.Name)) continue;
                     if (TransientLocks.Contains(current.FullName + "." + field.Name)) continue;
+                    if (current.FullName == "GameItemElement" && ItemLayoutCache.Contains(field.Name)) continue;
                     if (Visual(field.FieldType)) continue;
                     Flatten(field.FieldType, new List<FieldInfo> { field }, -1,
                         current.FullName + "." + field.Name, slots, stores, 0);

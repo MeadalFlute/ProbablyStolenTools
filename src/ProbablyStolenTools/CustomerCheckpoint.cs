@@ -553,8 +553,22 @@ namespace ProbablyStolenTools
                         }
                         candidate.RenderedItems.Add(id, item);
                         AddVisual(candidate, item.handler, visualIds);
+                        AddVisual(candidate, item.middle, visualIds);
+                        AddVisual(candidate, item.rotator, visualIds);
+                        AddVisual(candidate, item.background, visualIds);
+                        AddVisual(candidate, item.inner, visualIds);
                         AddVisual(candidate, item.fakeMiddle, visualIds);
+                        AddVisual(candidate, item.fakeRotator, visualIds);
+                        AddVisual(candidate, item.fakeBackground, visualIds);
+                        AddVisual(candidate, item.fakeInner, visualIds);
                     }
+#if MONO
+                    else if (instance is PixelElement element)
+                    {
+                        AddVisual(candidate, element.handler, visualIds);
+                        AddVisual(candidate, element.inner, visualIds);
+                    }
+#endif
 #if MONO
                     if (instance is PixelWindow)
 #else
@@ -568,6 +582,7 @@ namespace ProbablyStolenTools
 #endif
                         candidate.Windows.Add(id, window);
                         AddVisual(candidate, window.handler, visualIds);
+                        AddVisual(candidate, window.inner, visualIds);
                     }
                 }
                 if (candidate.RenderedItems.Count == 0) throw new InvalidOperationException("No live inventory items reached from snapshot roots.");
@@ -762,70 +777,19 @@ namespace ProbablyStolenTools
                 foreach (var view in target.Visuals) view.Restore();
                 target.Shop.Restore();
                 target.Customer.Restore();
-                // 恢复后把物品视图重新挂回它所属的库存容器：玩家卖出/放入展示柜后回溯，
-                // 数据已经回到旧库存，但视图还留在新容器的节点下，看起来就会“错位”。
-                int reparented = 0;
-                foreach (var restored in target.RenderedItems.Values)
-                {
-                    try
-                    {
-                        if (restored == null || restored.IsDestroyed()) continue;
-                        var inventory = restored.parentInventory;
-                        if (!(inventory is PixelElement holder)) continue;
-                        if (!(restored is PixelElement element)) continue;
-                        if (element.IsRenderingChildOf(holder)) continue;
-                        if (element.SetRenderingParent(holder)) reparented++;
-                    }
-                    catch { }
-                }
-                if (reparented > 0)
-                    EventLog.Write($"[QuickSL/Customer] reparented {reparented} item view(s) to their restored inventories");
+                // VisualState restores the actual captured render parent. A data
+                // inventory may render through a window or another native host.
                 LogItemGeometry(target, "restore-pre");
                 foreach (var item in target.RenderedItems.Values)
                 {
                     GameFields.Set(item, "validateLock", false);
+#if MONO
+                    GameFields.Set(item, "appliedGridSize", -1);
+#endif
                     item.ValidatePartialSprite();
                     item.Validate();
-                    // Validate() 在 validateLock 异常残留时会被整段跳过；这里按还原后的
-                    // modifiedShape / modifiedXOrigin 强制重排一次，保证贴图与格子一致。
-                    try { item.UpdateRectTransform(); } catch { }
-                    try
-                    {
-                        int grid = UISettings.current != null ? UISettings.current.gridSize : 16;
-                        int xo = GameFields.Get<int>(item, "modifiedXOrigin");
-                        int yo = GameFields.Get<int>(item, "modifiedYOrigin");
-                        var back = item.background?.rectTransform;
-                        if (back != null) back.anchoredPosition = new Vector2(xo * grid, yo * grid);
-                    }
-                    catch { }
                 }
                 try { OverlayHandler.current?.UpdateInventoryStateUIImmediately(); } catch { }
-                // 最后再按还原后的形状强制写一次锚点：放到 UI 刷新之后，
-                // 避免任何后续布局把刚算好的位置又改回旧值。
-                try
-                {
-                    int grid = UISettings.current != null ? UISettings.current.gridSize : 16;
-                    foreach (var item in target.RenderedItems.Values)
-                    {
-                        try
-                        {
-                            var shape = item.modifiedShape;
-                            var mid = item.middle?.rectTransform;
-                            if (mid != null && shape != null)
-                                mid.anchoredPosition = new Vector2(shape.minX * grid, -shape.minY * grid);
-                            var back = item.background?.rectTransform;
-                            if (back != null)
-                            {
-                                int xo = GameFields.Get<int>(item, "modifiedXOrigin");
-                                int yo = GameFields.Get<int>(item, "modifiedYOrigin");
-                                back.anchoredPosition = new Vector2(xo * grid, yo * grid);
-                            }
-                        }
-                        catch { }
-                    }
-                }
-                catch { }
-                LogItemGeometry(target, "restore-post");
                 var inspect = InspectionUIManager.Instance;
                 if (inspect.panel != null) inspect.panel.SetActive(false);
                 if (inspect.appraisalPanel != null) inspect.appraisalPanel.SetActive(false);
@@ -847,10 +811,18 @@ namespace ProbablyStolenTools
                     // Validate()/ValidatePartialSprite() 会重建 TagSystem 的字典，导致字典内部
                     // 布局与快照不一致。再写一遍业务图把标签状态压回去，然后重新校验。
                     target.Graph.Restore();
-                    diff = target.Graph.Differences();
                 }
+                // A second Graph.Restore above can change shape/origin again.
+                // Restore native views and finish geometry only after that write.
+                foreach (var view in target.Visuals) view.Restore();
+                RestoreItemGeometry(target);
+                // 旋转/翻转/锚点/尺寸以快照里的原生 RectTransform 为准：几何恢复之后再套一次，
+                // 避免 UpdateRectTransform() 用被清零的 modifiedShape.orientation 覆盖旋转。
+                foreach (var view in target.Visuals) view.RestoreTransforms();
+                diff = target.Graph.Differences();
                 if (diff.Count != 0)
-                    EventLog.Write("[Customer] RESTORE WARN diff=" + string.Join(", ", diff));
+                    throw new InvalidOperationException("Final restore differs from checkpoint: " + string.Join(", ", diff));
+                LogItemGeometry(target, "restore-post");
                 // Only discard abandoned views after the restored business graph passes validation.
                 foreach (var w in newWindows)
                     if (w.handler != null) w.handler.gameObject.SetActive(false);
@@ -932,6 +904,42 @@ namespace ProbablyStolenTools
             RebuildRetainedItems();
             if (removed > 0) EventLog.Write($"[Customer] BRANCH committed on next customer; removed={removed}");
         }
+
+        private static void RestoreItemGeometry(Snapshot snapshot)
+        {
+            int grid = UISettings.current.gridSize;
+            foreach (var item in snapshot.RenderedItems.Values)
+            {
+                if (item.IsDestroyed() || item.modifiedShape == null)
+                    throw new InvalidOperationException("Checkpoint item view is unavailable: " + item.identifier);
+                var shape = item.modifiedShape;
+                var size = new Vector2(shape.width * grid, shape.height * grid);
+                var origin = new Vector2(GameFields.Get<int>(item, "modifiedXOrigin") * grid,
+                    GameFields.Get<int>(item, "modifiedYOrigin") * grid);
+                item.handler.rectTransform.anchoredPosition = Vector2.zero;
+                item.middle.rectTransform.sizeDelta = size;
+                item.rotator.rectTransform.sizeDelta = size;
+                item.fakeMiddle.rectTransform.sizeDelta = size;
+                item.fakeRotator.rectTransform.sizeDelta = size;
+#if MONO
+                // A forced native layout restores flip/pivot/rotation as well as position.
+                GameFields.Set(item, "appliedGridSize", -1);
+#endif
+                GameFields.Set(item, "validateLock", false);
+                item.UpdateRectTransform();
+                // Keep the final anchor write after all UI callbacks and graph restores.
+                var position = new Vector2(shape.minX * grid, -shape.minY * grid);
+                item.middle.rectTransform.anchoredPosition = position;
+                item.fakeMiddle.rectTransform.anchoredPosition = position;
+                item.background.rectTransform.anchoredPosition = origin;
+                item.fakeBackground.rectTransform.anchoredPosition = origin;
+                if ((item.middle.rectTransform.anchoredPosition - position).sqrMagnitude > 0.25f
+                    || (item.background.rectTransform.anchoredPosition - origin).sqrMagnitude > 0.25f)
+                    throw new InvalidOperationException("Item view rejected restored geometry: " + item.identifier);
+            }
+            EventLog.Write($"[QuickSL/Geom] synchronized {snapshot.RenderedItems.Count} item view(s) after final graph restore");
+        }
+
         /// <summary>诊断：只记录异常的物品视图（丢失 / 无贴图 / 锚点与格子不符）。</summary>
         private static void LogItemGeometry(Snapshot snapshot, string phase)
         {
@@ -954,12 +962,16 @@ namespace ProbablyStolenTools
                         bool missing = handler == null || middle == null || back == null || item.handler?.gameObject == null;
                         bool noSprite = item.background == null || item.background.image == null
                             || item.background.image.sprite == null;
+                        bool hidden = item.unitCount > 0 && handler != null && handler.gameObject.activeInHierarchy
+                            && (item.background == null || item.background.image == null
+                                || !item.background.gameObject.activeInHierarchy || !item.background.image.enabled
+                                || item.background.image.color.a <= 0);
                         float expectedX = shape == null ? 0 : shape.minX * gridSize;
                         float expectedY = shape == null ? 0 : -shape.minY * gridSize;
                         bool misplaced = middle != null && shape != null
                             && (Math.Abs(middle.anchoredPosition.x - expectedX) > 0.5f
                                 || Math.Abs(middle.anchoredPosition.y - expectedY) > 0.5f);
-                        if (!destroyed && !missing && !noSprite && !misplaced) continue;
+                        if (!destroyed && !missing && !noSprite && !misplaced && !hidden) continue;
                         string shapeText = shape == null ? "null"
                             : $"({shape.minX},{shape.minY} {shape.width}x{shape.height} rot={shape.orientation} flip={shape.flipped})";
                         int xo = GameFields.Get<int>(item, "modifiedXOrigin");
@@ -968,6 +980,7 @@ namespace ProbablyStolenTools
                         string inv = item.parentInventory == null ? "null" : item.parentInventory.GetType().Name;
                         string flags = (destroyed ? "DESTROYED " : "") + (missing ? "MISSING " : "")
                             + (noSprite ? "NOSPRITE " : "")
+                            + (hidden ? "HIDDEN " : "")
                             + (misplaced ? "MISPLACED(expect " + expectedX.ToString("0.#") + "/" + expectedY.ToString("0.#") + ") " : "");
                         EventLog.Write($"[QuickSL/Geom] {phase} {flags}id={item.identifier} shape={shapeText} origin=({xo},{yo}) " +
                             $"handler={Fmt(handler)} middle={Fmt(middle)} bg={Fmt(back)} parent={parent} inv={inv}");
@@ -1241,34 +1254,63 @@ namespace ProbablyStolenTools
             internal readonly TreeNodeRender Node;
             private readonly Transform _parent;
             private readonly TreeNodeRender _nodeParent;
-            private readonly Vector3 _position, _scale;
+            private readonly Vector3 _anchoredPosition, _scale;
+            private readonly Vector2 _anchorMin, _anchorMax, _pivot, _size;
             private readonly Quaternion _rotation;
-            private readonly bool _active;
+            private readonly bool _active, _hasImage, _imageEnabled, _raycastTarget;
+            private readonly Color _color;
+            private readonly Sprite _sprite;
             internal VisualState(TreeNodeRender node)
             {
                 Node = node;
-                var t = node.transform;
-                _parent = t.parent; _position = t.localPosition; _scale = t.localScale;
+                var t = node.rectTransform;
+                _parent = t.parent; _anchoredPosition = t.anchoredPosition3D; _scale = t.localScale;
                 _nodeParent = node.parent;
                 _rotation = t.localRotation; _active = node.gameObject.activeSelf;
+                _anchorMin = t.anchorMin; _anchorMax = t.anchorMax;
+                _pivot = t.pivot; _size = t.sizeDelta;
+                _hasImage = node.image != null;
+                if (_hasImage)
+                {
+                    _imageEnabled = node.image.enabled; _raycastTarget = node.image.raycastTarget;
+                    _color = node.image.color; _sprite = node.image.sprite;
+                }
             }
             internal void Validate()
             {
-                if (Node == null || _parent == null)
+                if (Node == null || _parent == null || Node.rectTransform == null
+                    || (_hasImage && Node.image == null))
                     throw new InvalidOperationException("A checkpoint view or its parent was destroyed.");
             }
             internal void Restore()
             {
+                RestoreTransforms();
+                if (_hasImage)
+                {
+                    Node.image.sprite = _sprite; Node.image.color = _color;
+                    Node.image.enabled = _imageEnabled; Node.image.raycastTarget = _raycastTarget;
+                }
+                Node.gameObject.SetActive(_active);
+            }
+
+            /// <summary>
+            /// 只恢复几何：父级、锚点、枢轴、尺寸、位置、缩放与旋转。用于在游戏做了一次
+            /// 布局（UpdateRectTransform）之后，把快照中已旋转/翻转的朝向重新压回去。
+            /// </summary>
+            internal void RestoreTransforms()
+            {
                 Validate();
-                var t = Node.transform;
+                var t = Node.rectTransform;
 #if MONO
                 AccessTools.PropertySetter(typeof(TreeNodeRender), "parent").Invoke(Node, new object[] { _nodeParent });
 #else
                 Node.parent = _nodeParent;
 #endif
-                t.SetParent(_parent, false); t.localPosition = _position;
+                t.SetParent(_parent, false);
+                t.anchorMin = _anchorMin; t.anchorMax = _anchorMax;
+                t.pivot = _pivot; t.sizeDelta = _size;
+                t.anchoredPosition3D = _anchoredPosition;
                 t.localScale = _scale; t.localRotation = _rotation;
-                Node.gameObject.SetActive(_active);
             }
         }
     }
