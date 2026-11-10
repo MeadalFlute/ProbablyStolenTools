@@ -800,6 +800,31 @@ namespace ProbablyStolenTools
                     catch { }
                 }
                 try { OverlayHandler.current?.UpdateInventoryStateUIImmediately(); } catch { }
+                // 最后再按还原后的形状强制写一次锚点：放到 UI 刷新之后，
+                // 避免任何后续布局把刚算好的位置又改回旧值。
+                try
+                {
+                    int grid = UISettings.current != null ? UISettings.current.gridSize : 16;
+                    foreach (var item in target.RenderedItems.Values)
+                    {
+                        try
+                        {
+                            var shape = item.modifiedShape;
+                            var mid = item.middle?.rectTransform;
+                            if (mid != null && shape != null)
+                                mid.anchoredPosition = new Vector2(shape.minX * grid, -shape.minY * grid);
+                            var back = item.background?.rectTransform;
+                            if (back != null)
+                            {
+                                int xo = GameFields.Get<int>(item, "modifiedXOrigin");
+                                int yo = GameFields.Get<int>(item, "modifiedYOrigin");
+                                back.anchoredPosition = new Vector2(xo * grid, yo * grid);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
                 LogItemGeometry(target, "restore-post");
                 var inspect = InspectionUIManager.Instance;
                 if (inspect.panel != null) inspect.panel.SetActive(false);
