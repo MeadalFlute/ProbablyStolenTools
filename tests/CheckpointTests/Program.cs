@@ -9,6 +9,7 @@ void Check(bool condition) { if (!condition) throw new Exception("Assertion fail
 
 ManagedSnapshotTests.Run(Test, Check);
 SnapshotOptimizationTests.Run(Test, Check);
+ItemLayoutTests.Run(Test, Check);
 
 Test("cycle and shared object keep original identity", () =>
 {

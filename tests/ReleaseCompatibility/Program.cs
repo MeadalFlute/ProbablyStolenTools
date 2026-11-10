@@ -98,7 +98,8 @@ var roots = new Dictionary<string, string[]>
     ["IdleAnimator"] = new[] { "amplitude", "frequency", "axis", "originalPosition", "hasOriginal", "timer", "playing" },
     ["PhoneUIManager"] = new[] { "currentNumber", "isCalling", "callingTimer", "callTimerRoll", "isTalking", "sequenceTimer", "currentPhoneClient" },
     ["GameMaster"] = new[] { "worldTags" },
-    ["GameItemElement"] = new[] { "validateLock" },
+    ["GameItemElement"] = new[] { "validateLock", "appliedMinX", "appliedMinY",
+        "appliedOrientation", "appliedGridSize", "appliedFlipped" },
     ["ItemMouseDoubleClickHandler"] = new[] { "lastKey" }
 };
 int fields = 0;
@@ -175,6 +176,21 @@ object Data(string name) => System.Runtime.Serialization.FormatterServices.GetUn
 var player = Data("PlayerStore");
 var station = Data("StoreStation");
 var item = Data("GameItemElement");
+var cacheFields = new[] { "appliedMinX", "appliedMinY", "appliedOrientation", "appliedGridSize", "appliedFlipped", "validateLock" }
+    .Select(name => item.GetType().GetField(name, dataFlags)).ToArray();
+foreach (var field in cacheFields)
+    field.SetValue(item, field.FieldType == typeof(bool) ? (object)false : 16);
+var unitProperty = item.GetType().GetProperty("unitCount");
+var originProperty = item.GetType().GetProperty("modifiedXOrigin");
+unitProperty.SetValue(item, 2);
+originProperty.SetValue(item, 4);
+var shape = Data("GridShapeBuilder");
+var shapeProperty = item.GetType().GetProperty("modifiedShape");
+var shapeNames = new[] { "minX", "minY", "orientation", "flipped", "width", "height" };
+object[] shapeValues = { 4, 6, 1, true, 2, 3 };
+var shapeFields = shapeNames.Select(name => shape.GetType().GetField("<" + name + ">k__BackingField", dataFlags)).ToArray();
+for (int i = 0; i < shapeFields.Length; i++) shapeFields[i].SetValue(shape, shapeValues[i]);
+shapeProperty.SetValue(item, shape);
 var cashField = player.GetType().GetField("playerCash");
 var itemField = player.GetType().GetField("currentNegociatedItem");
 var dayField = station.GetType().GetField("dayCounter");
@@ -200,6 +216,13 @@ var graph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.No
     .Invoke(null, new object[] { access, new[] { Identity(player), Identity(station), Identity(itemArray) }, 50000, 1000000, 64L * 1024 * 1024 });
 try
 {
+    var slots = (System.Collections.IEnumerable)accessType.GetMethod("Describe", dataFlags).Invoke(access, new object[] { Identity(item) });
+    foreach (var slot in slots)
+    {
+        string name = (string)slot.GetType().GetProperty("Name", dataFlags).GetValue(slot);
+        if (cacheFields.Any(field => name == "GameItemElement." + field.Name))
+            throw new Exception("Native layout cache leaked into business snapshot: " + name);
+    }
     // Repeated verification also exercises lazily compiled readers for actual game/private fields.
     for (int i = 0; i < 40; i++)
     {
@@ -218,6 +241,13 @@ try
     cashField.SetValue(player, 999);
     itemField.SetValue(player, null);
     dayField.SetValue(station, 20);
+    unitProperty.SetValue(item, 0);
+    originProperty.SetValue(item, 9);
+    shapeProperty.SetValue(item, Data("GridShapeBuilder"));
+    foreach (var field in shapeFields)
+        field.SetValue(shape, field.FieldType == typeof(bool) ? (object)false : 99);
+    foreach (var field in cacheFields)
+        field.SetValue(item, field.FieldType == typeof(bool) ? (object)true : 99);
     itemArray.SetValue(null, 1);
     itemArray.SetValue(items[0], 2);
     itemArray.SetValue(null, 3);
@@ -227,8 +257,18 @@ try
     zoomLevels["new"] = 99;
     graphType.GetMethod("Restore", dataFlags).Invoke(graph, null);
     if ((int)cashField.GetValue(player) != 135 || !ReferenceEquals(itemField.GetValue(player), item)
-        || (int)dayField.GetValue(station) != 12)
+        || (int)dayField.GetValue(station) != 12 || (int)unitProperty.GetValue(item) != 2
+        || (int)originProperty.GetValue(item) != 4)
         throw new Exception("Actual game data graph restore failed.");
+    foreach (var field in cacheFields)
+        if (!Equals(field.GetValue(item), field.FieldType == typeof(bool) ? (object)true : 99))
+            throw new Exception("Native layout cache was incorrectly rewound: " + field.Name);
+    if (!ReferenceEquals(shapeProperty.GetValue(item), shape))
+        throw new Exception("Actual item modifiedShape identity was not restored.");
+    for (int i = 0; i < shapeFields.Length; i++)
+        if (!Equals(shapeFields[i].GetValue(shape), shapeValues[i]))
+            throw new Exception("Actual item modifiedShape state was not restored: " + shapeNames[i]);
+    Console.WriteLine("PASS real GameItemElement excludes six layout-cache fields while retaining shape position/size/rotation/flip and count/origin");
     for (int i = 0; i < items.Length; i++)
         if (!ReferenceEquals(itemArray.GetValue(i), items[i]))
             throw new Exception("Actual game item array element was not restored: " + i);
