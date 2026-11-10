@@ -7,9 +7,9 @@ namespace ProbablyStolenTools
     internal sealed class SnapshotLimitException : InvalidOperationException
     {
         internal SnapshotLimitException(string kind, int objects, int slots, long bytes,
-            int maxObjects, int maxSlots, long maxBytes, int pending, string source)
+            int maxObjects, int maxSlots, long maxBytes, int pending, string source, int? discovered = null)
             : base($"Snapshot {kind} limit exceeded: objects={objects}/{maxObjects}, slots={slots}/{maxSlots}, " +
-                $"bytes={bytes}/{maxBytes}, pending={pending}, source={source}. " +
+                $"bytes={bytes}/{maxBytes}, pending={pending}, discovered={discovered ?? objects}, source={source}. " +
                 "This checkpoint was skipped; existing checkpoints were retained. No partial snapshot is usable.") { }
     }
 
@@ -70,17 +70,24 @@ namespace ProbablyStolenTools
             {
                 var pending = new Queue<IntPtr>();
                 var budgeted = access as IBudgetedStateDescription;
+                void Discover(IntPtr id, IntPtr parent, string field)
+                {
+                    if (id == IntPtr.Zero || graph._sources.ContainsKey(id)) return;
+                    if (graph._sources.Count >= maxObjects)
+                        throw new SnapshotLimitException("object", graph.ObjectCount, graph.SlotCount, graph.ByteCount,
+                            maxObjects, maxSlots, maxBytes, pending.Count,
+                            parent == IntPtr.Zero ? field : graph.SourceOf(parent) + " -> " + field,
+                            graph._sources.Count + 1);
+                    graph._sources.Add(id, (parent, field));
+                    pending.Enqueue(id);
+                }
                 // Register all roots first so an earlier root's links cannot replace their root paths.
                 foreach (var root in roots)
-                    if (root != IntPtr.Zero && graph._sources.TryAdd(root, (IntPtr.Zero, "root")))
-                        pending.Enqueue(root);
+                    Discover(root, IntPtr.Zero, "root");
                 while (pending.Count != 0)
                 {
                     var id = pending.Dequeue();
                     graph._objects.Add(id);
-                    if (graph._objects.Count > maxObjects)
-                        throw new SnapshotLimitException("object", graph.ObjectCount, graph.SlotCount, graph.ByteCount,
-                            maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id));
                     access.Retain(id);
                     IReadOnlyList<StateSlot> description;
                     try
@@ -92,20 +99,21 @@ namespace ProbablyStolenTools
                     {
                         throw new SnapshotLimitException(e.Kind, graph.ObjectCount, graph.SlotCount, graph.ByteCount,
                             maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id) +
-                            $" -> array requires slots={e.RequiredSlots}, bytes={e.RequiredBytes} before expansion");
+                            $" -> array requires slots={e.RequiredSlots}, bytes={e.RequiredBytes} before expansion",
+                            graph._sources.Count);
                     }
                     foreach (var slot in description)
                     {
                         if (graph._entries.Count >= maxSlots)
                             throw new SnapshotLimitException("slot", graph.ObjectCount, graph.SlotCount, graph.ByteCount,
-                                maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id) + " -> " + slot.Name);
+                                maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id) + " -> " + slot.Name,
+                                graph._sources.Count);
                         if (slot.IsReference)
                         {
                             var value = access.ReadReference(id, slot);
                             graph._entries.Add(new Entry(id, slot, null, value));
-                            if (value != IntPtr.Zero && graph._sources.TryAdd(value, (id, slot.Name)))
-                                pending.Enqueue(value);
                             graph.ByteCount += IntPtr.Size;
+                            Discover(value, id, slot.Name);
                         }
                         else
                         {
@@ -115,7 +123,8 @@ namespace ProbablyStolenTools
                         }
                         if (graph.ByteCount > maxBytes)
                             throw new SnapshotLimitException("byte", graph.ObjectCount, graph.SlotCount, graph.ByteCount,
-                                maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id) + " -> " + slot.Name);
+                                maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id) + " -> " + slot.Name,
+                                graph._sources.Count);
                     }
                 }
                 access.Validate();

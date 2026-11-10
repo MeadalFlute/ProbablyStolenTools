@@ -12,6 +12,7 @@ SnapshotOptimizationTests.Run(Test, Check);
 SnapshotValueComparisonTests.Run(Test, Check);
 SnapshotArrayBudgetTests.Run(Test, Check);
 SnapshotArraySchemaTests.Run(Test, Check);
+SnapshotDiscoveryTests.Run(Test, Check);
 ItemLayoutTests.Run(Test, Check);
 ReportRegressionTests.Run(Test, Check);
 AnnotationLocaleTests.Run(Test, Check);
