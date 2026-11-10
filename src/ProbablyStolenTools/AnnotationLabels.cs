@@ -1,20 +1,77 @@
 using System;
+using System.Collections.Generic;
 
 namespace ProbablyStolenTools
 {
     internal readonly record struct NativeLabel(string Table, string Key, string Chinese, string English)
     {
-        internal string Resolve(string code, Func<string, string, string> read)
+        internal string Resolve(string code, Func<string, string, string> read,
+            Func<string, string, string> readEnglish = null)
         {
-            string fallback = LocalePolicy.Text(code, Chinese, English);
-            if (string.IsNullOrWhiteSpace(code)) return fallback;
+            if (string.IsNullOrWhiteSpace(code)) return English;
             try
             {
                 string value = read(Table, Key);
-                return string.IsNullOrWhiteSpace(value) || value == Key ? fallback : value;
+                if (Valid(value, Key)) return value;
             }
-            catch { return fallback; }
+            catch { }
+            try
+            {
+                string value = readEnglish?.Invoke(Table, Key);
+                if (Valid(value, Key)) return value;
+            }
+            catch { }
+            return English;
         }
+
+        internal static bool Valid(string value, string key) => !string.IsNullOrWhiteSpace(value) && value != key;
+    }
+
+    internal readonly record struct NativeTranslation(bool Ready, string Text);
+
+    internal sealed class AnnotationTextCache
+    {
+        private const int Limit = 2048;
+        private readonly Dictionary<(string Locale, string Table, string Key), string> _entries = new();
+        private string _locale;
+
+        internal string Resolve(string code, NativeLabel label, Func<string, string, string, NativeTranslation> read)
+        {
+            if (_locale != code) { Clear(); _locale = code; }
+            if (string.IsNullOrWhiteSpace(code)) return label.English;
+            var key = (code, label.Table, label.Key);
+            if (_entries.TryGetValue(key, out var cached)) return cached;
+            NativeTranslation current = default, english = default;
+            string value = label.Resolve(code,
+                (table, entry) => (current = Read(code, table, entry, read)).Text,
+                (table, entry) => (english = Read("en", table, entry, read)).Text);
+            // Never pin a temporary fallback while the requested table is still loading.
+            if (current.Ready && (NativeLabel.Valid(current.Text, label.Key)
+                || english.Ready && NativeLabel.Valid(english.Text, label.Key)))
+                Store(key, value);
+            return value;
+        }
+
+        private NativeTranslation Read(string code, string table, string key,
+            Func<string, string, string, NativeTranslation> read)
+        {
+            var cacheKey = (code, table, key);
+            if (_entries.TryGetValue(cacheKey, out var cached)) return new NativeTranslation(true, cached);
+            try
+            {
+                var result = read(code, table, key);
+                if (result.Ready && NativeLabel.Valid(result.Text, key)) Store(cacheKey, result.Text);
+                return result;
+            }
+            catch { return default; }
+        }
+
+        private void Store((string Locale, string Table, string Key) key, string value)
+        {
+            if (_entries.Count < Limit) _entries[key] = value;
+        }
+
+        internal void Clear() { _entries.Clear(); _locale = null; }
     }
 
     internal static class AnnotationLabels
@@ -35,13 +92,13 @@ namespace ProbablyStolenTools
 
         internal static NativeLabel Water(int purity)
         {
+            if (purity < 0 || purity > 10000) return Mechanic("mech_unknown_water", "水质未知", "Unknown water");
             if (purity >= 9990) return Mechanic("mech_condition_pure_water", "纯水", "Pure water");
             if (purity >= 9900) return Mechanic("mech_condition_high_quality_water", "优质水", "High quality water");
             if (purity >= 9800) return Mechanic("mech_condition_basewater", "基础水", "Base water");
             if (purity >= 9600) return Mechanic("mech_condition_ghostwater", "幽灵水", "Ghost water");
             if (purity >= 9000) return Mechanic("mech_condition_rustwater", "铁锈水", "Rust water");
-            if (purity >= 3500) return Mechanic("mech_condition_gutterflow", "沟渠水", "Gutter water");
-            return Mechanic("mech_unknown_water", "水质未知", "Unknown water");
+            return Mechanic("mech_condition_gutterflow", "沟渠水", "Gutter water");
         }
 
         internal static NativeLabel ChemicalGrade(double purity)

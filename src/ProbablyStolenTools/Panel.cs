@@ -47,6 +47,7 @@ namespace ProbablyStolenTools
         private readonly List<(RectTransform Rect, TextMeshProUGUI Label, CustomUIElement Element,
             Plugin.HotkeyBinding Binding)> _keyRows = new();
         private TextMeshProUGUI _optionsHeading, _keysHeading, _storageUsage;
+        private readonly CheckpointUsageText _storageText = new();
         private string _localeCode;
         private TMP_FontAsset _noticeDefaultFont;
         private RectTransform _resetKeys, _openLog;
@@ -154,11 +155,8 @@ namespace ProbablyStolenTools
                 if (_hint.text != hint) _hint.text = hint;
                 if (_settingsOpen)
                 {
-                    var disk = Rewind.DiskUsage;
-                    _storageUsage.text = InspectionLocale.Text(
-                        $"存档节点：{disk.Files} 文件，{disk.Bytes / 1048576d:0.0} / {Rewind.MaxDiskBytes / 1048576} MiB",
-                        $"File checkpoints: {disk.Files} files, {disk.Bytes / 1048576d:0.0} / {Rewind.MaxDiskBytes / 1048576} MiB")
-                        + (disk.Error == null ? "" : "\n" + InspectionLocale.Text("清理未完成，详见日志", "Cleanup incomplete; see log"));
+                    string usage = _storageText.Get(Rewind.DiskUsage, Rewind.MaxDiskBytes, _localeCode);
+                    if (_storageUsage.text != usage) _storageUsage.text = usage;
                     foreach (var setting in _settings)
                     {
                         setting.Toggle.SetIsOnWithoutNotify(setting.Config.Value);

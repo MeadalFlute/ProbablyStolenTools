@@ -8,6 +8,23 @@ namespace ProbablyStolenTools
 {
     internal readonly record struct CheckpointDiskUsage(int Files, long Bytes, int Deleted, string Error);
 
+    internal sealed class CheckpointUsageText
+    {
+        private (CheckpointDiskUsage Usage, long Limit, string Locale) _key;
+        private string _text;
+        internal string Get(CheckpointDiskUsage usage, long limit, string locale)
+        {
+            var key = (usage, limit, locale);
+            if (_text != null && _key == key) return _text;
+            _key = key;
+            _text = LocalePolicy.Text(locale,
+                $"存档节点：{usage.Files} 文件，{usage.Bytes / 1048576d:0.0} / {limit / 1048576} MiB",
+                $"File checkpoints: {usage.Files} files, {usage.Bytes / 1048576d:0.0} / {limit / 1048576} MiB")
+                + (usage.Error == null ? "" : "\n" + LocalePolicy.Text(locale, "清理未完成，详见日志", "Cleanup incomplete; see log"));
+            return _text;
+        }
+    }
+
     internal static class CheckpointStorage
     {
         internal static bool IsOwnedName(string name)
@@ -29,13 +46,13 @@ namespace ProbablyStolenTools
             string fullRoot = Path.GetFullPath(root);
             var protectedFiles = new HashSet<string>((protectedPaths ?? Array.Empty<string>())
                 .Where(path => path != null).Select(Path.GetFullPath), StringComparer.OrdinalIgnoreCase);
-            var files = new DirectoryInfo(fullRoot).GetFiles();
+            var files = new DirectoryInfo(fullRoot).GetFiles()
+                .Where(file => IsOwnedName(file.Name) && (file.Attributes & FileAttributes.ReparsePoint) == 0).ToArray();
             long bytes = files.Sum(file => file.Length);
-            int count = files.Count(file => IsOwnedName(file.Name));
+            int count = files.Length;
             int deleted = 0;
             string error = null;
-            foreach (var file in files.Where(file => IsOwnedName(file.Name))
-                .OrderBy(file => file.LastWriteTimeUtc).ThenBy(file => file.Name, StringComparer.Ordinal))
+            foreach (var file in files.OrderBy(file => file.LastWriteTimeUtc).ThenBy(file => file.Name, StringComparer.Ordinal))
             {
                 if (count <= maxFiles && bytes <= maxBytes) break;
                 if (protectedFiles.Contains(file.FullName) || (file.Attributes & FileAttributes.ReparsePoint) != 0) continue;
@@ -51,8 +68,8 @@ namespace ProbablyStolenTools
                 catch (UnauthorizedAccessException e) { error = e.Message; }
             }
             if (count > maxFiles || bytes > maxBytes)
-                error = "Storage limit still exceeded; protected, linked, unknown or locked files were preserved. " + error;
-            return new CheckpointDiskUsage(files.Length - deleted, bytes, deleted, error);
+                error = "Storage limit still exceeded; protected or locked checkpoints were preserved. " + error;
+            return new CheckpointDiskUsage(count, bytes, deleted, error);
         }
 
         internal static void Touch(string root, string path)

@@ -9,12 +9,13 @@ namespace ProbablyStolenTools
     internal static class InspectionLocale
     {
         private static string _reportedCode;
+        private static readonly AnnotationTextCache Labels = new();
         internal static void LogState()
         {
             string code = Code;
             if (string.IsNullOrEmpty(code) || code == _reportedCode) return;
             _reportedCode = code;
-            EventLog.Write($"[Locale] code={code} annotations={AnnotationsReady} nativeKeys=true fallback=en; native locale/tables are not modified");
+            EventLog.Write($"[Locale] code={code} annotations={AnnotationsReady} nativeKeys=true fallback=en-table-then-en-text nonblocking=true; native locale/tables are not modified");
         }
 
         internal static string Code
@@ -43,18 +44,21 @@ namespace ProbablyStolenTools
             => Label(new NativeLabel("UI", key, chinese, english));
 
         internal static string Label(NativeLabel label)
-            => InspectionText.Plain(label.Resolve(Code, Read));
+            => InspectionText.Plain(Labels.Resolve(Code, label, Read));
 
-        private static string Read(string tableName, string key)
+        private static NativeTranslation Read(string code, string tableName, string key)
         {
 #if MONO
-            var table = LocalizationSettings.StringDatabase.GetTableAsync(tableName);
+            var locale = LocalizationSettings.AvailableLocales.GetLocale(code);
+            if (locale == null) return default;
+            var table = LocalizationSettings.StringDatabase.GetTableAsync(tableName, locale);
             if (!table.IsValid() || !table.IsDone || table.Status != AsyncOperationStatus.Succeeded)
-                return null;
-            // Format only an already-loaded entry. Never synchronously wait for localization.
-            return table.Result?.GetEntry(key)?.GetLocalizedString();
+                return default;
+            // StringTableEntry already applies SmartFormat. Use the source table's locale for grammar.
+            return new NativeTranslation(true, table.Result?.GetEntry(key)?.GetLocalizedString(
+                locale.Formatter, null, locale as UnityEngine.Localization.Pseudo.PseudoLocale));
 #else
-            return LocHelper.GetLocalized(tableName, key);
+            return new NativeTranslation(true, LocHelper.GetLocalized(tableName, key));
 #endif
         }
 

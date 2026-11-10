@@ -10,15 +10,16 @@ internal static class AnnotationLocaleTests
                 (10000, 0, "pure_water"), (9990, 0, "pure_water"), (9989, 1, "high_quality_water"),
                 (9900, 1, "high_quality_water"), (9899, 2, "basewater"), (9800, 2, "basewater"),
                 (9799, 3, "ghostwater"), (9600, 3, "ghostwater"), (9599, 4, "rustwater"),
-                (9000, 4, "rustwater"), (8999, 5, "gutterflow"), (3500, 5, "gutterflow")
+                (9000, 4, "rustwater"), (8999, 5, "gutterflow"), (3500, 5, "gutterflow"),
+                (3499, 5, "gutterflow"), (0, 5, "gutterflow")
             };
             foreach (var (purity, tier, key) in cases)
             {
                 check(AnnotationLabels.WaterTier(purity) == tier);
                 check(AnnotationLabels.Water(purity).Key == "mech_condition_" + key);
             }
-            foreach (int purity in new[] { 3499, 0, -1 })
-                check(AnnotationLabels.WaterTier(purity) == 5 && AnnotationLabels.Water(purity).Key == "mech_unknown_water");
+            foreach (int purity in new[] { -1, int.MinValue, 10001, int.MaxValue })
+                check(AnnotationLabels.Water(purity).Key == "mech_unknown_water");
         });
 
         test("chemical and wine grade language keys retain existing score thresholds", () =>
@@ -64,7 +65,58 @@ internal static class AnnotationLocaleTests
                     check(label.Resolve(code, (_, _) => value) == label.English);
                 check(label.Resolve(code, (_, _) => throw new InvalidOperationException("invalid handle")) == label.English);
             }
-            check(label.Resolve("zh-CN", (_, _) => null) == label.Chinese);
+            check(label.Resolve("zh-CN", (_, _) => null) == label.English);
+        });
+
+        test("annotation fallback prefers the English table before English literal text", () =>
+        {
+            var label = AnnotationLabels.Water(0);
+            foreach (string code in new[] { "ru", "zh", "en" })
+            {
+                check(label.Resolve(code, (_, _) => null, (_, _) => "English table") == "English table");
+                check(label.Resolve(code, (_, _) => "native", (_, _) => throw new Exception()) == "native");
+                check(label.Resolve(code, (_, _) => throw new Exception(), (_, _) => "English table") == "English table");
+                check(label.Resolve(code, (_, _) => null, (_, _) => throw new Exception()) == label.English);
+            }
+        });
+        test("annotation cache isolates locale table and key and clears on language changes", () =>
+        {
+            var cache = new AnnotationTextCache();
+            int calls = 0;
+            NativeTranslation Read(string code, string table, string key)
+            { calls++; return new(true, code + table + key); }
+            var a = AnnotationLabels.Water(0);
+            var b = a with { Table = "Item" };
+            check(cache.Resolve("ru", a, Read) == "ru" + a.Table + a.Key);
+            int before = calls;
+            for (int i = 0; i < 100; i++) check(cache.Resolve("ru", a, Read) == "ru" + a.Table + a.Key);
+            check(calls == before);
+            cache.Resolve("ru", b, Read); check(calls == before + 1);
+            cache.Resolve("ja", a, Read); cache.Resolve("ru", a, Read);
+            check(calls == before + 3);
+            cache.Clear(); cache.Resolve("ru", a, Read); check(calls == before + 4);
+        });
+        test("annotation cache retries loading failed and missing entries without pinning transient fallbacks", () =>
+        {
+            var cache = new AnnotationTextCache();
+            var label = AnnotationLabels.WineGrade(6);
+            bool ready = false;
+            int calls = 0;
+            NativeTranslation Read(string code, string table, string key)
+            {
+                calls++;
+                return code == "en" ? new(true, "English grammar") : new(ready, ready ? "native grammar" : null);
+            }
+            check(cache.Resolve("ru", label, Read) == "English grammar");
+            ready = true;
+            check(cache.Resolve("ru", label, Read) == "native grammar");
+            int before = calls;
+            check(cache.Resolve("ru", label, Read) == "native grammar" && calls == before);
+            cache.Clear();
+            check(cache.Resolve("ru", label, (_, _, _) => throw new Exception()) == label.English);
+            check(cache.Resolve("ru", label, Read) == "native grammar");
+            cache.Clear();
+            check(cache.Resolve(null, label, (_, _, _) => throw new Exception()) == label.English);
         });
 
         test("liquid localization maps native irregular keys and preserves custom liquid fallback names", () =>

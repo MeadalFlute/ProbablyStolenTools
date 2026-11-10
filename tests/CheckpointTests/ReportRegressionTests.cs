@@ -82,13 +82,13 @@ internal static class ReportRegressionTests
                 Directory.CreateDirectory(nested);
                 File.WriteAllText(Path.Combine(nested, "save_0.es3"), "nested");
                 var result = CheckpointStorage.Prune(checkpoints, 2, 100);
-                check(result.Deleted == 2 && result.Files == 3 && result.Bytes == 28 && result.Error == null);
+                check(result.Deleted == 2 && result.Files == 2 && result.Bytes == 20 && result.Error == null);
                 check(!File.Exists(paths[0]) && !File.Exists(paths[1]) && File.Exists(paths[3]));
                 check(File.ReadAllText(Path.Combine(root, "save_0.es3")) == "user save");
                 check(File.ReadAllText(Path.Combine(checkpoints, "external.es3")) == "external");
                 check(File.ReadAllText(Path.Combine(nested, "save_0.es3")) == "nested");
                 var again = CheckpointStorage.Prune(checkpoints, 2, 100);
-                check(again.Deleted == 0 && again.Bytes == 28);
+                check(again.Deleted == 0 && again.Bytes == 20);
             });
         });
 
@@ -116,7 +116,7 @@ internal static class ReportRegressionTests
                 check(!CheckpointStorage.IsOwnedName(name));
         });
 
-        test("cleanup reports an unmet budget and preserves locked checkpoints and unknown files", () =>
+        test("cleanup reports locked checkpoint budgets and excludes unknown files from usage", () =>
         {
             InTemp(root =>
             {
@@ -127,13 +127,25 @@ internal static class ReportRegressionTests
                 {
                     using var held = new FileStream(checkpoint, FileMode.Open, FileAccess.Read, FileShare.Read);
                     var locked = CheckpointStorage.Prune(root, 1, 1);
-                    check(locked.Error != null && locked.Deleted == 0 && locked.Bytes == 110);
+                    check(locked.Error != null && locked.Deleted == 0 && locked.Bytes == 10);
                     check(File.Exists(checkpoint) && File.Exists(unknown));
                 }
                 var result = CheckpointStorage.Prune(root, 1, 1);
-                check(result.Deleted == 1 && result.Error != null && result.Bytes == 100);
+                check(result.Deleted == 1 && result.Error == null && result.Bytes == 0 && result.Files == 0);
                 check(File.ReadAllBytes(unknown).Length == 100);
             });
+        });
+
+        test("storage display reuses its text until usage budget error or locale changes", () =>
+        {
+            var display = new CheckpointUsageText();
+            var usage = new CheckpointDiskUsage(2, 1048576, 0, null);
+            string first = display.Get(usage, 268435456, "en");
+            for (int i = 0; i < 1000; i++) check(ReferenceEquals(first, display.Get(usage, 268435456, "en")));
+            check(display.Get(usage, 268435456, "zh").Contains("存档节点"));
+            check(display.Get(usage, 134217728, "en").Contains("128 MiB"));
+            check(display.Get(usage with { Error = "locked" }, 134217728, "en").Contains("Cleanup incomplete"));
+            check(display.Get(usage with { Files = 3 }, 134217728, "en").Contains("3 files"));
         });
 
         test("Chinese English and unknown locale policies are explicit and do not treat arbitrary zh substrings as Chinese", () =>
