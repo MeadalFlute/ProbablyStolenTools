@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -778,6 +778,23 @@ namespace ProbablyStolenTools
                 }
                 if (reparented > 0)
                     EventLog.Write($"[QuickSL/Customer] reparented {reparented} item view(s) to their restored inventories");
+                // 恢复期间不可能正在拖拽：任何仍然激活的 fake 节点都是上一次交易留下的
+                // 幽灵副本，会在容器左上角与真实物品重叠。这里统一关掉。
+                int hiddenFakes = 0;
+                foreach (var restored in target.RenderedItems.Values)
+                {
+                    try
+                    {
+                        if (restored == null || restored.IsDestroyed()) continue;
+                        hiddenFakes += HideFakeNode(restored.fakeMiddle);
+                        hiddenFakes += HideFakeNode(restored.fakeRotator);
+                        hiddenFakes += HideFakeNode(restored.fakeBackground);
+                        hiddenFakes += HideFakeNode(restored.fakeInner);
+                    }
+                    catch { }
+                }
+                if (hiddenFakes > 0)
+                    EventLog.Write($"[QuickSL/Customer] hid {hiddenFakes} stale fake item node(s) after restore");
                 foreach (var item in target.RenderedItems.Values)
                 {
                     GameFields.Set(item, "validateLock", false);
@@ -786,6 +803,7 @@ namespace ProbablyStolenTools
                     // is normally false in a settled snapshot, even if the live image changed.
                     item.ValidatePartialSprite();
                 }
+                try { OverlayHandler.current?.UpdateInventoryStateUIImmediately(); } catch { }
                 var inspect = InspectionUIManager.Instance;
                 if (inspect.panel != null) inspect.panel.SetActive(false);
                 if (inspect.appraisalPanel != null) inspect.appraisalPanel.SetActive(false);
@@ -891,6 +909,17 @@ namespace ProbablyStolenTools
             if (ClosedNode?.Graph == null) ClosedNode = null;
             RebuildRetainedItems();
             if (removed > 0) EventLog.Write($"[Customer] BRANCH committed on next customer; removed={removed}");
+        }
+        /// <summary>恢复后关闭残留的 fake（拖拽/展示）节点，返回实际关闭数量。</summary>
+        private static int HideFakeNode(TreeNodeRender node)
+        {
+            try
+            {
+                if (node == null || node.gameObject == null || !node.gameObject.activeSelf) return 0;
+                node.gameObject.SetActive(false);
+                return 1;
+            }
+            catch { return 0; }
         }
         private static int CounterCount()
         {
