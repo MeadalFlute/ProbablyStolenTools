@@ -172,6 +172,36 @@ internal static class SemanticTagSnapshotTests
                 check(ReferenceEquals(system.Map["a"], a) && ReferenceEquals(system.Map["b"], b));
             }
         });
+        test("semantic tags reject equal-text replacement identities for all three string fields", () =>
+        {
+            var value = Value(1) with { Text = new string(new[] { 't', 'e', 'x', 't' }) };
+            var state = new State { Value = value };
+            var system = new SystemState(); system.Map.Add("a", state);
+            using var legacy = Legacy(system);
+            using var shadow = Capture(system);
+            string Copy(string text) => new(text.ToCharArray());
+            foreach (var replaced in new[] { value with { Text = Copy(value.Text) },
+                value with { Identifier = Copy(value.Identifier) }, value with { DisplayName = Copy(value.DisplayName) } })
+            {
+                check(replaced == value && !replaced.SameState(value));
+                state.Value = replaced;
+                check(shadow.Differences().Count == 1 && legacy.Differences().Count == 1);
+                legacy.Restore();
+                check(shadow.Differences().Count == 0 && state.Value.SameState(value));
+            }
+        });
+        test("semantic tag keys preserve reference identity even when equal spelling and enumeration order match", () =>
+        {
+            string key = new(new[] { 'k', 'e', 'y' });
+            var state = new State { Value = Value(1) };
+            var system = new SystemState(); system.Map.Add(key, state);
+            using var legacy = Legacy(system);
+            using var shadow = Capture(system);
+            system.Map.Clear(); system.Map.Add(new string(key.ToCharArray()), state);
+            check(shadow.Differences().Count == 1 && legacy.Differences().Count != 0);
+            legacy.Restore();
+            check(shadow.Differences().Count == 0 && ReferenceEquals(system.Map.First().Key, key));
+        });
     }
 
     internal static void Benchmark()

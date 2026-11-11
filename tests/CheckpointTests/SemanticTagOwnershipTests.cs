@@ -43,6 +43,7 @@ internal static class SemanticTagOwnershipTests
         test("tag ownership audit counts captured map storage and state slots without approving pruning", () =>
         {
             var root = new Root { Owners = new[] { NewOwner() } };
+            check(Field(root.Owners[0].Map, "_keys") == null && Field(root.Owners[0].Map, "_values") == null);
             using var graph = Graph(root);
             using var snapshot = Snapshot(root);
             var audit = Audit(graph, snapshot);
@@ -51,6 +52,7 @@ internal static class SemanticTagOwnershipTests
                 && audit.ViewExternalEdges == 0 && audit.RootAliases == 0 && audit.StandaloneStates == 0);
             check(audit.MapSlots > 0 && audit.StorageSlots > 0 && audit.StateSlots == 9 && audit.UnknownMapSlots == 0);
             check(audit.Summary.Contains("scope=captured-graph-only pruningAllowed=false"));
+            check(Field(root.Owners[0].Map, "_keys") == null && Field(root.Owners[0].Map, "_values") == null);
             check(graph.Differences().Count == 0 && snapshot.Differences().Count == 0);
         });
         test("tag ownership audit deduplicates shared maps states and backing storage", () =>
@@ -168,6 +170,76 @@ internal static class SemanticTagOwnershipTests
             snapshot.Dispose();
             Throws<ObjectDisposedException>(() => Audit(graph, snapshot), check);
         });
+        test("logical dictionary reconstruction can match semantic values while losing captured storage and version", () =>
+        {
+            var owner = NewOwner();
+            var root = new Root { Owners = new[] { owner }, StorageAlias = Field(owner.Map, "_entries"),
+                ViewAlias = owner.Map.Keys, Iterator = owner.Map.GetEnumerator() };
+            root.Iterator.MoveNext();
+            var original = owner.Map.ToArray();
+            using var graph = Graph(root);
+            using var snapshot = Snapshot(root);
+            for (int i = 0; i < 100; i++) owner.Map["growth" + i] = new Tag();
+            // Deliberately naive logical restore; it is a test counterexample, never a production writer.
+            owner.Map.Clear();
+            foreach (var pair in original) owner.Map.Add(pair.Key, pair.Value);
+            check(snapshot.Differences().Count == 0);
+            check(graph.Differences().Count != 0 && !ReferenceEquals(root.StorageAlias, Field(owner.Map, "_entries")));
+            var iterator = root.Iterator;
+            Throws<InvalidOperationException>(() => iterator.MoveNext(), check);
+            graph.Restore();
+            check(graph.Differences().Count == 0 && snapshot.Differences().Count == 0
+                && ReferenceEquals(root.StorageAlias, Field(owner.Map, "_entries")));
+            check(root.Iterator.MoveNext() && root.Iterator.Current.Key == "null");
+        });
+        test("logical dictionary reconstruction cannot preserve retained past and future storage by values alone", () =>
+        {
+            var owner = NewOwner();
+            var root = new Root { Owners = new[] { owner } };
+            using var past = Graph(root);
+            using var semanticPast = Snapshot(root);
+            var original = owner.Map.ToArray();
+            var originalArray = Field(owner.Map, "_entries");
+            for (int i = 0; i < 100; i++) owner.Map["future" + i] = new Tag();
+            var futureArray = Field(owner.Map, "_entries");
+            using var future = Graph(root);
+            using var semanticFuture = Snapshot(root);
+            owner.Map.Clear();
+            foreach (var pair in original) owner.Map.Add(pair.Key, pair.Value);
+            check(semanticPast.Differences().Count == 0 && past.Differences().Count != 0);
+            for (int i = 0; i < 3; i++)
+            {
+                future.Restore();
+                check(ReferenceEquals(Field(owner.Map, "_entries"), futureArray)
+                    && future.Differences().Count == 0 && semanticFuture.Differences().Count == 0);
+                past.Restore();
+                check(ReferenceEquals(Field(owner.Map, "_entries"), originalArray)
+                    && past.Differences().Count == 0 && semanticPast.Differences().Count == 0);
+            }
+        });
+        test("unknown comparer mutable state is not covered by semantic matching or the legacy opaque policy", () =>
+        {
+            var comparer = new MutableComparer();
+            var owner = NewOwner();
+            owner.Map = new Dictionary<string, Tag>(owner.Map, comparer);
+            var root = new Root { Owners = new[] { owner } };
+            using var graph = Graph(root);
+            using var snapshot = Snapshot(root);
+            var audit = Audit(graph, snapshot);
+            check(audit.StoredComparers == 1 && audit.Summary.Contains("comparerState=unproven"));
+            comparer.IgnoreCase = true;
+            check(snapshot.Differences().Count == 0 && graph.Differences().Count == 0);
+            // Both captures keep comparer identity, but neither covers its hidden mutable state.
+            check(owner.Map.ContainsKey("DISABLED"));
+        });
+    }
+
+    private sealed class MutableComparer : IEqualityComparer<string>
+    {
+        internal bool IgnoreCase;
+        public bool Equals(string x, string y) => string.Equals(x, y,
+            IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        public int GetHashCode(string value) => StringComparer.OrdinalIgnoreCase.GetHashCode(value);
     }
 
     private sealed class CountAccess : IStateAccess, IStateValueComparer

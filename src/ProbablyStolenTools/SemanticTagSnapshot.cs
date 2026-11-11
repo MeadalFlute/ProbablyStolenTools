@@ -6,7 +6,13 @@ namespace ProbablyStolenTools
 {
     // Store bit patterns, not floating-point equality; null strings remain distinct from empty.
     internal readonly record struct SemanticTagValue(bool Enabled, string Text, int Integer, int SingleBits,
-        long Long, long DoubleBits, bool Boolean, string Identifier, string DisplayName);
+        long Long, long DoubleBits, bool Boolean, string Identifier, string DisplayName)
+    {
+        internal bool SameState(SemanticTagValue other) => Enabled == other.Enabled
+            && ReferenceEquals(Text, other.Text) && Integer == other.Integer && SingleBits == other.SingleBits
+            && Long == other.Long && DoubleBits == other.DoubleBits && Boolean == other.Boolean
+            && ReferenceEquals(Identifier, other.Identifier) && ReferenceEquals(DisplayName, other.DisplayName);
+    }
 
     // Experimental read-only representation. Deliberately has no Restore/Write API.
     internal sealed class SemanticTagSnapshot<TSystem, TTag> : IDisposable
@@ -105,13 +111,13 @@ namespace ProbablyStolenTools
                 foreach (var entry in map.Dictionary)
                 {
                     if (index >= map.Entries.Length) Difference("extra tag entry");
-                    else if (!string.Equals(entry.Key, map.Entries[index].Key, StringComparison.Ordinal)
+                    else if (!ReferenceEquals(entry.Key, map.Entries[index].Key)
                         || !ReferenceEquals(entry.Value, map.Entries[index].Value)) Difference("tag entry identity/order");
                     index++;
                 }
             }
             foreach (var tag in _tags)
-                if (_readTag(tag.Instance) != tag.Value) Difference("tag value");
+                if (!tag.Value.SameState(_readTag(tag.Instance))) Difference("tag value/identity");
             return result;
         }
 

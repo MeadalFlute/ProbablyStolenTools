@@ -15,7 +15,7 @@ namespace ProbablyStolenTools
         internal readonly List<string> Samples = new();
         internal string Summary => "scope=captured-graph-only pruningAllowed=false " +
             $"maps={Maps} sharedMaps={SharedMaps} storageObjects={StorageObjects} cachedViews={CachedViews} " +
-            $"storedComparers={StoredComparers} comparerState=legacy-only syncRoots={SyncRoots} " +
+            $"storedComparers={StoredComparers} comparerState=unproven syncRoots={SyncRoots} " +
             $"mapExternalEdges={MapExternalEdges} storageExternalEdges={StorageExternalEdges} " +
             $"viewExternalEdges={ViewExternalEdges} rootAliases={RootAliases} " +
             $"stateExternalEdges={StateExternalEdges} standaloneStates={StandaloneStates} " +

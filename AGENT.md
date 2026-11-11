@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**125 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**130 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -80,6 +80,7 @@ docs/workshop/                     创意工坊文本
 - Mono 标量校验走 `IStateValueComparer`，只比较捕获值，不往节点值表登记新值；float/double 按位比较，保留正负零和 NaN 差别。其他后端仍走原字节比较；差异消息达到上限也必须扫描完整图。
 - `Storage`、`StateGraph.Entry` 是只读值类型；普通字段索引为 `-1`，不能依赖结构体默认值 `0`。
 - `Snapshot.SemanticTagShadow=true` 默认启用标签语义只读实验：每次上下文清空或文件重载后最多尝试捕获一个节点，随节点释放。保留所有禁用/零值标签、共享对象与浮点位模式；字段结构不匹配、超预算或读取异常只记录失败，旧快照仍为权威。原版库存等也是 TagSystem 子类，允许其**标签基类字段投影**，子类额外字段仍仅由旧图覆盖；日志明确 `scope=tag-base-fields extraFields=legacy-only` 并给出子类数量及前六种类型。第三方继承链仍拒绝，错误包含实际类型/程序集与旧图来源，不能因原版子类误拒整个样本。**没有语义 Restore/Write API，不裁剪原对象图，不减少原校验，不调用原版保存。此轮增加诊断工作，不是已启用的提速后端。**
+- 语义标签字符串（Text / Identifier / DisplayName）和字典键均按捕获时的引用身份比较，不再只比较内容；同文字新字符串也算差异。此范围内与旧图的引用校验一致，但 MATCH 仍不覆盖字典底层版本、capacity、free-list、迭代器、比较器内部状态或子类额外字段。离线反例已证实“Clear + 按原键值重建”可语义匹配但旧图有差异、枚举器失效；不得据 MATCH 直接启用集合重建。
 
 ---
 
@@ -157,7 +158,7 @@ docs/workshop/                     创意工坊文本
 - `[QuickSL/Geom]` 只在物品视图异常（DESTROYED / MISSING / NOSPRITE / HIDDEN / MISPLACED）时输出，是排查贴图问题的第一入口。
 - CAPTURE 仍一行摘要：access/walk/items/verify 后补 prepareHistory/history/retain/finish，history 包含正常历史淘汰。RESTORE OK 仍一行：validate/census/preflight/write/refresh/reconcile/finalVerify/cleanup/release/total，包含当前普查释放，但不包含入口拒绝门控和摘要日志自身 I/O。失败输出 phase 与 elapsedMs。
 - 标签对照另记 `[SemanticTags] CAPTURE MATCH / RESTORE MATCH / ... FAILED`，按同一 `id` 对应节点。捕获摘要追加 `semanticShadow`，恢复摘要追加 `semanticVerify`，避免把实验开销混进旧后端阶段；`logicalSlots/Bytes` 只表示语义标签载荷，不是内存占用或全图替代规模。回溯采样节点才能得到 RESTORE MATCH；普通节点没有这条日志。关闭 `Snapshot.SemanticTagShadow` 可停止后续采样，已捕获样本仍随节点验证/释放。
-- 采样节点另记一条 `[SemanticTags] OWNERSHIP`，只扫描已保存的槽位/引用，不重读 live 字段、不创建字典视图。统计共享字典、外部引用、内部数组、Keys/Values 视图、独立可达标签、未知布局和相关旧图槽数；最多输出六条来源、每条路径最多 280 字符，达到日志上限仍完整计数。`scope=captured-graph-only pruningAllowed=false` 始终成立：静态、图外和不透明第三方对象的内部引用不可见，不能据此许可裁剪。比较器与子类额外字段仍仅旧图负责。captureVerifyMs/semanticShadow 包含本轮审计成本，OWNERSHIP 的 auditMs 单列其中耗时，不得当作语义载荷捕获本身。
+- 采样节点另记一条 `[SemanticTags] OWNERSHIP`，只扫描已保存的槽位/引用，不重读 live 字段、不创建字典视图。统计共享字典、外部引用、内部数组、Keys/Values 视图、独立可达标签、未知布局和相关旧图槽数；最多输出六条来源、每条路径最多 280 字符，达到日志上限仍完整计数。`scope=captured-graph-only pruningAllowed=false` 始终成立：静态、图外和不透明第三方对象的内部引用不可见，不能据此许可裁剪。`comparerState=unproven`：语义对照只保留公开比较器身份，旧访问器还会将类型名含 Comparer 的实例视为不透明，不能保证自定义比较器可变内部状态。子类额外字段仍仅旧图负责。captureVerifyMs/semanticShadow 包含本轮审计成本，OWNERSHIP 的 auditMs 单列其中耗时，不得当作语义载荷捕获本身。
 - 临时普查释放异常单独记 CENSUS RELEASE FAILED，不覆盖已经完成的业务恢复：恢复完成时仍输出 RESTORE OK，releaseOk=False 表示仅释放异常。无论释放是否成功，都恢复 timeScale/Restoring；不能把这种情况误报为写入失败或要求再次恢复。
 - 仅 `Logging.Verbose=true` 时同一摘要追加 typesBySlots：最多展开 128 种类型、输出槽位前六类，其余合计；统计对象数、槽数、数组容量与最大数组长度。只读已有描述，不调用业务属性、不新增值令牌。它不是实际内存估算，也不代表集合有效条目数。
 

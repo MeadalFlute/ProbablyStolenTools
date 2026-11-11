@@ -348,13 +348,14 @@ mapField.SetValue(secondSystem, tagMap);
 mapField.SetValue(effectSystem, tagMap);
 var tagState = Data("TagState");
 var modifierState = Data("ItemStateModifier");
-object[] tagValues = { false, null, 0, BitConverter.Int32BitsToSingle(unchecked((int)0x80000000)),
+object[] tagValues = { false, "native text", 0, BitConverter.Int32BitsToSingle(unchecked((int)0x80000000)),
     0L, BitConverter.Int64BitsToDouble(unchecked((long)0x7ff8000000000001)), false, "inactive", "Inactive" };
 string[] tagNames = { "valueEnabled", "internalValueString", "valueInt", "valueFloat", "valueLong",
     "valueDouble", "valueBool", "<identifier>k__BackingField", "<identifierName>k__BackingField" };
 var tagFields = tagNames.Select(name => tagType.GetField(name, dataFlags)).ToArray();
 foreach (var state in new[] { tagState, modifierState })
     for (int i = 0; i < tagFields.Length; i++) tagFields[i].SetValue(state, tagValues[i]);
+tagFields[1].SetValue(modifierState, null);
 tagMap.Add("inactive", tagState);
 tagMap.Add("alias", tagState);
 tagMap.Add("null", null);
@@ -408,6 +409,26 @@ try
             if (Diff(semantic, semantic.GetType()) != 0)
                 throw new Exception("Native semantic field did not restore: " + tagNames[i]);
         }
+    foreach (var state in new[] { tagState, modifierState })
+        foreach (int index in new[] { 1, 7, 8 })
+        {
+            string expected = (string)tagFields[index].GetValue(state);
+            if (expected == null) continue;
+            object identityShadow = shadowType.GetMethod("Capture", BindingFlags.NonPublic | BindingFlags.Static)
+                .Invoke(null, new object[] { tagGraph, 50000, 1000000, 64L * 1024 * 1024 });
+            try
+            {
+                var identitySemantic = shadowType.GetField("_snapshot", dataFlags).GetValue(identityShadow);
+                tagFields[index].SetValue(state, new string(expected.ToCharArray()));
+                if (Diff(identitySemantic, identitySemantic.GetType()) == 0)
+                    throw new Exception("Native semantic reader missed equal-text replacement: " + tagNames[index]);
+            }
+            finally
+            {
+                ((IDisposable)identityShadow).Dispose();
+                graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
+            }
+        }
     var priorityField = modifierState.GetType().GetField("priority", dataFlags);
     var durationField = effectSystem.GetType().GetField("<duration>k__BackingField", dataFlags);
     priorityField.SetValue(modifierState, 99);
@@ -432,6 +453,20 @@ try
             || !ReferenceEquals(mapField.GetValue(effectSystem), tagMap))
             throw new Exception("Native tag restore did not match the read-only semantic checkpoint.");
     }
+    var logicalEntries = new List<(object Key, object Value)>();
+    foreach (var key in tagMap.Keys) logicalEntries.Add((key, tagMap[key]));
+    for (int i = 0; i < 100; i++) tagMap["growth-" + i] = Data("TagState");
+    tagMap.Clear();
+    foreach (var pair in logicalEntries) tagMap.Add(pair.Key, pair.Value);
+    if (Diff(semantic, semantic.GetType()) != 0 || Diff(tagGraph, graphType) == 0)
+        throw new Exception("Native counterexample did not distinguish logical values from backing storage/version.");
+    bool invalidated = false;
+    try { capturedEnumerator.MoveNext(); }
+    catch (InvalidOperationException) { invalidated = true; }
+    if (!invalidated) throw new Exception("Native fixture enumerator should be invalid after logical reconstruction.");
+    graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
+    if (Diff(semantic, semantic.GetType()) != 0 || Diff(tagGraph, graphType) != 0)
+        throw new Exception("Native legacy fallback did not repair the logical reconstruction counterexample.");
     // Synthetic third-party subclasses must still fail closed, with an actionable type name.
     var externalModule = System.Reflection.Emit.AssemblyBuilder.DefineDynamicAssembly(
         new AssemblyName("SemanticExternalFixture"), System.Reflection.Emit.AssemblyBuilderAccess.Run)
