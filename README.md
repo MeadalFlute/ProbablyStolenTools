@@ -156,7 +156,9 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：编译 0 警告 / 0 错误；`CheckpointTests` **107 项**通过；正式版 **55 个** Harmony 入口、**73 个**字段与官方 Mod 扫描器通过。离线测试不能代替游戏内验收。
+当前源码基线：编译 0 警告 / 0 错误；`CheckpointTests` **373 项**通过；正式版 **57 个** Harmony 入口、**76 个**字段与官方 Mod 扫描器通过。单次遍历实体后端为待实机验收候选，离线测试不能代替游戏内验收。
+
+开发期重复快照对照由 `Snapshot.SemanticDevelopmentChecks` 统一控制，发布默认关闭；开启会增加首节点及额外手动采样的耗时和内存。关闭后完整预检、状态校验、修复及必要诊断仍保留。新后端的开关为 `Snapshot.SemanticEntityBlocks`，修改后需重启游戏。
 
 ---
 

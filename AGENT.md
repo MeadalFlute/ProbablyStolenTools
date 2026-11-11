@@ -1,6 +1,6 @@
 ﻿# Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.8.14**（2026-11-11，含待发布的报告修复与分步快照优化）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，不再维护。本机旧 Demo 依赖下的非 Mono 编译目前失败，不能宣称兼容通过，详见标签混合载荷记录。
+> 适用源码：正式版 **0.8.14**（2026-11-12，含待发布的修复与单次遍历实体后端候选，最新捕获路径尚待实机）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，不再维护。本机旧 Demo 依赖下的非 Mono 编译目前失败，不能宣称兼容通过，详见标签混合载荷记录。
 > 旧版本文档（0.2.1–0.6.0、Demo、性能优化过程）已归档到 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
 本文只写当前仍然成立的事实。历史细节看 `research/`，实现细节以源码为准。
@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**355 项**离线测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查，另有实体投影 schema 原生夹具及顾客路径契约；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**373 项**离线测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查，另有单次遍历实体/旧图对照、实体投影 schema 原生夹具及顾客路径契约；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -46,9 +46,9 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ### 版本与发布
 
-最新：用户确认顾客贴图恢复，补充旧问题仅视觉、交易/送客正常且状态刷新后可重新显示。01:39:25.146 会话4捕获/6恢复最终diff=0、无最终回退，首节点两次/手动节点一次独立Runtime写回和MATCH，恢复及frame+2视觉正确（手动节点本为离店后隐藏，不能判为异常）。普通捕获322/339ms，首节点4066ms、手动2511ms；恢复中位717ms，非A/B；本轮无群拖、未满三轮双节点往返。接续实体计划准备去重：每组完整旧拓扑覆盖检查一次（四次），组合已验证的同节点/归属不重叠计划（十一次），仍预建15组合并原子发布；预算包含Legacy字段、每次写回前全参与者预检、写入顺序/Runtime完整覆盖/旧完整捕获/校验/修复/视觉不变。RECORD追加writerPlans分项，均包含于entityRecords。355项及原生15组合/双节点/失败原子性通过；隔离原生数据准备阶段约58-61→16ms、分配432704→76872字节，不代表Unity整次捕获收益。尚未替换生产捕获或扩大双采样，待本轮实机计时，详见 `research/2026-11-12-semantic-plan-composition.md`。下方为历史记录。
+最新：用户已完成上一轮并休息，要求自主推进到高完成度、不实际推送。01:50:26.494 会话3捕获/8恢复最终diff=0、releaseOk=True、无最终回退；7次独立Entity/Runtime写回和MATCH，首/手动三轮往返、普通节点和回溯后四件群拖通过，顾客即时/frame+2视觉正确。首/手动3129/2103ms、普通299ms，恢复中位710.5ms，非A/B。接续完成单次遍历实体捕获候选：五种已准入精确类型的全部Entity及Runtime字段在主图遍历中保存一次，集合/闭包/其他运行态仍完整物理存储；所有节点启用，不再生成重复实体/独立Runtime载荷和15种计划。未知类型/schema回退旧字段，预算/完整校验/预检/Census/owner与最终full修复/视觉顺序保留。`Snapshot.SemanticEntityBlocks=true`；新增开发总开关`Snapshot.SemanticDevelopmentChecks`，发布默认false，统一门控全部额外shadow/audit/records/pilot。开启时首/后续手动各保留一份独立旧图，核对逐槽拓扑并在真实候选写回后检查；旧oracle从不写入或掩盖错误。本机为待测显式开启，不代表实机已通过。373项及原生全字段、双节点、owner/full修复夹具通过。隔离基准捕获分配少约60%、读取/写回更快，但非Unity，不能宣称整次快照同比例提速。详见 `research/2026-11-12-single-pass-entity-candidate.md`。下方为历史记录。
 
-最新部署：2026-11-12 01:48:17，计划准备去重提交 `774b719`，备份 `out/full-release-deploy-20261112-014817`，DLL SHA256 `72C2BBE11825647BA6C12B10592481CF33DAEC1CF5A0395CBC5BD9C21B6C4E29`。关闭游戏后部署，78存档文件校验未变，未导入设置/启动游戏，版本0.8.14、未推送。等待正常首节点＋改变物品/顾客后F9额外手动节点，两个采样至少三轮往返、普通节点恢复、恢复后群拖及顾客贴图；保留writerPlans计时，不据隔离基准移除开发期诊断或替换生产捕获。
+最新部署：2026-11-12 02:13:12，运行时 `1c81be2`（底层独立提交`fdecc9e`，亦已部署），备份 `out/full-release-deploy-20261112-021312`，DLL SHA256 `8A72D8428C72277E3048651237BFD23D70A81465E12FFB9FC153E4A58821F466`。关闭游戏后部署，部署时78文件未变；随后只向本机`PSTools.settings.xml`增加SemanticEntityBlocks/DevelopmentChecks两项True，XML已验证，其他77文件与部署备份哈希一致；未导入旧设置、未启动游戏，版本0.8.14、未推送。停在新捕获路径实机边界：首/手动三轮往返、普通节点、交易/容器/群拖/顾客视觉，要求SINGLEPASS匹配及完整diff=0；通过后仅关DevelopmentChecks重启，补无重复载荷的发布模式短测。同一DLL无需删代码重编译，安全校验不得关闭；尚不能宣布可推送或纯语义后端完成。
 
 最新反馈：2026-11-12 01:27:42.959 会话 3 捕获/5 恢复最终 diff=0，两个独立采样载荷 MATCH，但用户发现顾客贴图丢失，并称此前已有多次报告，不能把本轮当作画面验收通过或直接归因于双节点。暂停语义后端扩展，先修顾客视觉恢复：补原路径游标/方向/速度的静默恢复、renderer 原身份/完整局部变换链/渲染开关/属性块；先定位再激活，reconcile/fallback 后只重套顾客变换；补 leaveTimeScale 业务字段。路径 seek 暂时屏蔽原回调并 finally 归还，不重播离店/到店，不无条件强制显示。新增每节点捕获/恢复前后及一次 frame+2 的 CustomerVisual 诊断，不逐帧刷日志。347 项及正式版契约/夹具通过，实机待验；此前日志没有视觉诊断，尚未证明具体触发根因。详见 `research/2026-11-12-customer-visual-rewind.md`。下方为此前阶段记录。
 
@@ -144,6 +144,8 @@ src/ProbablyStolenTools/           Mod 本体
   SemanticItemSchemas.cs / SemanticSlotCoverage.cs  物品完整继承链及多字位图覆盖检查
   SemanticEntityBoundaryPlan.cs / SemanticRuntimeSnapshot.cs  节点句柄/入口协议及独立运行态载荷（受限联合写回）
   SemanticShapeWriter.cs            精确形状实体首次写回试点，保留旧图完整 oracle
+  SemanticFieldBlock.cs / SemanticEntityBlocks.cs  单次遍历精确实体完整字段载荷（发布候选）
+  SemanticCaptureOracle.cs          开发期开关控制的独立旧图对照，只检查、不写回
   LiquidComposition.cs             成分、纯度、评级、空瓶/容量判定
   AnnotationLabels.cs              原版水质/化学/酿酒语言键与回退文本
   WaterQualityPatch.cs / WineAppraisal.cs / TooltipHooks.cs / TooltipNamePatch.cs
@@ -159,6 +161,8 @@ docs/workshop/                     创意工坊文本
 ---
 
 ## 3. 快照引擎硬规则
+
+- **最新候选与旧试点的关系**：`SemanticEntityBlocks=true`时，主StateGraph以完整owner块保存准入实体的Entity及Runtime字段，取代这些槽的普通值令牌；其余完整图/身份/预算/最终校验仍在，不是删状态。此模式不混用旧实体/Runtime部分写回计划。下文“旧图完整捕获/试点诊断不可删”指旧独立试点路径；新候选仅在开发总开关开启时为两个采样保留独立旧oracle，发布默认关闭重复工作。必须先做新路径实机及关闭对照后的短测，不能据此前MATCH直接推送；不会因此开放集合重建或移除安全校验。
 
 - 只遍历**游戏业务对象图**。Unity 对象（`UnityEngine.*`）与纯视觉字段不进业务快照，由 `VisualState` 单独保存。
 - `GameItemElement` 的原生布局缓存**必须排除**在 Mono 业务快照之外：

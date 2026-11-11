@@ -156,7 +156,9 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-Current baseline: 0 warnings / 0 errors; `CheckpointTests` passes **107** tests; the release build passes **55** Harmony targets, **73** fields and the official mod scanner. Offline tests are not a substitute for in-game verification.
+Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **373** tests; the release build passes **57** Harmony targets, **76** fields and the official mod scanner. The single-pass entity backend is a candidate awaiting live acceptance. Offline tests are not a substitute for in-game verification.
+
+`Snapshot.SemanticDevelopmentChecks` gates duplicate development snapshots and defaults to false for release. Enabling it adds time and memory to the primary and extra manual sample. Disabling it preserves complete preflight, verification, repair and necessary diagnostics. `Snapshot.SemanticEntityBlocks` controls the new backend. Restart the game after changing these settings.
 
 ---
 

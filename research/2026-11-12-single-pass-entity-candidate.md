@@ -10,6 +10,7 @@
 - Three complete primary/manual roundtrips, ordinary restore, and four-item group drag after the final primary restore.
 - Captured/restored/frame+2 customer visual states agree. The manual checkpoint was intentionally after departure, so its hidden renderer is correct.
 - No snapshot FAILED/UNAVAILABLE. Player.log has native startup TLS/Curl messages, not a snapshot exception.
+- Player.log also has an InventoryScene frame-273 watchdog stall (5.1 s warning, resumed after 7.7 s), with scene/window breadcrumbs around 01:50:35, before the first customer capture (approximately 01:50:54-57). Other startup messages include a third-party TryEquipItem hook mismatch and invalid/duplicate sprite entries. Do not report this session as stall-free or attribute that loading stall to the customer capture without evidence.
 - Primary capture 3129 ms, manual 2103 ms, ordinary 299 ms; restores 569-799 ms, median 710.5 ms.
 - `entityRecords` 2157/1805 ms includes runtime capture/verification 1016/820 ms and runtime plan preparation 409/378 ms. These times overlap, not additive.
 - Previous session primary/manual 4066/2511 ms, restore median 717 ms. This is not controlled A/B; do not attribute the whole change to plan composition.
@@ -113,3 +114,14 @@ Rollback: close game; set SemanticEntityBlocks=False and SemanticDevelopmentChec
 ## Remaining Boundary
 
 Core exact-entity capture and writes are now integrated and offline-verified. Live Unity geometry/customer/interaction acceptance is the next required boundary. Unknown exact types and third-party opaque state retain their old limitations; physical collection storage is deliberately preserved. There is no authorization to reconstruct collections, remove full verification, add background reads, split a mutable graph across frames, claim complete game-wide semantic coverage or publish while the user rests.
+
+## Deployment Record
+
+- Runtime integration commit `1c81be2`, foundation `fdecc9e`; version remains 0.8.14, no push.
+- Final build: zero warnings/errors; 373 regressions; 57 hooks / 76 fields; native fixtures pass; official scanner HardFlags/Error empty.
+- Deployed 2026-11-12 02:13:12 while the game was closed; game not started.
+- Backup `out/full-release-deploy-20261112-021312`; DLL SHA256 `8A72D8428C72277E3048651237BFD23D70A81465E12FFB9FC153E4A58821F466`.
+- Deployment itself preserved all 78 save-area files and did not import old settings.
+- Afterwards only the local Mod configuration gained two True entries: Snapshot.SemanticEntityBlocks and Snapshot.SemanticDevelopmentChecks. Parsed XML verified both unique entries; all other 77 files match deployment backup hashes. The old configuration is in that backup. No native game save was edited.
+- Current local build is in diagnostic candidate mode; the compiled release default for development checks remains FALSE.
+- No new live session has been generated for this candidate. The 01:50 live acceptance belongs to the PREVIOUS runtime only.
