@@ -79,3 +79,11 @@ partition. Ordinary nodes remain zero. Require final diff=0/releaseOk=True,
 independent RECORD RESTORE MATCH/runtimeDiffSamples=0, no unavailable/failure.
 Rendering and interactive behavior need Unity inspection.
 Stop before independent runtime writes or production capture replacement.
+
+## Deployment
+
+2026-11-12 00:51, runtime commit ae2ec9c, version0.8.14, no push.
+Backup: out/full-release-deploy-20261112-005125.
+DLL SHA256: 82CC372580C54DBA8ACA1DEFB3FCD7C66F89B6C4C243F9D1AF41EC7D91DAAEC9.
+78 save files verified unchanged; no settings imported, no game started.
+Awaiting the first live inventory entity writer test.
