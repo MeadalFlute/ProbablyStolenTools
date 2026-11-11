@@ -50,6 +50,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 接续第 4 步精确 GameItemElement 完整继承链 Entity 字段写回：`Snapshot.SemanticItemRestore=true`，仅采样节点，恢复原对象的归属/数量/价值/形状/状态/特征与类型列表引用/描述与窗口关系；全部物品回调和集合物理存储继续旧图，六个几何缓存继续排除。窗口和物品共享严格字段写回器，支持字段位级比较、保活/原身份、合并预算，不调用 getter/setter/交易/库存方法或构造替代实体。三类写回器预先准备最多 7 种非空组合，注册失败不改变旧组合；完整旧图、校验、owner/full 修复、视觉顺序及诊断保留。323 项和原生 14 轮全部开关组合/全物品业务字段/共享列表/失效预检通过；待首次物品写回实机。库存实体、独立运行态仍未写回，生产捕获未替换，不能称完整后端。详见 `research/2026-11-12-item-entity-writes.md`。
 
+最新部署：2026-11-12 00:37，运行时提交 `31d14b4`，备份 `out/full-release-deploy-20261112-003705`，DLL SHA256 `B64FB73A5C531DFB673550F50132E10C19443D39F1CD04DCDA9D0DC008590506`。78 存档文件校验未变，未导入设置/启动游戏，版本仍 0.8.14，未推送。停止等待物品首次实机：首节点后移动/旋转/翻转/买卖/改数量、关闭重开容器窗口，访问后续/手动节点并至少三次往返首节点，恢复后群拖；检查归属/数量/价值/贴图碰撞，首节点 itemPilotOwners/windowPilotOwners/shapePilotOwners>0，其他节点 0，最终 diff=0/双载荷 MATCH。此验收前不扩大库存或运行态写回。
+
 00:05 会话形状写回已检查：5 捕获/6 恢复最终 diff=0/releaseOk=True，首节点三次实际 shapePilotOwners=2966，三次实体/运行态 MATCH，恢复后四件群拖正常；用户确认完成。首节点 2119 ms，其中 entityRecords=1216 / runtimeCaptureVerifyMs=871，后续 254-362 ms，仍是过渡诊断开销。用户明确接受开发期成本，待后端完成后移除重复诊断，不删除必要恢复保护。
 
 接续第 4 步窗口实体写回：`Snapshot.SemanticWindowRestore=true`，仅采样节点，对精确 PixelWindow 的完整 Entity 字段独立记录并直接恢复真实字段；Runtime 回调、focusStamp、headerButtons 继续旧图，Visual 不入业务图。写回协议新增完整 Entity/Legacy 字段分区与多写回器组合，必须与旧 owner 全槽精确一致，禁止部分块替换；所有写回器先预检，全部标量先于全部引用。保留完整旧捕获、校验、owner/full 修复和视觉顺序，不重建列表、不触发开关窗回调。312 项及原生全部业务字段/负零/集合别名/组合与单独开关/释放前拒绝通过；待本轮实机。物品/库存实体及独立运行态尚未正式写回，不是完整后端。详见 `research/2026-11-12-window-entity-writes.md`。

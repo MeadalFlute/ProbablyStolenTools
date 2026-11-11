@@ -104,3 +104,11 @@ Require final diff=0 / releaseOk=True and independent RECORD RESTORE MATCH /
 runtimeDiffSamples=0, no unavailable or failed lines. Rendering needs inspection.
 
 Stop here before inventory entity writes or independent runtime-payload restore.
+
+## Deployment
+
+2026-11-12 00:37, runtime commit 31d14b4, version 0.8.14, no push.
+Backup: out/full-release-deploy-20261112-003705.
+DLL SHA256: B64FB73A5C531DFB673550F50132E10C19443D39F1CD04DCDA9D0DC008590506.
+78 save files verified unchanged; settings not imported, game not started.
+Awaiting the first live complete item-field writer validation above.
