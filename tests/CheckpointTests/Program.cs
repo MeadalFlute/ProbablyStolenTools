@@ -24,6 +24,7 @@ SnapshotTypedComparisonTests.Run(Test, Check);
 SnapshotReferenceComparisonTests.Run(Test, Check);
 SemanticEntityBoundaryTests.Run(Test, Check);
 SemanticEntityRecordTests.Run(Test, Check);
+SemanticEntityFieldPlanTests.Run(Test, Check);
 SnapshotDifferenceSourceTests.Run(Test, Check);
 SnapshotReconciliationTests.Run(Test, Check);
 SnapshotIntArrayTests.Run(Test, Check);

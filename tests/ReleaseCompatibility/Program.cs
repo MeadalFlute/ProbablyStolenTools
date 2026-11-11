@@ -453,6 +453,24 @@ foreach (var boundaryItem in boundaryItems)
     boundaryItem.GetType().GetProperty("shape").SetValue(boundaryItem, boundaryShape);
     boundaryItem.GetType().GetProperty("modifiedShape").SetValue(boundaryItem, boundaryShape);
 }
+var boundaryWindow = Data("PixelWindow");
+var windowParents = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(game.GetType("GameItem", true)));
+windowParents.Add(boundaryItems[0]); windowParents.Add(boundaryItems[1]); windowParents.Add(boundaryItems[0]);
+var linkedStorage = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(game.GetType("GraphNodeStorage", true)));
+linkedStorage.Add(boundaryGrid); linkedStorage.Add(boundarySlot);
+var windowType = boundaryWindow.GetType();
+windowType.GetField("linkedContainerStorage", dataFlags).SetValue(boundaryWindow, linkedStorage);
+windowType.GetField("<parentItems>k__BackingField", dataFlags).SetValue(boundaryWindow, windowParents);
+windowType.GetField("<childElement>k__BackingField", dataFlags).SetValue(boundaryWindow, boundaryGrid);
+windowType.GetField("<titleString>k__BackingField", dataFlags).SetValue(boundaryWindow, "fixture");
+var inventoryType = game.GetType("GameInventory", true);
+inventoryType.GetField("<parent>k__BackingField", dataFlags).SetValue(boundaryGrid, boundaryWindow);
+inventoryType.GetField("overrideLockInsert", dataFlags).SetValue(boundaryGrid, true);
+boundaryGrid.GetType().GetField("<inventoryShape>k__BackingField", dataFlags).SetValue(boundaryGrid, boundaryShape);
+boundarySlot.GetType().GetField("stolenUI", dataFlags).SetValue(boundarySlot, boundaryWindow);
+game.GetType("GameItem", true).GetField("<contentWindow>k__BackingField", dataFlags).SetValue(boundaryItems[0], boundaryWindow);
+Action originalWindowCallback = () => throw new Exception("Window business callback must not run during snapshots.");
+windowType.GetField("<openCallback>k__BackingField", dataFlags).SetValue(boundaryWindow, originalWindowCallback);
 var boundaryRoots = new[] { boundaryGrid, boundarySlot, boundaryClosure };
 var boundaryAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
     .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
@@ -522,6 +540,59 @@ try
     }
     Console.WriteLine("PASS independent read-only native entity records: complete item base schema, grid/slot order and identities, full shared shape bytes, six legacy restore cycles");
     Console.WriteLine("PASS native entity boundary audit: distinct zero-uniqueId items, grid/slot membership, native closure aliases, captured-only topology and unchanged legacy restoration");
+    if (!((string)entityType.GetProperty("Summary", dataFlags).GetValue(entityRecords)).Contains("windows=1"))
+        throw new Exception("Native inventory/window links were not independently recorded.");
+    inventoryType.GetField("<parent>k__BackingField", dataFlags).SetValue(boundaryGrid, null);
+    inventoryType.GetField("overrideLockInsert", dataFlags).SetValue(boundaryGrid, false);
+    boundaryGrid.GetType().GetField("<inventoryShape>k__BackingField", dataFlags).SetValue(boundaryGrid, null);
+    boundarySlot.GetType().GetField("stolenUI", dataFlags).SetValue(boundarySlot, null);
+    boundarySlot.GetType().GetField("defaultOrientation", dataFlags).SetValue(boundarySlot, 3);
+    windowType.GetField("<childElement>k__BackingField", dataFlags).SetValue(boundaryWindow, boundarySlot);
+    windowType.GetField("isLocked", dataFlags).SetValue(boundaryWindow, true);
+    var styleField = windowType.GetField("style", dataFlags);
+    styleField.SetValue(boundaryWindow, Enum.ToObject(styleField.FieldType, 7));
+    windowParents[1] = boundaryItems[0];
+    linkedStorage[0] = boundarySlot;
+    if (EntityDifferences(entityRecords) != 10)
+        throw new Exception("Native inventory/window records missed parent locks shape borrowing style or ordered alias links.");
+    graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
+    boundaryGrid.GetType().GetField("_lastShapeHash", dataFlags).SetValue(boundaryGrid, 123);
+    boundarySlot.GetType().GetField("validateLock", dataFlags).SetValue(boundarySlot, true);
+    Action changedWindowCallback = () => throw new Exception("Changed callback must not run.");
+    windowType.GetField("<openCallback>k__BackingField", dataFlags).SetValue(boundaryWindow, changedWindowCallback);
+    if (EntityDifferences(entityRecords) != 0
+        || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+            .Invoke(boundaryGraph, new object[] { 12 })).Count != 3)
+        throw new Exception("Explicit runtime partition was dropped from the legacy oracle or entered entity records.");
+    graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
+    if (EntityDifferences(entityRecords) != 0
+        || !ReferenceEquals(windowType.GetField("<openCallback>k__BackingField", dataFlags).GetValue(boundaryWindow), originalWindowCallback)
+        || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+            .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
+        throw new Exception("Inventory/window/runtime original identities did not survive legacy restoration.");
+    Console.WriteLine("PASS native complete inventory/window field partitions, ten independent relationship mutations and legacy-only callback/cache restoration without business callbacks");
+    var fieldPlans = (Array)mod.GetType("ProbablyStolenTools.SemanticInventorySchemas", true)
+        .GetMethod("Create", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null);
+    var entityOnlyGridFields = fieldPlans.Cast<object>()
+        .Where(plan => new[] { "GameGridInventory", "GameInventory", "GameInventoryFunc", "TagSystem" }
+            .Contains(((Type)plan.GetType().GetField("Type", dataFlags).GetValue(plan)).Name))
+        .SelectMany(plan => (FieldInfo[])plan.GetType().GetField("EntityFields", dataFlags).GetValue(plan))
+        .Select(field => field.Name).ToArray();
+    var entityOnlyAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+        .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+    accessType.GetMethod("AddRoot", dataFlags).Invoke(entityOnlyAccess,
+        new object[] { Identity(boundaryGrid), entityOnlyGridFields });
+    using var entityOnlyGraph = (IDisposable)graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { entityOnlyAccess, new[] { Identity(boundaryGrid) }, 50000, 1000000, 64L * 1024 * 1024 });
+    try
+    {
+        using var unexpected = (IDisposable)entityType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { entityOnlyGraph, 50000, 1000000, 64L * 1024 * 1024 });
+        throw new Exception("Complete entity fields incorrectly certified a graph with runtime inventory fields removed.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException
+        && e.InnerException.Message.Contains("not fully covered")) { }
+    Console.WriteLine("PASS native inventory classification rejects entity-complete roots missing legacy-only callback/cache/tag fields");
     var selectedEntityAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
         .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
     accessType.GetMethod("AddRoot", dataFlags).Invoke(selectedEntityAccess,

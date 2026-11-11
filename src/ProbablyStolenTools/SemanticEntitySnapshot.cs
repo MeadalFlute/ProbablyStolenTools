@@ -50,7 +50,7 @@ namespace ProbablyStolenTools
         }
 
         private static bool SupportedValue(Type type) => type == typeof(byte) || type == typeof(bool)
-            || type == typeof(int) || type == typeof(long) || type == typeof(float) || type == typeof(double);
+            || type == typeof(int) || type == typeof(long) || type == typeof(float) || type == typeof(double) || type.IsEnum;
 
         private static bool Same(object actual, object captured, bool reference)
         {

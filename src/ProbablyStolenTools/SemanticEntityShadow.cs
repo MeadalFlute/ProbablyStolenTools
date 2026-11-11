@@ -10,12 +10,14 @@ namespace ProbablyStolenTools
     internal sealed class SemanticEntityShadow : IDisposable
     {
         private readonly SemanticEntitySnapshot _snapshot;
-        private readonly int _items, _grids, _slots, _shapes, _unsupported, _legacySlots, _projectedSlots;
+        private readonly int _items, _grids, _slots, _shapes, _windows, _unsupported, _legacySlots, _projectedSlots;
+        private readonly int _runtimeSlots, _visualFields;
         private SemanticEntityShadow(SemanticEntitySnapshot snapshot, int items, int grids, int slots,
-            int shapes, int unsupported, int legacySlots, int projectedSlots)
+            int shapes, int windows, int unsupported, int legacySlots, int projectedSlots, int runtimeSlots, int visualFields)
         {
             _snapshot = snapshot; _items = items; _grids = grids; _slots = slots;
-            _shapes = shapes; _unsupported = unsupported; _legacySlots = legacySlots; _projectedSlots = projectedSlots;
+            _shapes = shapes; _windows = windows; _unsupported = unsupported; _legacySlots = legacySlots; _projectedSlots = projectedSlots;
+            _runtimeSlots = runtimeSlots; _visualFields = visualFields;
         }
 
         private static bool Native(Type type, Type baseType)
@@ -49,27 +51,51 @@ namespace ProbablyStolenTools
             Properties(typeof(PixelWindow), "contentWindow", "examineWindow");
             Properties(typeof(List<CombatAbilityEffect>), "effects");
             var itemSchema = SemanticEntitySnapshot.Schema(typeof(GameItem), true, itemFields.ToArray());
-            var gridSchema = SemanticEntitySnapshot.Schema(typeof(GameGridInventory), false, ("items", typeof(List<GameItem>)));
-            var slotSchema = SemanticEntitySnapshot.Schema(typeof(GameSlotInventory), false, ("currentItem", typeof(GameItem)));
+            var plans = SemanticInventorySchemas.Create().ToDictionary(plan => plan.Type);
+            SemanticEntityFieldPlan[] Chain(Type type)
+                => type == typeof(PixelWindow) ? new[] { plans[type] } :
+                    new[] { plans[type], plans[typeof(GameInventory)], plans[typeof(GameInventoryFunc)], plans[typeof(TagSystem)] };
+            var gridPlans = Chain(typeof(GameGridInventory));
+            var slotPlans = Chain(typeof(GameSlotInventory));
+            var windowPlans = Chain(typeof(PixelWindow));
+            FieldInfo[] EntityFields(SemanticEntityFieldPlan[] chain) => chain.SelectMany(plan => plan.EntityFields).ToArray();
+            var gridSchema = EntityFields(gridPlans);
+            var slotSchema = EntityFields(slotPlans);
+            var windowSchema = EntityFields(windowPlans);
             var shapeSchema = SemanticEntitySnapshot.Schema(typeof(GridShapeBuilder), true,
                 ("data", typeof(byte[])), ("outside", typeof(byte)), ("<minX>k__BackingField", typeof(int)),
                 ("<minY>k__BackingField", typeof(int)), ("<flipped>k__BackingField", typeof(bool)),
                 ("<orientation>k__BackingField", typeof(int)), ("<width>k__BackingField", typeof(int)), ("<height>k__BackingField", typeof(int)));
             var projections = new List<SemanticEntityProjection>();
-            Dictionary<string, (bool Reference, ulong Bit)> Index(FieldInfo[] fields)
+            Dictionary<string, (bool Reference, ulong Bit, SemanticFieldRole Role)> Index(
+                FieldInfo[] fields, SemanticEntityFieldPlan[] chain = null)
             {
-                if (fields.Length > 63) throw new InvalidOperationException("Entity projection field mask budget exceeded.");
-                return fields.Select((field, i) => (field, i)).ToDictionary(
-                    pair => pair.field.DeclaringType.FullName + "." + pair.field.Name,
-                    pair => (!pair.field.FieldType.IsValueType, 1UL << pair.i), StringComparer.Ordinal);
+                var result = new Dictionary<string, (bool, ulong, SemanticFieldRole)>(StringComparer.Ordinal);
+                int bit = 0;
+                foreach (var field in chain == null ? fields : chain.SelectMany(plan => plan.Fields))
+                {
+                    string name = field.DeclaringType.FullName + "." + field.Name;
+                    var role = chain == null ? SemanticFieldRole.Entity : plans[field.DeclaringType].RoleOf(name);
+                    ulong mask = 0;
+                    if (role != SemanticFieldRole.Visual)
+                    {
+                        if (bit >= 63) throw new InvalidOperationException("Entity projection field mask budget exceeded.");
+                        mask = 1UL << bit++;
+                    }
+                    result.Add(name, (!field.FieldType.IsValueType, mask, role));
+                }
+                return result;
             }
-            var indexes = new Dictionary<FieldInfo[], Dictionary<string, (bool Reference, ulong Bit)>>
+            var indexes = new Dictionary<FieldInfo[], Dictionary<string, (bool Reference, ulong Bit, SemanticFieldRole Role)>>
             {
-                [itemSchema] = Index(itemSchema), [gridSchema] = Index(gridSchema),
-                [slotSchema] = Index(slotSchema), [shapeSchema] = Index(shapeSchema)
+                [itemSchema] = Index(itemSchema), [gridSchema] = Index(gridSchema, gridPlans),
+                [slotSchema] = Index(slotSchema, slotPlans), [shapeSchema] = Index(shapeSchema),
+                [windowSchema] = Index(windowSchema, windowPlans)
             };
-            var expected = new Dictionary<IntPtr, (Dictionary<string, (bool Reference, ulong Bit)> Fields, ulong Seen)>();
-            int items = 0, grids = 0, slots = 0, shapes = 0, unsupported = 0, legacySlots = 0, projectedSlots = 0;
+            var expected = new Dictionary<IntPtr, (Dictionary<string, (bool Reference, ulong Bit, SemanticFieldRole Role)> Fields,
+                ulong Seen, ulong Required, bool Strict)>();
+            int items = 0, grids = 0, slots = 0, shapes = 0, windows = 0, unsupported = 0, legacySlots = 0, projectedSlots = 0;
+            int runtimeSlots = 0, visualFields = 0;
             long indexedSlots = 0;
             foreach (var id in graph.Objects)
             {
@@ -80,43 +106,55 @@ namespace ProbablyStolenTools
                 else if (type == typeof(GameGridInventory)) { fields = gridSchema; grids++; }
                 else if (type == typeof(GameSlotInventory)) { fields = slotSchema; slots++; }
                 else if (type == typeof(GridShapeBuilder)) { fields = shapeSchema; shapes++; }
-                else if (target is GameItem || target is GameInventory || target is GridShape) unsupported++;
+                else if (type == typeof(PixelWindow)) { fields = windowSchema; windows++; }
+                else if (target is GameItem || target is GameInventory || target is GridShape || target is PixelWindow) unsupported++;
                 if (fields == null) continue;
                 if (projections.Count >= maxObjects) throw new InvalidOperationException("Entity projection index budget exceeded.");
-                indexedSlots += fields.Length;
+                var index = indexes[fields];
+                indexedSlots += index.Count;
                 if (indexedSlots > maxSlots) throw new InvalidOperationException("Entity projection slot index budget exceeded.");
                 projections.Add(new SemanticEntityProjection(target, fields));
-                expected.Add(id, (indexes[fields], 0));
+                ulong required = 0;
+                foreach (var field in index.Values)
+                {
+                    required |= field.Bit;
+                    if (field.Role == SemanticFieldRole.Visual) visualFields++;
+                }
+                expected.Add(id, (index, 0, required, !(target is GameItem)));
             }
-            // Every projected field must exist as exactly one legacy slot. Other owner fields remain legacy-only.
+            // Exact inventory/window hierarchies have no unclassified slots; runtime fields stay in the legacy graph.
             graph.VisitCapturedSlots((owner, slot, reference) =>
             {
                 if (!expected.TryGetValue(owner, out var entry)) return;
                 if (entry.Fields.TryGetValue(slot.Name, out var field))
                 {
-                    if (field.Reference != slot.IsReference || (entry.Seen & field.Bit) != 0)
+                    if (field.Role == SemanticFieldRole.Visual || field.Reference != slot.IsReference || (entry.Seen & field.Bit) != 0)
                         throw new InvalidOperationException("Entity projection slot kind/uniqueness changed: " + slot.Name);
-                    expected[owner] = (entry.Fields, entry.Seen | field.Bit);
-                    projectedSlots++;
+                    expected[owner] = (entry.Fields, entry.Seen | field.Bit, entry.Required, entry.Strict);
+                    if (field.Role == SemanticFieldRole.Entity) projectedSlots++;
+                    else { runtimeSlots++; legacySlots++; }
                 }
+                else if (entry.Strict) throw new InvalidOperationException("Unclassified entity owner slot: " + slot.Name);
                 else legacySlots++;
             });
-            if (expected.Values.Any(entry => entry.Seen != (1UL << entry.Fields.Count) - 1))
+            if (expected.Values.Any(entry => entry.Seen != entry.Required))
                 throw new InvalidOperationException("Entity projection is not fully covered by the legacy checkpoint.");
             var snapshot = SemanticEntitySnapshot.Capture(projections, ManagedObjects.Id, graph.Contains, maxObjects, maxSlots, maxBytes);
             try
             {
                 if (snapshot.Differences(out var sample) != 0)
                     throw new InvalidOperationException("Entity projection changed during capture: " + string.Join(", ", sample));
-                return new SemanticEntityShadow(snapshot, items, grids, slots, shapes, unsupported, legacySlots, projectedSlots);
+                return new SemanticEntityShadow(snapshot, items, grids, slots, shapes, windows, unsupported,
+                    legacySlots, projectedSlots, runtimeSlots, visualFields);
             }
             catch { snapshot.Dispose(); throw; }
         }
 
-        internal string Summary => "scope=item-base+inventory-members+exact-shapes extraFields=legacy-only " +
+        internal string Summary => "scope=item-base+inventory-fields+window-links+exact-shapes extraFields=legacy-only " +
             $"pruningAllowed=false restoreAllowed=false records={_snapshot.RecordCount} items={_items} grid={_grids} slot={_slots} " +
-            $"shapes={_shapes} unsupported={_unsupported} sequences={_snapshot.SequenceCount} " +
+            $"shapes={_shapes} windows={_windows} unsupported={_unsupported} sequences={_snapshot.SequenceCount} " +
             $"projectedOwnerSlots={_projectedSlots} legacyOwnerSlots={_legacySlots} " +
+            $"classifiedRuntimeSlots={_runtimeSlots} excludedVisualFields={_visualFields} " +
             $"logicalSlots={_snapshot.LogicalSlots} logicalBytes={_snapshot.LogicalBytes} " +
             "collectionStorage=legacy-only callbacks=legacy-only tags=legacy-hybrid";
 

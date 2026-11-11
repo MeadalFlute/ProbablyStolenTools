@@ -277,7 +277,7 @@ namespace ProbablyStolenTools
             CfgSemanticEntityAudit = Config.Bind("Snapshot", "SemanticEntityAudit", true,
                 "Read-only item/inventory boundary audit on one checkpoint per context. Adds diagnostic work, not a speedup; never prunes the graph or writes entity state.");
             CfgSemanticEntityRecords = Config.Bind("Snapshot", "SemanticEntityRecords", true,
-                "Independent read-only item base, inventory membership and exact shape records on one checkpoint per context. Adds verification work; extra fields and all restoration remain with the legacy graph.");
+                "Independent read-only item base, inventory fields, window links and exact shape records on one checkpoint per context. Exact inventory/window fields have explicit entity/runtime/visual coverage; all restoration remains with the legacy graph.");
             CfgKeyManual = Config.Bind("Rewind", "KeyManualCheckpoint", KeyCode.F9,
                 "Create a checkpoint immediately, without waiting for a customer.");
             CfgKeyPrev = Config.Bind("Rewind", "KeyPrevCheckpoint", KeyCode.F6,
