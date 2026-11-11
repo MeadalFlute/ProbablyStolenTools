@@ -2,7 +2,7 @@
 
 English | [中文](README.md)
 
-A helper mod for **Probably Stolen**, targeting the full release **0.8.14**.
+A helper mod for **Probably Stolen**, targeting the full release **0.8.15**.
 The full release runs Unity 2021.3.45f2 / Mono / x64 (game 0.46D) and provides its own **IMod / Harmony** loader — MelonLoader and BepInEx are not required.
 
 ---
@@ -165,7 +165,7 @@ Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **373**
 ## Versioning
 
 - The single source of truth is `ModVersion` in `release/manifest.xml`.
-- Rule: **major and minor versions are manual; the patch version increments before every `git push`** (for example 0.8.13 → 0.8.14).
+- Rule: **major and minor versions are manual; the patch version increments before every `git push`** (for example 0.8.14 → 0.8.15).
 - README-only changes do not bump the version.
 
 ---
