@@ -52,6 +52,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgOwnerReconcile;
         internal static ConfigEntry<bool> CfgIntArrayBlocks;
         internal static ConfigEntry<bool> CfgSemanticTagCensus;
+        internal static ConfigEntry<bool> CfgSkipUnchangedScalars;
         internal static ConfigEntry<KeyCode> CfgKeyPrev;
         internal static ConfigEntry<KeyCode> CfgKeyManual;
         internal static ConfigEntry<KeyCode> CfgKeyDay;
@@ -263,6 +264,8 @@ namespace ProbablyStolenTools
                 "Experimental lossless int[] payloads using complete array copies. Preserves original array identities, capacity, logical budgets and full element verification. Disable and restart for legacy per-element tokens.");
             CfgSemanticTagCensus = Config.Bind("Snapshot", "SemanticTagCensus", true,
                 "Read exact native TagState scalar fields together during read-only pre-restore census. Keeps all fields, references and budgets; disable for legacy per-field census reads.");
+            CfgSkipUnchangedScalars = Config.Bind("Snapshot", "SkipUnchangedScalars", true,
+                "Compare ordinary framework scalar fields before writing; skip only exact unchanged values. Keeps full graph scans and final verification. Disable and restart for unconditional scalar writes.");
             CfgKeyManual = Config.Bind("Rewind", "KeyManualCheckpoint", KeyCode.F9,
                 "Create a checkpoint immediately, without waiting for a customer.");
             CfgKeyPrev = Config.Bind("Rewind", "KeyPrevCheckpoint", KeyCode.F6,
@@ -348,7 +351,7 @@ namespace ProbablyStolenTools
             TooltipHooks.Enable();
             EventLog.Write($"[Session] version={Version} game={Application.version} locale=deferred " +
                 $"snapshotLimits(objects={CfgMaxObjects.Value},slots={CfgMaxSlots.Value},MiB={CfgMaxBytesMb.Value}) " +
-                $"verbose={CfgVerboseLog.Value} semanticTagShadow={CfgSemanticTagShadow.Value} semanticTagBlocks={CfgSemanticTagBlocks.Value} ownerReconcile={CfgOwnerReconcile.Value} intArrayBlocks={CfgIntArrayBlocks.Value} semanticTagCensus={CfgSemanticTagCensus.Value}; " +
+                $"verbose={CfgVerboseLog.Value} semanticTagShadow={CfgSemanticTagShadow.Value} semanticTagBlocks={CfgSemanticTagBlocks.Value} ownerReconcile={CfgOwnerReconcile.Value} intArrayBlocks={CfgIntArrayBlocks.Value} semanticTagCensus={CfgSemanticTagCensus.Value} skipUnchangedScalars={CfgSkipUnchangedScalars.Value}; " +
                 "arrivalWaitSeconds is not capture duration; use captureMs");
             LogSource.LogInfo("Loaded.");
         }

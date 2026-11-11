@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe
+    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe, IStateScalarWriteDiagnostics
     {
         private readonly struct Storage
         {
@@ -98,6 +98,8 @@ namespace ProbablyStolenTools
         private readonly bool _reuseArraySchemas;
         private readonly bool _directWrites;
         private readonly bool _intArrayBlocks;
+        internal bool SkipUnchangedScalars { get; set; }
+        public (long Checked, long Skipped) ScalarWrites { get; private set; }
         internal string ArraySchemaSummary => $"arraySchemas(cached={_arraySchemas.Count}," +
             $"hits={_arraySchemaHits},slotsReused={_arraySlotsReused})";
 
@@ -157,6 +159,7 @@ namespace ProbablyStolenTools
             _reuseArraySchemas = reuseArraySchemas;
             _directWrites = directWrites;
             _intArrayBlocks = intArrayBlocks;
+            SkipUnchangedScalars = directWrites;
         }
 
         internal void AddRoot(IntPtr id, params string[] fields)
@@ -484,6 +487,11 @@ namespace ProbablyStolenTools
         {
             object expected = _savedValues[BitConverter.ToInt64(captured, 0)];
             object actual = Read(id, slot) ?? NullValue;
+            return ScalarEquals(expected, actual);
+        }
+
+        private static bool ScalarEquals(object expected, object actual)
+        {
             // Match capture's value interning, including distinct signed zero and NaN bit patterns.
             if (expected is float single)
                 return actual is float otherSingle
@@ -504,6 +512,17 @@ namespace ProbablyStolenTools
         public void WriteValue(IntPtr id, StateSlot slot, byte[] bytes)
         {
             var value = _savedValues[BitConverter.ToInt64(bytes, 0)];
+            // Only framework scalars: never introduce custom struct Equals callbacks during writes.
+            if (SkipUnchangedScalars && (ReferenceEquals(value, NullValue)
+                || value.GetType().IsPrimitive || value.GetType().IsEnum || value is decimal))
+            {
+                ScalarWrites = (ScalarWrites.Checked + 1, ScalarWrites.Skipped);
+                if (ScalarEquals(value, Read(id, slot) ?? NullValue))
+                {
+                    ScalarWrites = (ScalarWrites.Checked, ScalarWrites.Skipped + 1);
+                    return;
+                }
+            }
             Write(id, slot, ReferenceEquals(value, NullValue) ? null : value);
         }
         public void WriteReference(IntPtr id, StateSlot slot, IntPtr value)
@@ -525,6 +544,7 @@ namespace ProbablyStolenTools
             CensusValueObjectCount = 0;
             IntArrayBlockCount = 0;
             IntArraySlotCount = 0;
+            ScalarWrites = default;
         }
     }
 }

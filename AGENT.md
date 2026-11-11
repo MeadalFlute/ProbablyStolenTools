@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**219 项**离线测试；正式版 **57 个** Harmony 挂点、**74 个**快照/私有字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**226 项**离线测试；正式版 **57 个** Harmony 挂点、**74 个**快照/私有字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -41,6 +41,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 已部署只读 Census 优化（19:10）：`Snapshot.SemanticTagCensus=true` 对精确 TagState、完整匹配的九字段描述，直接消费同九字段临时值，代替六次通用标量读；三个引用仍逐槽走原身份发现，子类/筛选根/描述或原生结构不匹配走旧路径。捕获载荷、第一次/第二次写回、预检、最终校验不变，无持久值/块进入普查。RESTORE 的 census 追加 exactTagProbes，Session 追加开关。219 项回归、原生覆盖/预算/身份/来源/回退对照通过；两次隔离基准 Census 约快 6-8%、少分配约 1.12 MiB，不推算 Unity 或整次回溯收益。引用数组载荷、值令牌索引表两个原型因收益不稳或捕获/写回退化已完全撤除，未部署。详见 `research/2026-11-11-exact-tag-census.md`，本轮待实机验收。
 
 19:27 会话已检查：5 次捕获、3 次内存恢复（含手动）均成功，exactTagProbes=16212-16782，最终 diff=0，无最终全图回退。Census 中位数 127 ms（18:31 为 127.5 ms），实机未证明提速；整次恢复中位数 697 ms 也不能据非 A/B 样本归因。3 对群组拖拽均在恢复前；恢复后群拖、至少 6 次往返、非默认议价及实机全图回退未覆盖。随后“开业前”文件回溯在原生 OnDisable -> CloseUI -> AudioSource.Play 出现一次空 source 异常，但读档收尾完成；独立记录，不认定为 Census 回归，也不忽略。详见同一普查文档。
+
+已部署普通标量免写（19:40）：`Snapshot.SkipUnchangedScalars=true` 仍逐槽读取，只有 null/框架 primitive/enum/decimal 与捕获值精确相同时才省去真实写入，浮点按位比较；自定义 nullable 结构体无条件写入，不新增其 Equals 调用。不同值仍递归复制写回，块、引用、捕获、普查、预检/最终完整校验及 owner/full 回退保持。Session 追加开关，RESTORE 追加本次 ordinaryScalarWrites(checked/skipped)，仅计普通标量调用、不含块/引用。两次原生隔离开关对照写回约快 30-32%，少分配约 1.04 MiB；大量变化样本快约 15.6%但多分配约 1.21 MiB，不代表 Unity 或整次恢复收益。226 项回归及原生兼容通过，待实机，详见 `research/2026-11-11-unchanged-scalar-writes.md`。局部递归改静态递归候选无收益，已撤除。
 
 ### 版本与发布
 
@@ -88,7 +90,7 @@ docs/workshop/                     创意工坊文本
   只恢复这些缓存而不恢复实际 RectTransform，会让 `UpdateRectTransform()` 误判“无需布局”，表现为拖拽后回溯贴图不归位。
 - **数组偏移必须在元素内部计算** `offset = i * stride + j`，并记录 `Storage.Index = i`。把偏移提到循环外会让所有元素都读成第一个元素，而且 `diff=0` 也可能掩盖（读写共用同一错误读取器）。
 - 普通字段用反射读；同一路径累计读取 32 次后尝试生成只读委托，失败则回退。字段/类型缓存上限 4096，跨节点复用；每份快照的值/根/数组索引缓存相互隔离，卸载时清理。精确 TagState 可用下述专用无损字段载荷。
-- Mono 普通字段写回不生成委托：单字段直接 FieldInfo.SetValue，标量/引用数组元素直接 Array.SetValue；引用字段保留 ReferenceEquals 守卫（不能用 Equals），标量仍无条件写回。嵌套结构体和结构体数组保持逐层装箱、递归及父层复制回写，只省去最末标量旧值的读取。全图 Restore 仍写全部槽位，标量/引用两轮顺序不变；二次写回可按下述 owner 规则筛选，但不能省略完整校验。五参数 ManagedStateAccess 构造器的 directWrites=false 仅为离线/原生夹具保留递归对照，不是新的玩家设置。
+- Mono 普通字段写回不生成委托：需要写入的单字段直接 FieldInfo.SetValue，标量/引用数组元素直接 Array.SetValue；引用字段保留 ReferenceEquals 守卫（不能用 Equals）。`Snapshot.SkipUnchangedScalars=true` 仅对 null/框架 primitive/enum/decimal 的普通槽先读真实存储，按与 ValueEquals 相同的比较语义（浮点按位）免写完全相同值，自定义 nullable 结构体不增加 Equals 调用；配置关闭则无条件写普通标量，配置只影响新节点访问器，关闭后重启。不同值的嵌套结构体和结构体数组保持逐层装箱、递归及父层复制回写。全图 Restore 仍访问全部槽位，普通标量/块标量/普通引用/块引用顺序不变，块不免写；二次写回可按下述 owner 规则筛选，但不能省略完整校验。新读取异常沿原失败流程，不重试无条件写入。五参数 ManagedStateAccess 构造器的 directWrites=false 默认禁用免写，仅为离线/原生夹具保留递归对照，不是新的玩家设置。
 - 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`，默认 **200000 / 3000000 / 256**。
 - 超限跳过本次捕获，释放半成品并保留旧节点；不使用不完整快照，不自动无限加大上限。面板显示失败、提示去重，日志包含实际计数、各上限及来源路径。
 - 对象上限在新身份入队前检查（包括显式根）；重复、空引用和环不重复计数。失败日志 `objects` 为已经展开的对象，`discovered` 为已发现数（对象超限时包括刚拒绝的一个），`pending` 为尚未展开的已接收对象。不能等出队时才检查，否则宽图会提前堆积超限队列。

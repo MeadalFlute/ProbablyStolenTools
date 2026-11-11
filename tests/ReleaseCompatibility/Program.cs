@@ -736,12 +736,15 @@ finally
 }
 
 if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || args.Contains("--benchmark-reconcile")
-    || args.Contains("--benchmark-int-arrays") || args.Contains("--benchmark-census-tags"))
+    || args.Contains("--benchmark-int-arrays") || args.Contains("--benchmark-census-tags")
+    || args.Contains("--benchmark-scalar-writes"))
 {
     bool benchmarkWrites = args.Contains("--benchmark-writes");
     bool benchmarkReconcile = args.Contains("--benchmark-reconcile");
     bool benchmarkIntArrays = args.Contains("--benchmark-int-arrays");
     bool benchmarkCensus = args.Contains("--benchmark-census-tags");
+    bool benchmarkScalars = args.Contains("--benchmark-scalar-writes");
+    bool denseScalars = benchmarkScalars && args.Contains("--dense-scalars");
     // Isolated native business objects on .NET 6, not a Unity/Mono frame-time measurement.
     var fixture = Array.CreateInstance(systemType, 1024);
     for (int i = 0; i < fixture.Length; i++)
@@ -768,8 +771,9 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
     var censusMethod = graphType.GetMethod("Census", BindingFlags.Static | BindingFlags.NonPublic);
     var applyMethod = graphType.GetNestedType("Reconciliation", BindingFlags.NonPublic).GetMethod("Apply", dataFlags);
     int repairedSlots = 0, intBlocks = 0, intSlots = 0, probedTags = 0;
-    int sampleCount = benchmarkIntArrays || benchmarkCensus ? 9 : 5;
-    int warmups = benchmarkIntArrays || benchmarkCensus ? 3 : 1;
+    var scalarCounts = new Dictionary<bool, (long Checked, long Skipped)>();
+    int sampleCount = benchmarkIntArrays || benchmarkCensus || benchmarkWrites || benchmarkScalars ? 9 : 5;
+    int warmups = benchmarkIntArrays || benchmarkCensus || benchmarkWrites || benchmarkScalars ? 3 : 1;
     for (int round = -warmups; round < sampleCount; round++)
         foreach (bool compact in round % 2 == 0 ? new[] { true, false } : new[] { false, true })
         {
@@ -777,8 +781,10 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
             var benchAccess = accessType.GetConstructor(dataFlags, null,
                 new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool) }, null)
                 .Invoke(new object[] { null, "Assembly-CSharp", true, true, !benchmarkWrites || compact,
-                    benchmarkIntArrays && compact });
-            if (benchmarkReconcile || benchmarkWrites || benchmarkIntArrays || benchmarkCensus || compact) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
+                    benchmarkScalars || benchmarkIntArrays && compact });
+            if (benchmarkScalars)
+                accessType.GetProperty("SkipUnchangedScalars", dataFlags).SetValue(benchAccess, compact);
+            if (!denseScalars && (benchmarkReconcile || benchmarkWrites || benchmarkIntArrays || benchmarkCensus || benchmarkScalars || compact)) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new[] { benchAccess });
             accessType.GetMethod("AddRoot", dataFlags).Invoke(benchAccess, new object[] { Identity(fixture), Array.Empty<string>() });
             long before = GC.GetAllocatedBytesForCurrentThread();
@@ -849,7 +855,17 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
                 else
                     foreach (object system in fixture)
                         foreach (var state in ((System.Collections.IDictionary)mapField.GetValue(system)).Values)
+                        {
                             tagFields[2].SetValue(state, -1);
+                            if (denseScalars)
+                            {
+                                tagFields[0].SetValue(state, true);
+                                tagFields[3].SetValue(state, 0f);
+                                tagFields[4].SetValue(state, 1L);
+                                tagFields[5].SetValue(state, 0d);
+                                tagFields[6].SetValue(state, true);
+                            }
+                        }
                 long beforeRestore = GC.GetAllocatedBytesForCurrentThread();
                 double scanned = 0;
                 object repairPlan = null;
@@ -872,6 +888,13 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
                 else restoreMethod.Invoke(benchGraph, null);
                 double restored = clock.Elapsed.TotalMilliseconds;
                 long restoreAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeRestore;
+                if (benchmarkScalars)
+                {
+                    var counts = ((long Checked, long Skipped))accessType.GetProperty("ScalarWrites", dataFlags).GetValue(benchAccess);
+                    if ((counts.Checked > 0) != compact || (counts.Skipped > 0) != compact)
+                        throw new Exception("Scalar write benchmark did not exercise the requested mode.");
+                    scalarCounts[compact] = counts;
+                }
                 if (repairPlan != null) VerifyRepair(benchGraph, repairPlan);
                 if (((System.Collections.ICollection)verifyMethod.Invoke(benchGraph, new object[] { 12 })).Count != 0)
                     throw new Exception("Native benchmark restoration verification failed.");
@@ -887,7 +910,10 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
         string mode = benchmarkReconcile ? (compact ? "hybrid-owner-repair" : "hybrid-full-reconcile")
             : benchmarkWrites ? (compact ? "hybrid-direct-write" : "hybrid-recursive-write")
             : (compact ? "hybrid" : "legacy");
-        if (benchmarkCensus)
+        if (benchmarkScalars)
+            Console.WriteLine(FormattableString.Invariant(
+                $"SCALAR_WRITE_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} guard={compact} dense={denseScalars} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} checked={scalarCounts[compact].Checked} skipped={scalarCounts[compact].Skipped} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+        else if (benchmarkCensus)
             Console.WriteLine(FormattableString.Invariant(
                 $"CENSUS_TAG_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} direct={compact} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} exactTagProbes={(compact ? probedTags : 0)} censusMs={Median(values.Select(v => v.Census)):F2} censusAllocatedBytes={Median(values.Select(v => (double)v.CensusAllocated)):F0}"));
         else if (benchmarkIntArrays)
@@ -898,6 +924,6 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
                 $"RECONCILE_BENCH runtime=net6-not-Unity mode={mode} samples=5 objects={expectedObjects} slots={expectedSlots} plannedSlots={(compact ? repairedSlots : expectedSlots)} scanMs={Median(values.Select(v => v.Scan)):F2} writeMs={Median(values.Select(v => v.Restore)):F2} scanWriteMs={Median(values.Select(v => v.Scan + v.Restore)):F2} scanWriteAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
         else
             Console.WriteLine(FormattableString.Invariant(
-                $"TAG_BLOCK_BENCH runtime=net6-not-Unity mode={mode} samples=5 objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+                $"TAG_BLOCK_BENCH runtime=net6-not-Unity mode={mode} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
     }
 }

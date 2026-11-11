@@ -428,6 +428,7 @@ namespace ProbablyStolenTools
 #if MONO
             var access = new NativeStateAccess(typeof(UnityEngine.Object), "Assembly-CSharp", true, true, true,
                 Plugin.CfgIntArrayBlocks?.Value == true);
+            access.SkipUnchangedScalars = Plugin.CfgSkipUnchangedScalars?.Value == true;
             if (Plugin.CfgSemanticTagBlocks?.Value == true) SemanticTagBlock.Enable(access);
 #else
             var access = new NativeStateAccess();
@@ -851,6 +852,7 @@ namespace ProbablyStolenTools
             int finalDifferences = -1;
             long censusBytes = 0;
             string workload = "";
+            var scalarWritesBefore = target.Graph.ScalarWrites;
             Restoring = true;
             float scale = Time.timeScale;
             try
@@ -1066,6 +1068,8 @@ namespace ProbablyStolenTools
                     long tFinish = timing.ElapsedMilliseconds;
                     EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
                         $"releaseOk={releaseError == null} " +
+                        $"ordinaryScalarWrites(checked={target.Graph.ScalarWrites.Checked - scalarWritesBefore.Checked}," +
+                        $"skipped={target.Graph.ScalarWrites.Skipped - scalarWritesBefore.Skipped}) " +
                         $"census(objects={censusObjects},slots={censusSlots},bytes={censusBytes},exactTagProbes={censusTagProbes}) " +
                         $"ms(validate={tValidate},census={tCensus - tValidate},preflight={tPreflight - tCensus}," +
                         $"write={tWrite - tPreflight},refresh={tRefresh - tWrite},reconcile={tReconcile - tRefresh}," +

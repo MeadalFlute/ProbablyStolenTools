@@ -19,6 +19,7 @@ SemanticTagSnapshotTests.Run(Test, Check);
 SemanticTagOwnershipTests.Run(Test, Check);
 SnapshotBlockTests.Run(Test, Check);
 SnapshotWriteTests.Run(Test, Check);
+SnapshotScalarWriteTests.Run(Test, Check);
 SnapshotDifferenceSourceTests.Run(Test, Check);
 SnapshotReconciliationTests.Run(Test, Check);
 SnapshotIntArrayTests.Run(Test, Check);

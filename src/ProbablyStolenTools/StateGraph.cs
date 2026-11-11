@@ -38,6 +38,11 @@ namespace ProbablyStolenTools
         int ProbeValue(IntPtr id, StateSlot slot);
     }
 
+    internal interface IStateScalarWriteDiagnostics
+    {
+        (long Checked, long Skipped) ScalarWrites { get; }
+    }
+
     // Opt-in eight-byte scalar tokens only: read every scalar without retaining values or replacing reference discovery.
     internal interface IStateCensusValueProbe
     {
@@ -98,6 +103,8 @@ namespace ProbablyStolenTools
         internal int SlotCount { get; private set; }
         internal long ByteCount { get; private set; }
         internal int BlockCount => _blocks.Count;
+        internal (long Checked, long Skipped) ScalarWrites
+            => (_access as IStateScalarWriteDiagnostics)?.ScalarWrites ?? default;
         internal IEnumerable<IntPtr> Objects => _objects;
         internal bool Contains(IntPtr id) => _objects.Contains(id);
 
