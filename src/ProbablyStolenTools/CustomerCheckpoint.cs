@@ -30,6 +30,9 @@ namespace ProbablyStolenTools
         private static bool _faulted;
         private static long _epoch;
         private static long _callbackId;
+#if MONO
+        private static bool _semanticShadowAttempted;
+#endif
         internal static bool Restoring { get; private set; }
         internal static bool PatchesReady;
         internal static bool Enabled => Plugin.CfgCustomerCheckpoint?.Value == true && PatchesReady;
@@ -96,6 +99,9 @@ namespace ProbablyStolenTools
             internal IntPtr Store, Client;
             internal DateTime At;
             internal StateGraph Graph;
+#if MONO
+            internal SemanticTagShadow SemanticTags;
+#endif
             internal readonly Dictionary<IntPtr, GameItemElement> Items = new();
             internal readonly Dictionary<IntPtr, GameItemElement> RenderedItems = new();
             internal readonly Dictionary<IntPtr, PixelWindow> Windows = new();
@@ -107,6 +113,9 @@ namespace ProbablyStolenTools
             public void Dispose()
             {
                 Graph?.Dispose(); Graph = null;
+#if MONO
+                SemanticTags?.Dispose(); SemanticTags = null;
+#endif
                 Items.Clear(); RenderedItems.Clear(); Windows.Clear(); Visuals.Clear();
                 Random = null; Customer = null; Shop = null;
             }
@@ -288,6 +297,9 @@ namespace ProbablyStolenTools
         internal static void ResetAfterFileReload()
         {
             if (Restoring) return;
+#if MONO
+            _semanticShadowAttempted = false;
+#endif
             Failures.Clear();
             LastCaptureError = null;
             _failureNoticeKey = null;
@@ -621,10 +633,36 @@ namespace ProbablyStolenTools
                 }
                 if (candidate.RenderedItems.Count == 0) throw new InvalidOperationException("No live inventory items reached from snapshot roots.");
                 long tItems = timing.ElapsedMilliseconds;
+                long semanticCaptureVerifyMs = -1;
+                phase = "semantic-shadow";
+#if MONO
+                if (!_semanticShadowAttempted && Plugin.CfgSemanticTagShadow?.Value == true)
+                {
+                    _semanticShadowAttempted = true;
+                    var shadowClock = System.Diagnostics.Stopwatch.StartNew();
+                    try
+                    {
+                        candidate.SemanticTags = SemanticTagShadow.Capture(candidate.Graph,
+                            MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
+                        semanticCaptureVerifyMs = shadowClock.ElapsedMilliseconds;
+                    }
+                    catch (Exception e)
+                    {
+                        EventLog.Write($"[SemanticTags] CAPTURE FAILED id={candidate.Id} readOnly=true " +
+                            $"legacyAuthoritative=true elapsedMs={shadowClock.ElapsedMilliseconds}: " + e);
+                    }
+                }
+#endif
+                long tSemantic = timing.ElapsedMilliseconds;
                 phase = "verify";
                 var diff = candidate.Graph.Differences();
                 if (diff.Count != 0) throw new InvalidOperationException("Capture changed while reading: " + string.Join(", ", diff));
                 long tVerify = timing.ElapsedMilliseconds;
+#if MONO
+                if (candidate.SemanticTags != null)
+                    EventLog.Write($"[SemanticTags] CAPTURE MATCH id={candidate.Id} readOnly=true " +
+                        $"captureVerifyMs={semanticCaptureVerifyMs} {candidate.SemanticTags.Summary}");
+#endif
                 phase = "history";
                 if (closed)
                 {
@@ -661,7 +699,7 @@ namespace ProbablyStolenTools
                     $"arrivalWaitSeconds={(manual || closed ? 0 : Time.unscaledTime - _arrivedAt):0.00} " +
                     $"captureMs={tFinish} " +
                     $"ms(access={tAccess},walk={tWalk - tAccess},items={tItems - tWalk}," +
-                    $"verify={tVerify - tItems},prepareHistory={tBeforeHistory - tVerify}," +
+                    $"semanticShadow={tSemantic - tItems},verify={tVerify - tSemantic},prepareHistory={tBeforeHistory - tVerify}," +
                     $"history={tHistory - tBeforeHistory},retain={tRetain - tHistory}," +
                     $"finish={tFinish - tRetain},total={tFinish})" + readers);
                 TraceBargain("CAPTURE");
@@ -783,7 +821,7 @@ namespace ProbablyStolenTools
             string phase = "preflight";
             var timing = System.Diagnostics.Stopwatch.StartNew();
             long tValidate = 0, tCensus = 0, tPreflight = 0, tWrite = 0, tRefresh = 0;
-            long tReconcile = 0, tVerify = 0, tCleanup = 0;
+            long tReconcile = 0, tVerify = 0, tSemanticVerify = 0, tCleanup = 0;
             int censusObjects = 0, censusSlots = 0;
             int finalDifferences = -1;
             long censusBytes = 0;
@@ -900,6 +938,10 @@ namespace ProbablyStolenTools
                 if (diff.Count != 0)
                     throw new InvalidOperationException("Final restore differs from checkpoint: " + string.Join(", ", diff));
                 tVerify = timing.ElapsedMilliseconds;
+#if MONO
+                target.SemanticTags?.ObserveRestore(target.Id);
+#endif
+                tSemanticVerify = timing.ElapsedMilliseconds;
                 phase = "cleanup";
                 LogItemGeometry(target, "restore-post");
                 // Only discard abandoned views after the restored business graph passes validation.
@@ -968,7 +1010,8 @@ namespace ProbablyStolenTools
                         $"census(objects={censusObjects},slots={censusSlots},bytes={censusBytes}) " +
                         $"ms(validate={tValidate},census={tCensus - tValidate},preflight={tPreflight - tCensus}," +
                         $"write={tWrite - tPreflight},refresh={tRefresh - tWrite},reconcile={tReconcile - tRefresh}," +
-                        $"finalVerify={tVerify - tReconcile},cleanup={tCleanup - tVerify}," +
+                        $"finalVerify={tVerify - tReconcile},semanticVerify={tSemanticVerify - tVerify}," +
+                        $"cleanup={tCleanup - tSemanticVerify}," +
                         $"release={tFinish - tCleanup},total={tFinish})" + workload);
                 }
                 if (releaseError != null)
@@ -1136,6 +1179,9 @@ namespace ProbablyStolenTools
 
         private static void Clear(string reason = "场景切换")
         {
+#if MONO
+            _semanticShadowAttempted = false;
+#endif
             Failures.Clear();
             LastCaptureError = null;
             _failureNoticeKey = null;

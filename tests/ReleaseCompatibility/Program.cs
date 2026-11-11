@@ -333,3 +333,77 @@ try
         + " (compiled readers=" + compiledReaders + ")");
 }
 finally { ((IDisposable)graph).Dispose(); }
+
+// Exercise the read-only semantic adapter against installed game types, without Unity or save APIs.
+var tagType = game.GetType("TagState", true);
+var systemType = game.GetType("TagSystem", true);
+var mapType = typeof(Dictionary<,>).MakeGenericType(typeof(string), tagType);
+var tagMap = (System.Collections.IDictionary)Activator.CreateInstance(mapType);
+var tagSystem = Data("TagSystem");
+var secondSystem = Data("TagSystem");
+var mapField = systemType.GetField("<dict>k__BackingField", dataFlags);
+mapField.SetValue(tagSystem, tagMap);
+mapField.SetValue(secondSystem, tagMap);
+var tagState = Data("TagState");
+object[] tagValues = { false, null, 0, BitConverter.Int32BitsToSingle(unchecked((int)0x80000000)),
+    0L, BitConverter.Int64BitsToDouble(unchecked((long)0x7ff8000000000001)), false, "inactive", "Inactive" };
+string[] tagNames = { "valueEnabled", "internalValueString", "valueInt", "valueFloat", "valueLong",
+    "valueDouble", "valueBool", "<identifier>k__BackingField", "<identifierName>k__BackingField" };
+var tagFields = tagNames.Select(name => tagType.GetField(name, dataFlags)).ToArray();
+for (int i = 0; i < tagFields.Length; i++) tagFields[i].SetValue(tagState, tagValues[i]);
+tagMap.Add("inactive", tagState);
+tagMap.Add("alias", tagState);
+tagMap.Add("null", null);
+var tagRoots = Array.CreateInstance(systemType, 2);
+tagRoots.SetValue(tagSystem, 0);
+tagRoots.SetValue(secondSystem, 1);
+var tagAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+    .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+accessType.GetMethod("AddRoot", dataFlags).Invoke(tagAccess, new object[] { Identity(tagRoots), Array.Empty<string>() });
+var tagGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+    .Invoke(null, new object[] { tagAccess, new[] { Identity(tagRoots) }, 50000, 1000000, 64L * 1024 * 1024 });
+object shadow = null;
+try
+{
+    var shadowType = mod.GetType("ProbablyStolenTools.SemanticTagShadow", true);
+    shadow = shadowType.GetMethod("Capture", BindingFlags.NonPublic | BindingFlags.Static)
+        .Invoke(null, new object[] { tagGraph, 50000, 1000000, 64L * 1024 * 1024 });
+    var semantic = shadowType.GetField("_snapshot", dataFlags).GetValue(shadow);
+    int Diff(object target, Type type) => ((System.Collections.ICollection)type.GetMethod("Differences", dataFlags)
+        .Invoke(target, new object[] { 12 })).Count;
+    if (Diff(tagGraph, graphType) != 0 || Diff(semantic, semantic.GetType()) != 0)
+        throw new Exception("Semantic probing modified native tag data.");
+    if ((int)semantic.GetType().GetProperty("TagCount", dataFlags).GetValue(semantic) != 1
+        || (int)semantic.GetType().GetProperty("EntryCount", dataFlags).GetValue(semantic) != 3)
+        throw new Exception("Semantic adapter dropped disabled, null or aliased entries.");
+    object[] changed = { true, "", 42, 0f, 99L, 1d, true, "changed", "Changed" };
+    for (int i = 0; i < tagFields.Length; i++)
+    {
+        tagFields[i].SetValue(tagState, changed[i]);
+        if (Diff(semantic, semantic.GetType()) == 0)
+            throw new Exception("Native semantic reader missed field: " + tagNames[i]);
+        graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
+        if (Diff(semantic, semantic.GetType()) != 0)
+            throw new Exception("Native semantic field did not restore: " + tagNames[i]);
+    }
+    for (int round = 0; round < 2; round++)
+    {
+        for (int i = 0; i < tagFields.Length; i++) tagFields[i].SetValue(tagState, changed[i]);
+        tagMap.Remove("inactive");
+        for (int i = 0; i < 100; i++) tagMap["new-" + i] = Data("TagState");
+        mapField.SetValue(tagSystem, Activator.CreateInstance(mapType));
+        if (Diff(semantic, semantic.GetType()) == 0)
+            throw new Exception("Semantic adapter missed native tag mutations.");
+        graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
+        if (Diff(tagGraph, graphType) != 0 || Diff(semantic, semantic.GetType()) != 0
+            || !ReferenceEquals(mapField.GetValue(tagSystem), tagMap)
+            || !ReferenceEquals(mapField.GetValue(secondSystem), tagMap))
+            throw new Exception("Native tag restore did not match the read-only semantic checkpoint.");
+    }
+    Console.WriteLine("PASS installed TagSystem/TagState schema and read-only semantic coverage; shared maps, disabled/null/aliased tags, float bits and repeated legacy restores");
+}
+finally
+{
+    ((IDisposable)shadow)?.Dispose();
+    ((IDisposable)tagGraph).Dispose();
+}
