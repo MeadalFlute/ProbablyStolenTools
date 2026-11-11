@@ -1,4 +1,5 @@
 using ProbablyStolenTools;
+using System.Reflection;
 
 internal static class SnapshotDifferenceSourceTests
 {
@@ -44,6 +45,10 @@ internal static class SnapshotDifferenceSourceTests
         var id = ManagedObjects.Id(root); access.Inner.AddRoot(id);
         return StateGraph.Capture(access, new[] { id });
     }
+
+    private static string Format(string text, int max = 128, bool tail = true)
+        => (string)typeof(StateGraph).GetMethod("DiagnosticText", BindingFlags.NonPublic | BindingFlags.Static)
+            .Invoke(null, new object[] { text, max, tail });
 
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
@@ -127,6 +132,65 @@ internal static class SnapshotDifferenceSourceTests
             failed = false;
             try { graph.DifferencesWithSources(); } catch (ObjectDisposedException) { failed = true; }
             check(failed);
+        });
+        test("generic dictionary diagnostic names retain field and array element suffixes", () =>
+        {
+            string map = typeof(Dictionary<string, Node>).FullName;
+            string entries = typeof(Dictionary<string, Node>).GetField("_entries",
+                BindingFlags.NonPublic | BindingFlags.Instance).FieldType.FullName;
+            check(Format(map + "._version") == "System.Collections.Generic.Dictionary`2<...>._version");
+            string formatted = Format(entries + "[12].value.Link");
+            check(formatted.Contains("<...>[][12].value.Link") && !formatted.Contains("Version="));
+            check(Format("System.Int32[][2]") == "System.Int32[][2]");
+            check(Format("TagState.<identifier>k__BackingField") == "TagState.<identifier>k__BackingField");
+        });
+        test("nested generic arguments and multiple source edges compact without losing path segments", () =>
+        {
+            string map = typeof(Dictionary<string, List<Dictionary<int, Node[]>>>).FullName;
+            string path = "root -> " + map + "._entries -> " + map + "[][3].value";
+            string formatted = Format(path, 240);
+            check(formatted == "root -> System.Collections.Generic.Dictionary`2<...>._entries -> " +
+                "System.Collections.Generic.Dictionary`2<...>[][3].value");
+            check(!formatted.Contains("Version="));
+        });
+        test("long diagnostic field and source text preserve their distinguishing tails", () =>
+        {
+            string suffix = "[][27].value.<identifier>k__BackingField";
+            string field = Format(new string('x', 1000) + suffix);
+            check(field.Length == 128 && field.StartsWith("...") && field.EndsWith(suffix));
+            string path = Format(new string('x', 1000) + " -> cassettePlayer -> modifiedState -> dict", 240);
+            check(path.Length == 240 && path.EndsWith(" -> cassettePlayer -> modifiedState -> dict"));
+            check(Format("broken[[metadata") == "broken[[metadata");
+        });
+        test("live dictionary differences keep raw names unchanged and diagnostic suffixes readable", () =>
+        {
+            var map = new Dictionary<string, Node> { ["a"] = new Node { Number = 1 } };
+            var access = new CountingAccess();
+            using var graph = Capture(map, access);
+            map.Add("b", new Node { Number = 2 });
+            var raw = graph.Differences();
+            access.Reads = 0;
+            var detail = graph.DifferencesWithSources();
+            check(raw.Count > 0 && raw.Count == detail.Count && raw.Any(s => s.Contains("Version=")));
+            check(detail.All(s => !s.Contains("Version=")) && access.Reads == graph.SlotCount);
+            for (int i = 0; i < raw.Count; i++)
+                check(detail[i].Contains("field=" + Format(raw[i]) + " source="));
+            graph.Restore(); check(map.Count == 1 && graph.Differences().Count == 0);
+        });
+        test("all twelve bounded diagnostic samples remain available while later fields are scanned", () =>
+        {
+            var root = Enumerable.Range(0, 30).ToArray();
+            var access = new CountingAccess();
+            using var graph = Capture(root, access);
+            Array.Fill(root, -1); access.Reads = 0;
+            var detail = graph.DifferencesWithSources();
+            check(detail.Count == 12 && detail[6].Contains("field=System.Int32[][6] ")
+                && detail[11].Contains("field=System.Int32[][11] ") && access.Reads == 30);
+            access.Reads = 0; access.FailAt = 30;
+            bool failed = false;
+            try { graph.DifferencesWithSources(); }
+            catch (InvalidOperationException e) when (e.Message == "late read") { failed = true; }
+            check(failed && access.Reads == 30 && access.Writes == 0);
         });
     }
 }

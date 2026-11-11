@@ -936,7 +936,7 @@ namespace ProbablyStolenTools
                 tRefresh = timing.ElapsedMilliseconds;
                 phase = "reconcile-scan";
                 var diff = target.Graph.DifferencesWithSources();
-                if (diff.Count != 0) reconcileSources = string.Join(" | ", diff.Take(6));
+                if (diff.Count != 0) reconcileSources = string.Join(" | ", diff);
                 tReconcileScan = timing.ElapsedMilliseconds;
                 reconcileReportedDiff = diff.Count;
                 if (diff.Count != 0)
@@ -1052,7 +1052,7 @@ namespace ProbablyStolenTools
                         $"id={target.Id} phase=release elapsedMs={timing.ElapsedMilliseconds}: " + releaseError);
                 if (reconcileSources.Length != 0)
                     EventLog.Write($"[Customer] RECONCILE DIFF id={target.Id} restoreCompleted={completed} " +
-                        $"reportedDiff={reconcileReportedDiff} sampleLimit=6 scanLimit=12 " +
+                        $"reportedDiff={reconcileReportedDiff} sampleLimit=12 scanLimit=12 " +
                         $"scope=captured-graph-only values=omitted sample=[{reconcileSources}]");
             }
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace ProbablyStolenTools
 {
@@ -269,15 +270,42 @@ namespace ProbablyStolenTools
             // Metadata only: never call business getters/ToString or reread the changed field.
             string type = (_access as IStateObjectDescription)?.ObjectTypeName(owner);
             return $"owner=0x{owner.ToInt64():X} type={DiagnosticText(type, 128)} " +
-                $"storage={(block ? "block" : "field")} field={DiagnosticText(field, 128)} " +
-                $"source={DiagnosticText(SourceOf(owner), 240)}";
+                $"storage={(block ? "block" : "field")} field={DiagnosticText(field, 128, true)} " +
+                $"source={DiagnosticText(SourceOf(owner), 240, true)}";
         }
 
-        private static string DiagnosticText(string value, int max)
+        private static string DiagnosticText(string value, int max, bool keepTail = false)
         {
             if (string.IsNullOrEmpty(value)) return "unknown";
-            if (value.Length > max) value = value.Substring(0, max - 3) + "...";
+            value = CompactDiagnosticName(value);
+            if (value.Length > max)
+                value = keepTail ? "..." + value.Substring(value.Length - max + 3)
+                    : value.Substring(0, max - 3) + "...";
             return value.Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
+        }
+
+        // FullName embeds assembly-qualified generic arguments in [[...]]. Omit only that
+        // balanced metadata group; keep array indices and all following field/path segments.
+        private static string CompactDiagnosticName(string value)
+        {
+            int start = value.IndexOf("[[", StringComparison.Ordinal);
+            if (start < 0) return value;
+            var result = new StringBuilder();
+            int copied = 0;
+            while (start >= 0)
+            {
+                int depth = 0, end = start;
+                for (; end < value.Length; end++)
+                {
+                    if (value[end] == '[') depth++;
+                    else if (value[end] == ']' && --depth == 0) { end++; break; }
+                }
+                if (depth != 0) break;
+                result.Append(value, copied, start - copied).Append("<...>");
+                copied = end;
+                start = value.IndexOf("[[", copied, StringComparison.Ordinal);
+            }
+            return result.Append(value, copied, value.Length - copied).ToString();
         }
 
         private void RequireCheckpoint()

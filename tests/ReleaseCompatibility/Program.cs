@@ -500,6 +500,11 @@ try
         tagMap.Remove("inactive");
         for (int i = 0; i < 100; i++) tagMap["new-" + i] = Data("TagState");
         mapField.SetValue(tagSystem, Activator.CreateInstance(mapType));
+        var mapDetails = ((System.Collections.IEnumerable)graphType.GetMethod("DifferencesWithSources", dataFlags)
+            .Invoke(tagGraph, new object[] { 12 })).Cast<string>().ToArray();
+        if (mapDetails.Length == 0 || mapDetails.Any(s => s.Contains("Version="))
+            || !mapDetails.Any(s => s.Contains("field=System.Collections.Generic.Dictionary`2<...>._version ")))
+            throw new Exception("Native generic dictionary diagnostic lost its version field suffix.");
         if (Diff(semantic, semantic.GetType()) == 0)
             throw new Exception("Semantic adapter missed native tag mutations.");
         graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
