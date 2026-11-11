@@ -48,6 +48,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 23:01 会话首批实体记录已检查：7 捕获/6 恢复最终零差异，首节点两次 RECORD RESTORE MATCH（15/16 ms），恢复后四件群拖正常；首节点 entityRecords=209 ms、总捕获 1337 ms，仅增加诊断成本。后续阶段补齐精确库存完整继承链及 PixelWindow 的显式 Entity/Runtime/Visual 字段清单：实体记录纳入归属、锁、形状、stolenUI、父物品/链接库存/子控件等；回调/刷新缓存/集合底层仍旧图负责。逐槽检查 Entity/Runtime 都有旧覆盖，Visual 不应出现，精确 owner 未分类槽拒绝，未知 schema 只使本次诊断失败。269 项及原生十处关系变化、runtime 保留/恢复、缺 runtime 根拒绝通过，待实机。物品派生字段完整清单、外部句柄/图切分/实体写回仍未实现，详见 `research/2026-11-11-inventory-window-records.md`。
 
+库存/窗口覆盖阶段已于 23:12 部署（独立运行时提交 `e46e7d4`，0.8.14）；备份 `out/full-release-deploy-20261111-231247`，78 存档文件校验未变，未启动游戏。当前等待扩展后的实体记录实机，不叠加物品派生层/运行态切分。
+
 22:43 会话实体边界审计已验证：7 次捕获、8 次恢复最终零差异，恢复后四件群拖正常。首节点 1236 实体/111431 实体槽，运行态入边 2750，其中闭包/委托候选 1291；首节点审计 42 ms，仅诊断成本。仍未证明可裁剪。下一阶段新增 `Snapshot.SemanticEntityRecords=true`，每上下文首节点独立记录 GameItem 全部基类字段、精确格子/单槽成员及 GridShapeBuilder 全部字段和字节，原身份/顺序/共享/浮点位，schema/旧图字段覆盖/独立预算检查；恢复后只读对照。派生字段/回调/集合底层等仍 legacy-only，未知类型不迁移；不是完整实体覆盖或实体写回。262 项及原生六轮旧图/记录恢复对照、筛选根/超限隔离通过，待实机；详见 `research/2026-11-11-entity-readonly-records.md`。
 
 实体记录首批投影已于 23:00 部署（独立运行时提交 `5d69429`，版本 0.8.14）；备份 `out/full-release-deploy-20261111-230000`，78 存档文件校验未变，未启动游戏。等待 RECORD CAPTURE/RESTORE MATCH 和 entityRecords 实机数据，不叠加运行态切分/实体写回。

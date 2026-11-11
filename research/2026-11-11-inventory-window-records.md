@@ -76,3 +76,12 @@ projectedOwnerSlots/legacyOwnerSlots 仍只统计被投影 owner 的旧槽，不
 先验收真实窗口/借用关系及新增记录成本，之后补物品派生层/回调完整字段清单。外部实体句柄、运行态图切分、实体写回、生产图替换均未启用；当前仍是完整 StateGraph 权威的混合后端。
 
 实机建议：首节点建立时让一个容器窗口处于打开状态；随后开关窗口、在容器与柜台之间移动/旋转物品、买卖并建后续节点，然后往返最早节点，恢复后测试群拖。若方便，再覆盖带容器的设备单槽借用窗口。保持默认日志即可，无需开启 Verbose。
+
+## 部署记录
+
+2026-11-11 23:12，独立运行时提交 `e46e7d4`，标准脚本部署，版本保持 0.8.14。
+
+- 备份：`out/full-release-deploy-20261111-231247`。
+- 部署 DLL SHA256：`CAB30EEA870288DA312908D97E8D7A251668EE6968F3405FFAC03EC171E6436B`，与构建一致。
+- 78 个存档文件校验未变，SettingsImported=False，GameStarted=False。
+- 未启动游戏，等待库存/窗口扩展后的 RECORD CAPTURE/RESTORE MATCH、windows/分类计数及 entityRecords 耗时；本轮不叠加物品派生层或运行态切分。
