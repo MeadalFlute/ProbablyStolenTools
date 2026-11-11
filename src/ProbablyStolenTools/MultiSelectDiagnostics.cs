@@ -12,7 +12,7 @@ namespace ProbablyStolenTools
 
         internal static int TryCount(ItemMultiSelectHandler handler)
         {
-            try { return CustomerCheckpoint.Enabled ? Count(handler) : -1; }
+            try { return EventLog.Verbose && CustomerCheckpoint.Enabled ? Count(handler) : -1; }
             catch { return -1; }
         }
 
@@ -21,6 +21,9 @@ namespace ProbablyStolenTools
             try
             {
                 if (!CustomerCheckpoint.Enabled) return;
+                if (error != null)
+                    EventLog.Write($"[MultiSelect] {phase} FAILED before={before}: " + error);
+                if (!EventLog.Verbose) return;
                 EventLog.Write($"[MultiSelect] {phase} before={before} selected={Count(handler)} " +
                     $"hasSelection={handler.HasSelection} groupDragging={handler.IsGroupDragging} " +
                     $"checkpoint={CustomerCheckpoint.ActiveId} restoring={CustomerCheckpoint.Restoring}" +

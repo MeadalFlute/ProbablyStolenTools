@@ -38,6 +38,33 @@ var mod = AssemblyLoadContext.Default.LoadFromAssemblyPath(dll);
 var types = mod.GetTypes();
 var plugin = types.Single(t => t.GetInterfaces().Any(i => i.Name == "IMod"));
 Console.WriteLine("IMod entry: " + plugin.FullName);
+var logFlags = BindingFlags.NonPublic | BindingFlags.Static;
+var verboseSetting = plugin.GetField("CfgVerboseLog", logFlags);
+var developmentSetting = plugin.GetField("CfgSemanticDevelopmentChecks", logFlags);
+var boolEntry = verboseSetting.FieldType.GetConstructors(BindingFlags.NonPublic | BindingFlags.Instance).Single();
+object BoolSetting(bool value) => boolEntry.Invoke(new object[] { value, null, "fixture" });
+var verboseProperty = mod.GetType("ProbablyStolenTools.EventLog", true).GetProperty("Verbose", logFlags);
+var previousVerbose = verboseSetting.GetValue(null);
+var previousDevelopment = developmentSetting.GetValue(null);
+try
+{
+    foreach (object verbosity in new object[] { null, BoolSetting(false), BoolSetting(true) })
+        foreach (bool development in new[] { false, true })
+        {
+            verboseSetting.SetValue(null, verbosity);
+            developmentSetting.SetValue(null, BoolSetting(development));
+            bool expected = verbosity != null && (bool)verbosity.GetType()
+                .GetProperty("Value", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(verbosity);
+            if ((bool)verboseProperty.GetValue(null) != expected)
+                throw new Exception("Verbose logging must be opt-in and independent of duplicate development checks.");
+        }
+}
+finally
+{
+    verboseSetting.SetValue(null, previousVerbose);
+    developmentSetting.SetValue(null, previousDevelopment);
+}
+Console.WriteLine("PASS quiet logging before configuration and independent verbose/development switches");
 int hooks = 0;
 foreach (var type in types)
 {

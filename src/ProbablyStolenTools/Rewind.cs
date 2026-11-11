@@ -601,10 +601,11 @@ namespace ProbablyStolenTools
     internal static class EventLog
     {
         internal static string Path => System.IO.Path.Combine(Application.persistentDataPath, "PSTools.log");
+        internal static bool Verbose => Plugin.CfgVerboseLog?.Value == true;
 
         internal static void Debug(string msg)
         {
-            if (Plugin.CfgVerboseLog?.Value == true) Write(msg);
+            if (Verbose) Write(msg);
         }
 
         internal static void Write(string msg)
@@ -1041,7 +1042,8 @@ namespace ProbablyStolenTools
                 if (Time.time < _resumeT + 5f) return;
                 try
                 {
-                    EventLog.Write($"[Rewind] +5s: arrived={PlayerStore.Instance.isClientArrived}, state={(int)PlayerStore.Instance.storeState}, cash={PlayerStore.Instance.playerCash}");
+                    if (EventLog.Verbose)
+                        EventLog.Write($"[Rewind] +5s: arrived={PlayerStore.Instance.isClientArrived}, state={(int)PlayerStore.Instance.storeState}, cash={PlayerStore.Instance.playerCash}");
                 }
                 catch { }
                 _resumeStage = 4;
@@ -1054,7 +1056,8 @@ namespace ProbablyStolenTools
                 if (Time.time < _resumeT + 15f) return;
                 try
                 {
-                    EventLog.Write($"[Rewind] +20s: arrived={PlayerStore.Instance.isClientArrived}, state={(int)PlayerStore.Instance.storeState}, cash={PlayerStore.Instance.playerCash}");
+                    if (EventLog.Verbose)
+                        EventLog.Write($"[Rewind] +20s: arrived={PlayerStore.Instance.isClientArrived}, state={(int)PlayerStore.Instance.storeState}, cash={PlayerStore.Instance.playerCash}");
                 }
                 catch { }
                 _resumeStage = 0;

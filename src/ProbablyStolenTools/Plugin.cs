@@ -340,7 +340,7 @@ namespace ProbablyStolenTools
             CfgDiag = Config.Bind("Debug", "Diagnostics", false,
                 "Run one-shot API diagnostics at the main menu (log only).");
             CfgVerboseLog = Config.Bind("Logging", "Verbose", false,
-                "Include additional diagnostics. Errors, captures, restores and changed wait conditions are always logged. PSTools logs rotate at 4 MiB with three archives.");
+                "Enable detailed wait, visual, geometry, bargain and input diagnostics. Errors, capture/restore timings and real repair fallbacks are always logged. Does not enable duplicate semantic development checks. PSTools logs rotate at 4 MiB with three archives.");
             CfgSelfTest = Config.Bind("Debug", "SelfTest", false,
                 "Automated end-to-end test: continue save -> capture checkpoint -> restore. Logs to PSTools.log.");
             CfgPreviewPanel = Config.Bind("Debug", "PreviewPanel", false,

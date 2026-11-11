@@ -110,8 +110,8 @@ namespace ProbablyStolenTools
                 {
                     int condition = TagInt(item, "BERRY_CONDITION_INT");
                     var (cn, en, score) = BerryCondition(condition);
-                    if (_seenBerry.Add(condition))
-                        Plugin.LogSource?.LogInfo($"[Wine] berry condition {condition} -> {cn} ({score})");
+                    if (EventLog.Verbose && _seenBerry.Add(condition))
+                        EventLog.Write($"[Wine] berry condition {condition} -> {cn} ({score})");
                     return InspectionLocale.Text("品相：", "Quality: ") + InspectionLocale.Text(cn, en)
                         + " (" + Signed(score) + ")";
                 }

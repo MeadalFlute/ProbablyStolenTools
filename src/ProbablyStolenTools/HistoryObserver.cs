@@ -230,7 +230,7 @@ namespace ProbablyStolenTools
             {
                 if (Plugin.CfgHistory?.Value != true) return;
                 RollingLog.Append(HistoryObserver.LogPath, summary);
-                Plugin.LogSource.LogInfo($"[Hist] {summary}");
+                if (EventLog.Verbose) Plugin.LogSource.LogInfo($"[Hist] {summary}");
             }
             catch { }
         }

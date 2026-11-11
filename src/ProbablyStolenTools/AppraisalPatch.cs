@@ -91,7 +91,8 @@ namespace ProbablyStolenTools
                 try { field.ForceLabelUpdate(); } catch { }
             }
 
-            Plugin.LogSource.LogInfo($"[Appraisal] item={itemId} correct={correct} -> field filled");
+            if (EventLog.Verbose)
+                EventLog.Write($"[Appraisal] item={itemId} correct={correct} -> field filled");
 
             if (Plugin.CfgAutoSubmit.Value)
             {
@@ -107,7 +108,7 @@ namespace ProbablyStolenTools
                         ui.apprisalServiceInputField.SetTextWithoutNotify(text);
                         ui.apprisalServiceInputField.ForceLabelUpdate();
                     }
-                    Plugin.LogSource.LogInfo("[Appraisal] auto-submitted.");
+                    EventLog.Debug("[Appraisal] auto-submitted.");
                 }
                 catch (Exception e)
                 {

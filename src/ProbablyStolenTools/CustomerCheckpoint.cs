@@ -246,7 +246,7 @@ namespace ProbablyStolenTools
             {
                 string context = $"[Customer] CONTEXT CHANGED scene={Boundary.Scene}->{scene} day={Boundary.Day}->{day} " +
                     $"store={Boundary.Store}->{Ptr(store)} nodes={History.Items.Count} -> cleared";
-                if (store != null || Boundary.Store != IntPtr.Zero || History.Items.Count > 0) EventLog.Write(context);
+                if (History.Items.Count > 0) EventLog.Write(context);
                 else EventLog.Debug(context);
                 ++_epoch;
                 PendingCallbacks.Clear(); DialogueCallbacks.Clear();
@@ -537,6 +537,7 @@ namespace ProbablyStolenTools
         /// <summary>节点迟迟建不起来时，把每个判定条件打出来，便于定位到底卡在哪一步。</summary>
         private static void WatchSettle(PlayerStore store)
         {
+            if (!EventLog.Verbose) return;
             if (Time.unscaledTime < _settleLogAt) return;
             _settleLogAt = Time.unscaledTime + 1f;
             try
@@ -631,14 +632,12 @@ namespace ProbablyStolenTools
                         candidate.Items.Add(id, item);
                         if (item.IsDestroyed())
                         {
-                            bool member = IsInventoryMember(item);
-                            EventLog.Write($"[Customer] RENDERLESS item={item.identifier} uniqueId={item.uniqueId} " +
-                                $"inventoryMember={member} source={candidate.Graph.SourceOf(id)}");
+                            if (EventLog.Verbose)
+                                EventLog.Write($"[Customer] RENDERLESS item={item.identifier} uniqueId={item.uniqueId} " +
+                                    $"inventoryMember={IsInventoryMember(item)} source={candidate.Graph.SourceOf(id)}");
                             // 正式版存在没有渲染体、却仍是背包成员的物品（如 cassette_player）。
                             // 它们只参与业务状态，不参与视图恢复；此处跳过而不是中止整次捕获，
                             // 否则 F6 节点会一直存不下来（表现为"回溯只有旧节点"）。
-                            if (member)
-                                EventLog.Write($"[Customer] RENDERLESS inventory member skipped: {item.identifier}");
                             continue;
                         }
                         candidate.RenderedItems.Add(id, item);
@@ -866,13 +865,13 @@ namespace ProbablyStolenTools
                     $"entityBlocks={_active.EntityBlockOwners} entityBlockSlots={_active.EntityBlockSlots} " +
                     $"entityRuntimeSlots={_active.EntityRuntimeSlots} entitySchemaFallbacks={access.EntityBlocks?.FallbackCount ?? 0} " +
                     $"developmentChecks={developmentChecks} blockOracleMs={blockOracleMs} " +
-                    $"intArrayBlocks={access.IntArrayBlockCount} intArraySlots={access.IntArraySlotCount} " +
-                    $"walkReaderCompileMs={walkReaderCompileMs} " +
+                    $"intArrayBlocks={access.IntArrayBlockCount} intArraySlots={access.IntArraySlotCount}";
+                if (EventLog.Verbose)
+                    readers += $" walkReaderCompileMs={walkReaderCompileMs} " +
                     $"typedComparisons={access.TypedComparisonCount} " +
                     $"referenceComparisons={access.ReferenceComparisonCount} " +
                     $"verifyCompareCompileMs={SnapshotFieldReader.CompileMilliseconds(SnapshotFieldReader.CompareCompileTicks - captureCompareCompileBefore)} " +
-                    SnapshotFieldReader.Summary + " " + access.ArraySchemaSummary +
-                    (Plugin.CfgVerboseLog?.Value == true ? " " + access.WorkloadSummary() : "");
+                    SnapshotFieldReader.Summary + " " + access.ArraySchemaSummary + " " + access.WorkloadSummary();
 #else
                 string readers = "";
 #endif
@@ -1091,7 +1090,7 @@ namespace ProbablyStolenTools
                 if (selection != null && selection.HasSelection)
                 {
                     selection.Cancel();
-                    EventLog.Write("[Customer] cleared native selection before restore id=" + target.Id);
+                    EventLog.Debug("[Customer] cleared native selection before restore id=" + target.Id);
                 }
 #endif
                 phase = "write";
@@ -1106,7 +1105,7 @@ namespace ProbablyStolenTools
                 GameFields.Set(dialog, "advanceSerial", GameFields.Get<int>(dialog, "advanceSerial") + 1);
                 dialog.HideAllDialogUI();
                 // Never call InterruptDialog: it can execute endAction on the abandoned timeline.
-                int countersBefore = CounterCount();
+                int countersBefore = EventLog.Verbose ? CounterCount() : -1;
 #if MONO
                 runtimePilot = Plugin.CfgSemanticRuntimeRestore?.Value == true && target.SemanticEntities != null
                     && target.SemanticEntities.TryRestoreRuntime(target.Graph,
@@ -1229,9 +1228,12 @@ namespace ProbablyStolenTools
                 foreach (var w in newWindows)
                     if (w.handler != null) w.handler.gameObject.SetActive(false);
                 foreach (var item in newItems) DiscardRenderer(item);
-                int countersAfter = CounterCount();
-                if (countersBefore >= 0 && countersAfter != countersBefore)
-                    EventLog.Write($"[Customer] restore counter items {countersBefore} -> {countersAfter} (discarded views={newItems.Count})");
+                if (countersBefore >= 0)
+                {
+                    int countersAfter = CounterCount();
+                    if (countersAfter != countersBefore)
+                        EventLog.Write($"[Customer] restore counter items {countersBefore} -> {countersAfter} (discarded views={newItems.Count})");
+                }
                 // Hidden retained objects may no longer be reachable from the current business graph.
                 foreach (var pair in RetainedItems)
                     if (!target.RenderedItems.ContainsKey(pair.Key)) DiscardRenderer(pair.Value);
@@ -1255,9 +1257,12 @@ namespace ProbablyStolenTools
                 PanelNotice.Show("已回溯至 " + Name(target));
                 TraceBargain("AFTER RESTORE");
                 target.Customer.Log(target.Id, "restored");
-                _visualProbe = target;
-                _visualProbeFrame = Time.frameCount + 2;
-                _visualProbeEpoch = _epoch;
+                if (EventLog.Verbose)
+                {
+                    _visualProbe = target;
+                    _visualProbeFrame = Time.frameCount + 2;
+                    _visualProbeEpoch = _epoch;
+                }
                 tCleanup = timing.ElapsedMilliseconds;
                 completed = true;
             }
@@ -1291,21 +1296,27 @@ namespace ProbablyStolenTools
                 {
                     long tFinish = timing.ElapsedMilliseconds;
 #if MONO
-                    string comparisonDiagnostic = $" compareCompileMs={SnapshotFieldReader.CompileMilliseconds(SnapshotFieldReader.CompareCompileTicks - compareCompileBefore)} " +
-                        $"entityBlocks={target.EntityBlockOwners} entityBlockSlots={target.EntityBlockSlots} " +
+                    string comparisonDiagnostic = $"entityBlocks={target.EntityBlockOwners} entityBlockSlots={target.EntityBlockSlots} " +
                         $"entityRuntimeSlots={target.EntityRuntimeSlots} blockOracle={target.BlockOracle != null}";
 #else
                     string comparisonDiagnostic = "";
 #endif
-                    EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
-                        $"releaseOk={releaseError == null} " +
-                        $"shapePilotOwners={shapePilotOwners} windowPilotOwners={windowPilotOwners} itemPilotOwners={itemPilotOwners} inventoryPilotOwners={inventoryPilotOwners} " +
+                    string writeDiagnostic = "";
+                    if (EventLog.Verbose)
+                    {
+                        writeDiagnostic = $"shapePilotOwners={shapePilotOwners} windowPilotOwners={windowPilotOwners} itemPilotOwners={itemPilotOwners} inventoryPilotOwners={inventoryPilotOwners} " +
                         $"runtimePilot={runtimePilot} runtimePilotSlots={runtimePilotSlots} " +
                         $"runtimeScalarWrites(checked={runtimeScalarWrites.Checked},skipped={runtimeScalarWrites.Skipped}) " +
-                        $"typedComparisons={target.Graph.TypedComparisonCount - typedComparisonsBefore}{comparisonDiagnostic} " +
+                        $"typedComparisons={target.Graph.TypedComparisonCount - typedComparisonsBefore} " +
                         $"referenceComparisons={target.Graph.ReferenceComparisonCount - referenceComparisonsBefore} " +
                         $"ordinaryScalarWrites(checked={target.Graph.ScalarWrites.Checked - scalarWritesBefore.Checked}," +
-                        $"skipped={target.Graph.ScalarWrites.Skipped - scalarWritesBefore.Skipped}) " +
+                        $"skipped={target.Graph.ScalarWrites.Skipped - scalarWritesBefore.Skipped}) ";
+#if MONO
+                        writeDiagnostic += $"compareCompileMs={SnapshotFieldReader.CompileMilliseconds(SnapshotFieldReader.CompareCompileTicks - compareCompileBefore)} ";
+#endif
+                    }
+                    EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
+                        $"releaseOk={releaseError == null} {comparisonDiagnostic} " + writeDiagnostic +
                         $"census(objects={censusObjects},slots={censusSlots},bytes={censusBytes},exactTagProbes={censusTagProbes}) " +
                         $"ms(validate={tValidate},census={tCensus - tValidate},preflight={tPreflight - tCensus}," +
                         $"write={tWrite - tPreflight},refresh={tRefresh - tWrite},reconcile={tReconcile - tRefresh}," +
@@ -1323,7 +1334,8 @@ namespace ProbablyStolenTools
                 if (releaseError != null)
                     EventLog.Write($"[Customer] CENSUS RELEASE FAILED restoreCompleted={completed} " +
                         $"id={target.Id} phase=release elapsedMs={timing.ElapsedMilliseconds}: " + releaseError);
-                if (reconcileSources.Length != 0)
+                if (reconcileSources.Length != 0 && (EventLog.Verbose || !completed
+                    || releaseError != null || finalRepairFallback || reconciliation?.Mode == "full"))
                     EventLog.Write($"[Customer] RECONCILE DIFF id={target.Id} restoreCompleted={completed} " +
                         $"reportedDiff={reconcileReportedDiff} sampleLimit=12 scanLimit=12 " +
                         $"scope=captured-graph-only values=omitted sample=[{reconcileSources}]");
@@ -1405,13 +1417,13 @@ namespace ProbablyStolenTools
                     || (item.background.rectTransform.anchoredPosition - origin).sqrMagnitude > 0.25f)
                     throw new InvalidOperationException("Item view rejected restored geometry: " + item.identifier);
             }
-            EventLog.Write($"[QuickSL/Geom] synchronized {snapshot.RenderedItems.Count} item view(s) after final graph restore");
+            EventLog.Debug($"[QuickSL/Geom] synchronized {snapshot.RenderedItems.Count} item view(s) after final graph restore");
         }
 
         /// <summary>诊断：只记录异常的物品视图（丢失 / 无贴图 / 锚点与格子不符）。</summary>
         private static void LogItemGeometry(Snapshot snapshot, string phase)
         {
-            if (snapshot == null) return;
+            if (!EventLog.Verbose || snapshot == null) return;
             int logged = 0;
             try
             {
@@ -1620,7 +1632,7 @@ namespace ProbablyStolenTools
 
         internal static void TraceBargain(string phase)
         {
-            if (!Enabled || _active?.Graph == null) return;
+            if (!EventLog.Verbose || !Enabled || _active?.Graph == null) return;
             try
             {
 #if MONO
@@ -1769,6 +1781,7 @@ namespace ProbablyStolenTools
 
             internal void Log(long id, string phase)
             {
+                if (!EventLog.Verbose) return;
                 try
                 {
                     string paths = "";

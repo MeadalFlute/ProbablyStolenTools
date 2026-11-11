@@ -19,7 +19,7 @@ namespace ProbablyStolenTools
 
         private static void Log(string message)
         {
-            if (Time.unscaledTime < _nextLog) return;
+            if (!EventLog.Verbose || Time.unscaledTime < _nextLog) return;
             _nextLog = Time.unscaledTime + 2f;
             EventLog.Write("[Skip] " + message);
         }
