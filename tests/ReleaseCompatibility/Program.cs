@@ -440,6 +440,19 @@ foreach (var boundaryItem in boundaryItems) boundaryList.Add(boundaryItem);
 boundaryGrid.GetType().GetField("items", dataFlags).SetValue(boundaryGrid, boundaryList);
 boundarySlot.GetType().GetField("currentItem", dataFlags).SetValue(boundarySlot, boundaryItems[0]);
 boundaryItems[0].GetType().GetProperty("parentInventory").SetValue(boundaryItems[0], boundaryGrid);
+var boundaryShape = Data("GridShapeBuilder");
+var shapeDataField = boundaryShape.GetType().GetField("data", dataFlags);
+var boundaryShapeData = new byte[] { 1, 0, 2, 3, 0, 5 };
+shapeDataField.SetValue(boundaryShape, boundaryShapeData);
+boundaryShape.GetType().GetProperty("width").SetValue(boundaryShape, 3);
+boundaryShape.GetType().GetProperty("height").SetValue(boundaryShape, 2);
+boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, -7);
+boundaryShape.GetType().GetProperty("orientation").SetValue(boundaryShape, 3);
+foreach (var boundaryItem in boundaryItems)
+{
+    boundaryItem.GetType().GetProperty("shape").SetValue(boundaryItem, boundaryShape);
+    boundaryItem.GetType().GetProperty("modifiedShape").SetValue(boundaryItem, boundaryShape);
+}
 var boundaryRoots = new[] { boundaryGrid, boundarySlot, boundaryClosure };
 var boundaryAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
     .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
@@ -449,6 +462,19 @@ var boundaryGraph = graphType.GetMethod("Capture", BindingFlags.Static | Binding
     .Invoke(null, new object[] { boundaryAccess, boundaryRoots.Select(Identity).ToArray(), 50000, 1000000, 64L * 1024 * 1024 });
 try
 {
+    var entityType = mod.GetType("ProbablyStolenTools.SemanticEntityShadow", true);
+    var entityCoreType = mod.GetType("ProbablyStolenTools.SemanticEntitySnapshot", true);
+    object EntityCapture() => entityType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { boundaryGraph, 50000, 1000000, 64L * 1024 * 1024 });
+    int EntityDifferences(object shadow)
+    {
+        var core = entityType.GetField("_snapshot", dataFlags).GetValue(shadow);
+        return (int)entityCoreType.GetMethod("Differences", dataFlags).Invoke(core, new object[] { null, 1 });
+    }
+    using var entityRecords = (IDisposable)EntityCapture();
+    if (EntityDifferences(entityRecords) != 0
+        || !((string)entityType.GetProperty("Summary", dataFlags).GetValue(entityRecords)).Contains("shapes=1"))
+        throw new Exception("Native entity projection capture did not match exact item/inventory/shape schemas.");
     var boundaryType = mod.GetType("ProbablyStolenTools.SemanticEntityBoundaryShadow", true);
     object AuditBoundary() => boundaryType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
         .Invoke(null, new object[] { boundaryGraph, 50000 });
@@ -462,6 +488,12 @@ try
         || BoundaryCount(audit, "ScannedSlots") != (int)graphType.GetProperty("SlotCount", dataFlags).GetValue(boundaryGraph))
         throw new Exception("Native entity audit lost item/inventory identities, closure bindings or complete slot coverage.");
     boundaryList.Clear();
+    boundaryShapeData[5] = 99;
+    boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, 10);
+    boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 11);
+    boundarySlot.GetType().GetField("currentItem", dataFlags).SetValue(boundarySlot, boundaryItems[1]);
+    if (EntityDifferences(entityRecords) != 5)
+        throw new Exception("Independent native records missed scalar, shape bytes, order/length or same-uniqueId identity mutations.");
     var changedAudit = AuditBoundary();
     foreach (string name in new[] { "Items", "ScannedSlots", "EntitySlots", "IncomingRuntimeLinks", "CallbackIncomingLinks", "ArrayIncomingLinks" })
         if (BoundaryCount(changedAudit, name) != BoundaryCount(audit, name))
@@ -471,9 +503,50 @@ try
         throw new Exception("Native entity fixture did not change.");
     graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
     if (((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
-        .Invoke(boundaryGraph, new object[] { 12 })).Count != 0 || boundaryList.Count != 2)
+        .Invoke(boundaryGraph, new object[] { 12 })).Count != 0 || boundaryList.Count != 2
+        || EntityDifferences(entityRecords) != 0)
         throw new Exception("Native entity audit changed legacy restoration.");
+    for (int iteration = 0; iteration < 6; iteration++)
+    {
+        boundaryList[0] = boundaryItems[1];
+        boundaryShapeData[iteration] = 9;
+        shapeDataField.SetValue(boundaryShape, (byte[])boundaryShapeData.Clone());
+        if (EntityDifferences(entityRecords) < 3)
+            throw new Exception("Native records lost retained shape storage or member identity.");
+        graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
+        if (EntityDifferences(entityRecords) != 0
+            || !ReferenceEquals(shapeDataField.GetValue(boundaryShape), boundaryShapeData)
+            || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
+            throw new Exception("Native record/legacy oracle mismatch after repeated original-storage restoration.");
+    }
+    Console.WriteLine("PASS independent read-only native entity records: complete item base schema, grid/slot order and identities, full shared shape bytes, six legacy restore cycles");
     Console.WriteLine("PASS native entity boundary audit: distinct zero-uniqueId items, grid/slot membership, native closure aliases, captured-only topology and unchanged legacy restoration");
+    var selectedEntityAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+        .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+    accessType.GetMethod("AddRoot", dataFlags).Invoke(selectedEntityAccess,
+        new object[] { Identity(boundaryItems[0]), new[] { "<unitCount>k__BackingField" } });
+    using var selectedEntityGraph = (IDisposable)graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { selectedEntityAccess, new[] { Identity(boundaryItems[0]) }, 50000, 1000000, 64L * 1024 * 1024 });
+    try
+    {
+        using var unexpected = (IDisposable)entityType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { selectedEntityGraph, 50000, 1000000, 64L * 1024 * 1024 });
+        throw new Exception("Entity records accepted a partial legacy root as complete base coverage.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    try
+    {
+        using var unexpected = (IDisposable)entityType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { boundaryGraph, 1, 1000000, 64L * 1024 * 1024 });
+        throw new Exception("Entity record projection index ignored its object budget.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    if (EntityDifferences(entityRecords) != 0
+        || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+            .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
+        throw new Exception("Failed entity record capture affected an older checkpoint.");
+    Console.WriteLine("PASS native entity records reject filtered coverage and index limits without invalidating retained records or legacy checkpoints");
 }
 finally { ((IDisposable)boundaryGraph).Dispose(); }
 
