@@ -32,6 +32,7 @@ namespace ProbablyStolenTools
 
         private const int ArraySchemaLimit = 4096;
         private const int ArraySchemaSlotLimit = 65536;
+        private const int ValueTokenBytes = sizeof(long);
         private readonly Dictionary<IntPtr, object> _retained = new();
         private readonly Dictionary<IntPtr, HashSet<string>> _roots = new();
         private readonly Dictionary<IntPtr, Storage[]> _storage = new();
@@ -169,16 +170,17 @@ namespace ProbablyStolenTools
                 }
                 bool vector = type == elementType.MakeArrayType();
                 int stride = element.Stores.Length;
-                int count = checked(array.Length * stride);
+                long requiredSlots = (long)array.Length * stride;
                 long elementBytes = 0;
                 foreach (var slot in element.Slots)
-                    elementBytes += slot.IsReference ? IntPtr.Size : slot.Size;
+                    elementBytes += slot.IsReference ? IntPtr.Size : ValueTokenBytes;
                 long bytes = array.Length * elementBytes;
                 // Reject impossible arrays before allocating per-element descriptors and names.
-                if (count > remainingSlots)
-                    throw new SnapshotDescriptionLimitException("slot", count, bytes);
+                if (requiredSlots > remainingSlots)
+                    throw new SnapshotDescriptionLimitException("slot", requiredSlots, bytes);
                 if (bytes > remainingBytes)
-                    throw new SnapshotDescriptionLimitException("byte", count, bytes);
+                    throw new SnapshotDescriptionLimitException("byte", requiredSlots, bytes);
+                int count = (int)requiredSlots;
                 var key = (type, array.Length);
                 if (_reuseArraySchemas && _arraySchemas.TryGetValue(key, out var cached))
                 {
@@ -349,7 +351,7 @@ namespace ProbablyStolenTools
         private static void Add(Type type, FieldInfo[] path, int index, string name,
             List<StateSlot> slots, List<Storage> stores)
         {
-            slots.Add(new StateSlot(stores.Count, 8, !type.IsValueType, name));
+            slots.Add(new StateSlot(stores.Count, ValueTokenBytes, !type.IsValueType, name));
             stores.Add(new Storage(index, path));
         }
 
@@ -422,7 +424,7 @@ namespace ProbablyStolenTools
         public int ProbeValue(IntPtr id, StateSlot slot)
         {
             Read(id, slot);
-            return 8; // Same logical token width as ReadValue, without retaining a value/token.
+            return ValueTokenBytes; // Same logical token width as ReadValue, without retaining a value/token.
         }
 
         public IntPtr ReadReference(IntPtr id, StateSlot slot) => ManagedObjects.Id(Read(id, slot));

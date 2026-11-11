@@ -952,7 +952,9 @@ namespace ProbablyStolenTools
             }
             finally
             {
+                Exception releaseError = null;
                 try { current?.Dispose(); }
+                catch (Exception e) { releaseError = e; }
                 finally
                 {
                     Time.timeScale = scale;
@@ -962,12 +964,16 @@ namespace ProbablyStolenTools
                 {
                     long tFinish = timing.ElapsedMilliseconds;
                     EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
+                        $"releaseOk={releaseError == null} " +
                         $"census(objects={censusObjects},slots={censusSlots},bytes={censusBytes}) " +
                         $"ms(validate={tValidate},census={tCensus - tValidate},preflight={tPreflight - tCensus}," +
                         $"write={tWrite - tPreflight},refresh={tRefresh - tWrite},reconcile={tReconcile - tRefresh}," +
                         $"finalVerify={tVerify - tReconcile},cleanup={tCleanup - tVerify}," +
                         $"release={tFinish - tCleanup},total={tFinish})" + workload);
                 }
+                if (releaseError != null)
+                    EventLog.Write($"[Customer] CENSUS RELEASE FAILED restoreCompleted={completed} " +
+                        $"id={target.Id} phase=release elapsedMs={timing.ElapsedMilliseconds}: " + releaseError);
             }
         }
 

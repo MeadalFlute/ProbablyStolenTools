@@ -21,8 +21,83 @@ internal static class SnapshotArrayBudgetTests
         ((IDictionary)typeof(ManagedStateAccess).GetField(field,
             BindingFlags.Instance | BindingFlags.NonPublic).GetValue(access)).Count;
 
+    // Model physical-size descriptors and very wide structs without changing production schemas.
+    private static void ElementSchema(ManagedStateAccess access, Type elementType, int size, int stride = 1)
+    {
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var schemaType = typeof(ManagedStateAccess).GetNestedType("TypeSchema", BindingFlags.NonPublic);
+        var storageType = typeof(ManagedStateAccess).GetNestedType("Storage", BindingFlags.NonPublic);
+        var stores = Array.CreateInstance(storageType, stride);
+        var slots = Enumerable.Range(0, stride).Select(i => new StateSlot(i, size, false, "modeled" + i)).ToArray();
+        var schema = schemaType.GetConstructor(flags, null, new[] { typeof(StateSlot[]), stores.GetType() }, null)
+            .Invoke(new object[] { slots, stores });
+        var schemas = (IDictionary)typeof(ManagedStateAccess).GetField("_elementSchemas", flags).GetValue(access);
+        schemas[elementType] = schema;
+    }
+
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
+        test("byte bool and decimal array budgets match actual eight-byte tokens in capture and census", () =>
+        {
+            foreach (Array root in new Array[] { new byte[] { 1, 2 }, new bool[] { true, false }, new decimal[] { 1m, 2m } })
+                foreach (bool census in new[] { false, true })
+                    foreach (long budget in new long[] { 15, 16 })
+                    {
+                        var access = Access(root);
+                        SnapshotLimitException failure = null;
+                        try
+                        {
+                            using var graph = census
+                                ? StateGraph.Census(access, new[] { ManagedObjects.Id(root) }, maxBytes: budget)
+                                : StateGraph.Capture(access, new[] { ManagedObjects.Id(root) }, maxBytes: budget);
+                            check(budget == 16 && graph.ByteCount == 16 && graph.SlotCount == 2);
+                            if (!census) check(graph.Differences().Count == 0);
+                        }
+                        catch (SnapshotLimitException e) { failure = e; }
+                        check(budget == 16 ? failure == null : failure != null &&
+                            failure.Message.Contains("slots=0/") && failure.Message.Contains("array requires slots=2, bytes=16"));
+                    }
+        });
+        test("array preallocation budgets ignore modeled physical scalar sizes", () =>
+        {
+            foreach (int physicalSize in new[] { 1, 16 })
+            {
+                var root = new int[2];
+                using var access = Access(root);
+                access.Retain(ManagedObjects.Id(root));
+                ElementSchema(access, typeof(int), physicalSize);
+                bool failed = false;
+                try { ((IBudgetedStateDescription)access).Describe(ManagedObjects.Id(root), 2, 15); }
+                catch (SnapshotDescriptionLimitException e)
+                {
+                    failed = e.Kind == "byte" && e.RequiredSlots == 2 && e.RequiredBytes == 16
+                        && e.Message.Contains("before expansion") && e.Message.Contains("bytes=16");
+                }
+                check(failed && Count(access, "_storage") == 0);
+                check(((IBudgetedStateDescription)access).Describe(ManagedObjects.Id(root), 2, 16).Count == 2);
+                // A shape-cache hit must check the same logical budget before reuse.
+                failed = false;
+                try { ((IBudgetedStateDescription)access).Describe(ManagedObjects.Id(root), 2, 15); }
+                catch (SnapshotDescriptionLimitException) { failed = true; }
+                check(failed);
+            }
+        });
+        test("array slot products beyond Int32 fail with full snapshot diagnostics rather than overflow", () =>
+        {
+            var root = new int[262144];
+            var access = Access(root);
+            ElementSchema(access, typeof(int), 1, 9000);
+            SnapshotLimitException failure = null;
+            try
+            {
+                using var graph = StateGraph.Capture(access, new[] { ManagedObjects.Id(root) },
+                    maxSlots: int.MaxValue, maxBytes: long.MaxValue);
+            }
+            catch (SnapshotLimitException e) { failure = e; }
+            check(failure != null && failure.Message.Contains("Snapshot slot limit exceeded")
+                && failure.Message.Contains("array requires slots=2359296000, bytes=18874368000 before expansion"));
+            check(Count(access, "_storage") == 0 && Count(access, "_retained") == 0);
+        });
         test("large arrays fail slot and byte budgets before per-element descriptor allocation", () =>
         {
             var root = new int[262144];

@@ -45,9 +45,10 @@ namespace ProbablyStolenTools
     internal sealed class SnapshotDescriptionLimitException : InvalidOperationException
     {
         internal readonly string Kind;
-        internal readonly int RequiredSlots;
+        internal readonly long RequiredSlots;
         internal readonly long RequiredBytes;
-        internal SnapshotDescriptionLimitException(string kind, int slots, long bytes)
+        internal SnapshotDescriptionLimitException(string kind, long slots, long bytes)
+            : base($"Snapshot array {kind} limit exceeded before expansion: required slots={slots}, bytes={bytes}.")
         { Kind = kind; RequiredSlots = slots; RequiredBytes = bytes; }
     }
 

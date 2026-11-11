@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**104 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**107 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -69,7 +69,9 @@ docs/workshop/                     创意工坊文本
 - 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`，默认 **200000 / 3000000 / 256**。
 - 超限跳过本次捕获，释放半成品并保留旧节点；不使用不完整快照，不自动无限加大上限。面板显示失败、提示去重，日志包含实际计数、各上限及来源路径。
 - 对象上限在新身份入队前检查（包括显式根）；重复、空引用和环不重复计数。失败日志 `objects` 为已经展开的对象，`discovered` 为已发现数（对象超限时包括刚拒绝的一个），`pending` 为尚未展开的已接收对象。不能等出队时才检查，否则宽图会提前堆积超限队列。
+- 预算约束的是已发现唯一身份（含队列前沿），不是仅已展开对象；相对旧实现会更早拒绝超限图，失败时 objects 可小于 MaxObjects。对于稳定且最终对象数不超限的同一图，成功边界不变。
 - Mono 数组通过 `IBudgetedStateDescription` 在逐元素描述分配前检查剩余槽位/逻辑字节预算。提前拒绝时计数是已捕获部分，`array requires ... before expansion` 单独记录整个数组需求；不是实际内存估算。成功快照仍保留全容量，空数组和非法数组规则不变。
+- Mono 数组字节预算明确按标量 8 字节令牌 / 引用 IntPtr.Size 计算，不依赖 StateSlot.Size 的物理尺寸含义。槽位需求先以 long 计算并检查剩余预算，再转换为 int 分配；超大需求仍以 SnapshotLimitException 输出完整来源与 long 需求数。
 - 同一 Mono 访问器内，数组类型与长度都相同的只读描述可复用；缓存最多 4096 种形状、累计 65536 个描述槽，超过后正常展开，已有缓存仍可命中。每个数组的值/引用/对象身份分别保存，预算按每个数组计，不因复用打折；不跨节点共享。CAPTURE 追加 `arraySchemas(cached=...,hits=...,slotsReused=...)`，仅表示描述复用量，不是减少了业务槽位或节省了等量字节。
 - 捕获仍在同一回调同步完成；**未启用分帧快照**。任何跨帧实现须独立提交，并解决业务图一致性，不能只靠 `timeScale=0`。
 - 捕获后必须跑完整 `Differences()`；差异非空就视为恢复失败，不能再报成功。
@@ -151,6 +153,7 @@ docs/workshop/                     创意工坊文本
 - 游戏内「设置 → 查看日志」用官方 `CustomUIManager.Window(...)` 构建（`LAYER_OVERLAY`、`BeginScrollFlexible`、`AddLabel`、`AddButton`），显示末尾 400 行。
 - `[QuickSL/Geom]` 只在物品视图异常（DESTROYED / MISSING / NOSPRITE / HIDDEN / MISPLACED）时输出，是排查贴图问题的第一入口。
 - CAPTURE 仍一行摘要：access/walk/items/verify 后补 prepareHistory/history/retain/finish，history 包含正常历史淘汰。RESTORE OK 仍一行：validate/census/preflight/write/refresh/reconcile/finalVerify/cleanup/release/total，包含当前普查释放，但不包含入口拒绝门控和摘要日志自身 I/O。失败输出 phase 与 elapsedMs。
+- 临时普查释放异常单独记 CENSUS RELEASE FAILED，不覆盖已经完成的业务恢复：恢复完成时仍输出 RESTORE OK，releaseOk=False 表示仅释放异常。无论释放是否成功，都恢复 timeScale/Restoring；不能把这种情况误报为写入失败或要求再次恢复。
 - 仅 `Logging.Verbose=true` 时同一摘要追加 typesBySlots：最多展开 128 种类型、输出槽位前六类，其余合计；统计对象数、槽数、数组容量与最大数组长度。只读已有描述，不调用业务属性、不新增值令牌。它不是实际内存估算，也不代表集合有效条目数。
 
 ---
@@ -224,5 +227,6 @@ docs/workshop/                     创意工坊文本
 - `research/2026-11-11-snapshot-optimization-step4.md`：对象发现预算提前检查。
 - `research/2026-11-11-snapshot-optimization-step5.md`：恢复前只读对象普查及对照验证。
 - `research/2026-11-11-snapshot-optimization-step6.md`：完整阶段计时、可选类型汇总与本轮停止边界。
+- `research/2026-11-11-snapshot-review-followup.md`：预算/释放异常评审跟进、下午真实游玩阶段分布与测量限制。
 - `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
 - `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。
