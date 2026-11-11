@@ -48,6 +48,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 最新反馈：2026-11-12 01:27:42.959 会话 3 捕获/5 恢复最终 diff=0，两个独立采样载荷 MATCH，但用户发现顾客贴图丢失，并称此前已有多次报告，不能把本轮当作画面验收通过或直接归因于双节点。暂停语义后端扩展，先修顾客视觉恢复：补原路径游标/方向/速度的静默恢复、renderer 原身份/完整局部变换链/渲染开关/属性块；先定位再激活，reconcile/fallback 后只重套顾客变换；补 leaveTimeScale 业务字段。路径 seek 暂时屏蔽原回调并 finally 归还，不重播离店/到店，不无条件强制显示。新增每节点捕获/恢复前后及一次 frame+2 的 CustomerVisual 诊断，不逐帧刷日志。347 项及正式版契约/夹具通过，实机待验；此前日志没有视觉诊断，尚未证明具体触发根因。详见 `research/2026-11-12-customer-visual-rewind.md`。下方为此前阶段记录。
 
+最新部署：2026-11-12 01:37:59，顾客视觉修复提交 `06a299e`，备份 `out/full-release-deploy-20261112-013759`，DLL SHA256 `7EB544D0BE3F41E36B037398FCD6DF8B6F6D50F9C49A6C27FAC4643F48FF1B52`。游戏已关闭才部署，78存档文件校验未变，未导入设置/启动游戏，版本0.8.14、未推送。等待顾客离店后回溯、跨顾客/手动节点三轮往返、恢复后等待待机并正常成交/送走/叫下一位及一次群拖；先确认即时与延迟贴图和正常离店行为，再继续后端扩展。
+
 当前最新：2026-11-12 01:18:14.077 联合运行态实机通过，4捕获/7恢复最终diff=0/releaseOk=True，无最终回退；首节点4次实际runtimePilot=True/483607槽、完整78095 Entity槽写回，双载荷全MATCH，恢复后四件群拖完成。首节点3553 ms（entityRecords2643含runtime882），其他315-349 ms，恢复中位数769 ms，非A/B、不归因提速；无FAILED/UNAVAILABLE，Player.log只有启动TLS/Curl网络错误。接续新增 `Snapshot.SemanticManualSample=true`，每上下文首个采样之外，再为首个后续手动节点准备独立载荷，最多两次尝试；失败/淘汰不重试，普通后续节点不扩展。341项及原生两个完整游戏类型节点六轮往返/不同字典容量/成员顺序/跨节点拒绝/释放隔离通过。待双节点实机，旧图/全部校验/修复/视觉及重复诊断保留，额外手动节点也会明显停顿；生产捕获尚未替换。详见 `research/2026-11-12-semantic-two-node-sampling.md`。以下为历史阶段记录。
 
 最新部署：2026-11-12 01:25，运行时提交 `4ec477a`，备份 `out/full-release-deploy-20261112-012544`，DLL SHA256 `EF588489BBDDF266F1C120B2EF0E4B0FEF3FC2566DF1B4A79F0381569CE05F54`。78存档文件校验未变，未导入设置/启动游戏，版本0.8.14，未推送。停止等待双节点实机：先正常建首节点，改变物品/顾客后F9建额外手动节点，两者至少三轮往返并分别群拖，检查各自成员/数量/位置/顾客状态；普通中间节点仍legacy。两个sample=primary/manual-probe都应MATCH、实际runtimePilot=True，最终diff=0。额外手动节点有诊断停顿；此验收前不扩大采样、替换生产捕获或移除诊断。

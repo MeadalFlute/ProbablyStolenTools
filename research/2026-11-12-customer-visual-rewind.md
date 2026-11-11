@@ -91,3 +91,11 @@ the next customer. Check immediate and delayed visibility, correct identity,
 and absence of duplicate arrival/leave effects. Repeat item group dragging once.
 If the sprite still disappears, retain the CustomerVisual lines and the exact
 action preceding the disappearance. Do not expand the backend until this passes.
+
+## Deployment
+
+Runtime commit `06a299e`, deployed 2026-11-12 01:37:59, version 0.8.14, not pushed.
+Backup: `out/full-release-deploy-20261112-013759`.
+DLL SHA256: `7EB544D0BE3F41E36B037398FCD6DF8B6F6D50F9C49A6C27FAC4643F48FF1B52`.
+Game was closed, all 78 existing save-area files verified unchanged, settings
+not imported, game not started. Live rendering acceptance remains pending.
