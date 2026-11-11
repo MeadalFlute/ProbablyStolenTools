@@ -46,6 +46,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ### 版本与发布
 
+最新复核：已阅读 DS 的 `research/2026-11-12-semantic-backend-review-ds.md`，接受 `b99864b` 的旧 pilot 恢复 DevelopmentChecks 总门控修复；不额外清理旧节点载荷，按说明重启关闭开发模式即可。关闭开关不立即释放旧载荷，已有节点只读诊断仍可能运行，不能宣传中途切换后立即零诊断成本。N4 正常离店仅隐藏共享 clientGameObject，非必然缺失视图；保留真正缺视图时安全拒绝。N2/N3 无新热点证据先不改，N1 留待兼容迁移补可见性，N5/N6保持。本轮未新增生产逻辑，构建0警告/错误、373项及57挂点/76字段/原生夹具通过；没有针对完整Unity恢复入口执行中途切换专项。部署2026-11-12 03:03:15，备份`out/full-release-deploy-20261112-030315`，DLL SHA256 `3F3D2AACE4554BA8005C1A525C5C6EE0F826275D92E5CDCF8C722225644DA58B`，79存档区文件未变，未改设置/启动游戏/推送，版本0.8.14；待用户短测该门控修复。未来加载器退役能力迁移尚未实现，不将当前HardFlags为空当作前向兼容。详见`research/2026-11-12-semantic-backend-review-followup.md`。
+
 最新收尾：用户确认单次遍历候选看起来正常，要求关闭包括旧阶段在内的冗余测试和日志。02:24:26.305 会话有8次成功捕获/8次恢复，全部最终diff=0、releaseOk=True、owners/eligible，无最终回退/schema失败；首及手动2次捕获/4次恢复独立旧图对照MATCH，所有节点实体块实际启用，29对群拖完成。普通捕获281-378ms、首1652ms（oracle938）、手动1015ms（oracle756），恢复中位636.5ms，非A/B。另一次手动建点在顾客路径未停稳时安全失败（id8，265ms），非零失败会话，不隐藏此记录；非默认议价仍未验收。Player.log含启动TLS网络错误及InventoryScene watchdog，不能归因于快照。
 
 已部署收尾提交 `8b44b02`：默认详细日志关闭；等待状态探测、额外物品几何诊断遍历、顾客frame+2观察、议价字段转储、正常群拖/几何/计数/读者统计转为verbose按需开启。保留主CAPTURE/RESTORE计时/规模/后端、节点清除、拒绝/失败/异常、真实full回退及其差异来源；成功owner修复不再重复输出长来源。旧鉴定/酿酒/自动快进/+5s/+20s观察也降噪，业务历史文件和轮转保留，不默认重复广播事务摘要。完整预检/校验/Census/预算/修复及实际几何/顾客恢复未关闭，离线测试未删。373项回归及原生兼容/新增日志开关独立性夹具通过，57挂点/76字段、扫描HardFlags/Error为空。
