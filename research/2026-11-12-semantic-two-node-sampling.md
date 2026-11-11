@@ -69,3 +69,11 @@ nodes have runtimePilot=True and positive slots on restore, ordinary nodes
 False/0; all final diff=0/releaseOk=True and independent MATCH.
 User rendering/interaction feedback remains necessary.
 Stop before production capture replacement or removing migration diagnostics.
+
+## Deployment
+
+2026-11-12 01:25, runtime commit4ec477a, version0.8.14, no push.
+Backup: out/full-release-deploy-20261112-012544.
+DLL SHA256: EF588489BBDDF266F1C120B2EF0E4B0FEF3FC2566DF1B4A79F0381569CE05F54.
+78 save files verified unchanged; no settings imported, no game started.
+Awaiting the first two-independent-sampled-nodes live test above.
