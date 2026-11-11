@@ -87,3 +87,17 @@ dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.
 - 78 个原有存档目录文件逐一哈希验证未变；游戏程序集与其他 Mod 原有文件验证未变。
 - SettingsImported=False，未预改玩家设置；GameStarted=False，未启动游戏。
 - 本轮独立提交，不推送、不改版本号；Unity 活体验收尚待用户操作。
+
+## 18:31 首轮实机日志
+
+用户完成操作后读取本机 PSTools.log / Player.log / GameLog_2026-11-11_18-31-44.txt。Session 为 18:31:26.067，四个快照开关均为 True。
+
+- 4 次捕获：waterStockpiler、clinicNurse、retired_farmer、手动。objects=100910-106814，slots=562054-623669；intArrayBlocks=1998-2141，intArraySlots=38072-44099，确认真实启用。
+- captureMs=865 / 329 / 379 / 313；walk=598 / 244 / 254 / 220 ms，首次另含只读语义对照 122 ms。常规三次中位数 329 ms；首节点没有明显改善（上一会话 854 ms）。
+- 恢复目标 1 -> 2 -> 2 -> 3 -> 4 -> 1，共 6 次，全部 diff=0、releaseOk=True、owners/eligible、finalFallback=False。首节点独立语义捕获及两次恢复匹配。
+- 整次恢复 784 / 665 / 643 / 705 / 760 / 801 ms，中位数 732.5 ms，上一会话 773 ms，约下降 5.2%。不是严格 A/B，节点和物品规模不同，不能归因全部收益给 int 块。
+- 首次完整写回中位数 214.5 ms，Census 127.5 ms，preflight 82 ms。二次写回 13-17 ms；最终完整校验 54-145 ms，最后一次明显偏高。
+- 前两个节点与回到首节点仅字典对象 4 处差异 / 1 owner / 10 计划槽。节点 3、4 各 7 处差异 / 3 owners / 45 计划槽，来源为 cassettePlayer.modifiedState 的字典字段、entries[5] 及 int 块 buckets[2]，最终全部恢复；不是只覆盖了无变化数组。
+- 所有记录的议价状态仍为默认值，非默认议价、实机 full 回退未覆盖。
+
+用户同时报告原版框选批量移动意外失效，旧日志没有群组拖拽生命周期证据，也没有对应异常；数据零差异不等于交互正确。本轮仅确认载荷与数据校验通过，不宣称全面稳定。停止继续叠加新载荷，先独立补交互保护与低频诊断，见 `2026-11-11-multi-select-rewind.md`。
