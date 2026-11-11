@@ -110,6 +110,8 @@ dotnet run -c Release --project out/capability-migration-probe/Scanner/Scanner.c
 
 ## 建议迁移方案
 
+后续复核（2026-11-12）：`2026-11-12-runtime-graph-migration-feasibility.md` 已补充更深一层探针。固定集合顶层字段通过，不代表私有 Entry/Slot 的完整字段访问已解决；三条此类路径仍命中 reflection-external。第三阶段是有实际集合阻断的待验证方案，不是已证明的完整等价实现。可复现工具见 `tests/CapabilityMigrationProbe/`；三组扫描断言及原有373项回归通过。本轮没有修改生产恢复路径或部署。
+
 ### 第一阶段：停止运行时代码生成
 
 移除发布 DLL 中全部 Expression.Compile 路径，包括关闭设置后仍留在 DLL 的旧实现。

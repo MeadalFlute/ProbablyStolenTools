@@ -128,6 +128,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 - 官方公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.9.0 只保证**当前游戏版本**可用，发行说明不得写“已兼容下一版”。
 - 当前源码仍依赖 `Expression.Compile` 与运行时 `GetFields/GetMethod`；只删 manifest 声明或关闭 DevelopmentChecks **不是修复**，扫描器按编译进 DLL 的方法判断。
 - 迁移四阶段与探针结果见 `research/2026-11-12-loader-capability-migration.md`；在完成迁移并把退役能力门槛加入 `ReleaseCompatibility` 之前，不得宣称前向兼容。
+- 深层可行性复核见 `research/2026-11-12-runtime-graph-migration-feasibility.md` 与 `tests/CapabilityMigrationProbe/README.md`：固定游戏闭包/RNG/集合顶层字段通过，但 Dictionary.Entry/HashSet.Slot 后续字段访问仍触发 reflection-external；完整静态图尚有集合阻断。ModReflect.Set 拒绝 readonly，不能统一替换全部 FieldInfo 写回。三组扫描断言和373项回归通过，未改生产代码或部署。先解决完整集合访问/引用发现/逐槽校验，不用 Clear/Add 偷换原存储语义；探针/扫描宿主不随 Mod 发布。
 
 ---
 
