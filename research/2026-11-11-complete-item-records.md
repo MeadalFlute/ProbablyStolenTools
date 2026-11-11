@@ -35,3 +35,49 @@ and the existing repeated restore/filtered-root tests. 57 hooks / 74 fields;
 official scanner HardFlags empty, capabilities unchanged.
 
 This remains read-only, with no production graph pruning or entity writeback.
+
+Deployment 1: commit 6f9ba14, 23:27, backup
+out/full-release-deploy-20261111-232759, DLL
+F3BE5D26FE10E4C397AA9885B63EC19F237CABD4C768697BF4C859810BC86E1F.
+78 save files unchanged; settings not imported; game not started.
+
+## Node-local handles and runtime boundary protocol
+
+Each admitted entity retains its original object, exact type and complete role
+schema in a node-local table. Handles include the originating table, not just
+the numeric object ID. Cross-node/default/unknown/wrong-type handles reject;
+disposal clears strong entity references and runtime seeds. Unknown entities
+remain in the old runtime graph, never silently promoted.
+
+Captured slots are exhaustively partitioned; both Entity and Runtime fields
+must occur once with matching reference kind and no Visual field may occur.
+All selected owner Runtime callbacks/cache fields remain represented.
+The old roots and every semantic outbound reference form explicit runtime seeds.
+A transient runtime-only adjacency replay must rediscover exactly every old
+object; semantic edges are not used in that traversal. This proves the proposed
+entry set covers the captured topology, not unobserved static/opaque state.
+No capacity trimming or collection rebuilding is involved.
+
+Only the entity handles, role schemas, runtime seed IDs and bounded aggregate
+counts survive capture; temporary adjacency, coverage vectors and discovery
+queues do not. Limits apply before owner/field metadata and unique discovery
+allocation. Snapshot-owned records retain referents; the seed IDs alone are not
+an independently usable runtime snapshot.
+
+The restore diagnostic validates all retained identities before comparing the
+independent entity records. Errors still only fail this diagnostic; main graph
+restoration remains authoritative. Summary adds handles/rootHandles,
+runtimeHandleLinks/entityHandleLinks, partition(entity/runtime/total),
+runtimeSeeds/runtimeReachable and runtimeCut=false.
+
+284 offline tests, including same-value identities with hostile Equals,
+cycles/closure aliases, root entities, cross-node handles, semantic-only payload
+branches, runtime full discovery, type/default/unknown/duplicate identities,
+missing/visual/mistyped fields, complete-scan and metadata limits, disposal,
+failed captures preserving old nodes. Native fixtures additionally check two
+same-uniqueId items, shared inventory/window links, two independent node scopes
+and exact full object/slot coverage. Release build zero warnings/errors;
+57 hooks / 74 fields and scanner HardFlags empty.
+
+No independent runtime graph value capture or entity writer is enabled.
+Topology replay is a migration precondition, not the actual cutover.

@@ -10,12 +10,13 @@ namespace ProbablyStolenTools
     internal sealed class SemanticEntityShadow : IDisposable
     {
         private readonly SemanticEntitySnapshot _snapshot;
+        private readonly SemanticEntityBoundaryPlan _boundary;
         private readonly int _items, _grids, _slots, _shapes, _windows, _unsupported, _legacySlots, _projectedSlots;
         private readonly int _runtimeSlots, _visualFields;
-        private SemanticEntityShadow(SemanticEntitySnapshot snapshot, int items, int grids, int slots,
+        private SemanticEntityShadow(SemanticEntitySnapshot snapshot, SemanticEntityBoundaryPlan boundary, int items, int grids, int slots,
             int shapes, int windows, int unsupported, int legacySlots, int projectedSlots, int runtimeSlots, int visualFields)
         {
-            _snapshot = snapshot; _items = items; _grids = grids; _slots = slots;
+            _snapshot = snapshot; _boundary = boundary; _items = items; _grids = grids; _slots = slots;
             _shapes = shapes; _windows = windows; _unsupported = unsupported; _legacySlots = legacySlots; _projectedSlots = projectedSlots;
             _runtimeSlots = runtimeSlots; _visualFields = visualFields;
         }
@@ -56,9 +57,8 @@ namespace ProbablyStolenTools
                 [slotSchema] = Index(slotSchema, slotPlans), [shapeSchema] = Index(shapeSchema),
                 [windowSchema] = Index(windowSchema, windowPlans)
             };
-            var expected = new Dictionary<IntPtr, SemanticSlotSchema.Coverage>();
-            int items = 0, grids = 0, slots = 0, shapes = 0, windows = 0, unsupported = 0, legacySlots = 0, projectedSlots = 0;
-            int runtimeSlots = 0, visualFields = 0;
+            int items = 0, grids = 0, slots = 0, shapes = 0, windows = 0, unsupported = 0;
+            int visualFields = 0;
             long indexedSlots = 0;
             foreach (var id in graph.Objects)
             {
@@ -78,27 +78,20 @@ namespace ProbablyStolenTools
                 if (indexedSlots > maxSlots) throw new InvalidOperationException("Entity projection slot index budget exceeded.");
                 projections.Add(new SemanticEntityProjection(target, fields));
                 visualFields += index.VisualCount;
-                expected.Add(id, new SemanticSlotSchema.Coverage(index));
             }
-            // Every selected hierarchy is exhaustive; no default partition for unknown fields or subclasses.
-            graph.VisitCapturedSlots((owner, slot, reference) =>
-            {
-                if (!expected.TryGetValue(owner, out var entry)) return;
-                var role = entry.Observe(slot.Name, slot.IsReference);
-                if (role == SemanticFieldRole.Entity) projectedSlots++;
-                else { runtimeSlots++; legacySlots++; }
-            });
-            if (expected.Values.Any(entry => !entry.Complete))
-                throw new InvalidOperationException("Entity projection is not fully covered by the legacy checkpoint.");
-            var snapshot = SemanticEntitySnapshot.Capture(projections, ManagedObjects.Id, graph.Contains, maxObjects, maxSlots, maxBytes);
+            var boundary = SemanticEntityBoundaryPlan.Capture(graph,
+                projections.Select(projection => (ManagedObjects.Id(projection.Target), indexes[projection.Fields])),
+                ManagedObjects.Get, ManagedObjects.Id, maxObjects, maxSlots);
+            SemanticEntitySnapshot snapshot = null;
             try
             {
+                snapshot = SemanticEntitySnapshot.Capture(projections, ManagedObjects.Id, graph.Contains, maxObjects, maxSlots, maxBytes);
                 if (snapshot.Differences(out var sample) != 0)
                     throw new InvalidOperationException("Entity projection changed during capture: " + string.Join(", ", sample));
-                return new SemanticEntityShadow(snapshot, items, grids, slots, shapes, windows, unsupported,
-                    legacySlots, projectedSlots, runtimeSlots, visualFields);
+                return new SemanticEntityShadow(snapshot, boundary, items, grids, slots, shapes, windows, unsupported,
+                    boundary.EntityRuntimeSlots, boundary.EntitySlots, boundary.EntityRuntimeSlots, visualFields);
             }
-            catch { snapshot.Dispose(); throw; }
+            catch { boundary.Dispose(); snapshot?.Dispose(); throw; }
         }
 
         internal string Summary => "scope=exact-item-hierarchy+inventory-fields+window-links+exact-shapes unknownTypes=legacy-only " +
@@ -107,6 +100,10 @@ namespace ProbablyStolenTools
             $"projectedOwnerSlots={_projectedSlots} legacyOwnerSlots={_legacySlots} " +
             $"classifiedRuntimeSlots={_runtimeSlots} excludedVisualFields={_visualFields} " +
             $"logicalSlots={_snapshot.LogicalSlots} logicalBytes={_snapshot.LogicalBytes} " +
+            $"handles={_boundary.EntityCount} rootHandles={_boundary.RootEntities} " +
+            $"runtimeHandleLinks={_boundary.RuntimeHandleLinks} entityHandleLinks={_boundary.EntityHandleLinks} " +
+            $"partition(entity={_boundary.EntitySlots},runtime={_boundary.RuntimeSlots},total={_boundary.TotalSlots}) " +
+            $"runtimeSeeds={_boundary.RuntimeSeedCount} runtimeReachable={_boundary.RuntimeReachableObjects} runtimeCut=false " +
             "collectionStorage=legacy-only callbacks=legacy-only tags=legacy-hybrid";
 
         internal void ObserveRestore(long id)
@@ -114,6 +111,7 @@ namespace ProbablyStolenTools
             var clock = Stopwatch.StartNew();
             try
             {
+                _boundary.Validate(ManagedObjects.Get);
                 int count = _snapshot.Differences(out var sample);
                 EventLog.Write($"[SemanticEntities] RECORD RESTORE {(count == 0 ? "MATCH" : "VALIDATION FAILED")} " +
                     $"id={id} readOnly=true diff={count} verifyMs={clock.ElapsedMilliseconds} {Summary}" +
@@ -125,7 +123,7 @@ namespace ProbablyStolenTools
                     $"verifyMs={clock.ElapsedMilliseconds}: " + e);
             }
         }
-        public void Dispose() => _snapshot.Dispose();
+        public void Dispose() { _boundary.Dispose(); _snapshot.Dispose(); }
     }
 }
 #endif

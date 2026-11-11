@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**276 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**284 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -48,9 +48,11 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 23:15 会话库存/窗口已检查：5 捕获/6 恢复最终零差异，首节点两次 RECORD RESTORE MATCH（20/16 ms），恢复后四件群拖正常。七处 reconcile 差异均属 cassettePlayer 标签字典及其底层数组，三 owner / 45 槽完整修复，无最终回退。已补齐精确 GameItemElement/GameItem/GameItemFunc 全继承链角色清单，四个派生实体字段进入只读记录、全部回调留 Runtime、六布局缓存继续 Visual 排除；覆盖改多字位图，未知物品子类不认证。276 项和原生派生字段/回调/布局排除通过，完整物品记录待实机。详见 `research/2026-11-11-complete-item-records.md`。
 
+接续阶段已实现节点隔离的原对象外部句柄、完整旧槽 Entity/Runtime 分区、运行态入口计算及仅运行态边的完整发现重放。句柄绑定原对象/精确类型/schema，拒绝跨节点/错类型/过期；Runtime 必须保留实体回调字段和集合底层。原根加所有实体出边作为运行态入口，重放必须覆盖旧图全部对象，不能漏闭包/数组；只保留句柄、入口及计数，临时邻接释放。284 项及原生同 uniqueId、跨节点、闭包/集合别名、完整槽/对象对照通过。仍 `runtimeCut=false`，没有实际运行态小图载荷、实体写回或生产捕获替换；先验收完整物品清单/句柄，下一步才进入独立小图捕获与受限写回。
+
 23:01 会话首批实体记录已检查：7 捕获/6 恢复最终零差异，首节点两次 RECORD RESTORE MATCH（15/16 ms），恢复后四件群拖正常；首节点 entityRecords=209 ms、总捕获 1337 ms，仅增加诊断成本。后续阶段补齐精确库存完整继承链及 PixelWindow 的显式 Entity/Runtime/Visual 字段清单：实体记录纳入归属、锁、形状、stolenUI、父物品/链接库存/子控件等；回调/刷新缓存/集合底层仍旧图负责。逐槽检查 Entity/Runtime 都有旧覆盖，Visual 不应出现，精确 owner 未分类槽拒绝，未知 schema 只使本次诊断失败。269 项及原生十处关系变化、runtime 保留/恢复、缺 runtime 根拒绝通过，待实机。物品派生字段完整清单、外部句柄/图切分/实体写回仍未实现，详见 `research/2026-11-11-inventory-window-records.md`。
 
-库存/窗口覆盖阶段已于 23:12 部署（独立运行时提交 `e46e7d4`，0.8.14）；备份 `out/full-release-deploy-20261111-231247`，78 存档文件校验未变，未启动游戏。当前等待扩展后的实体记录实机，不叠加物品派生层/运行态切分。
+库存/窗口覆盖阶段已于 23:12 部署（独立运行时提交 `e46e7d4`，0.8.14）；备份 `out/full-release-deploy-20261111-231247`，78 存档文件校验未变，未启动游戏。已完成上述 23:15 实机检查；后续完整物品清单于 23:27 部署 `6f9ba14`，备份 `out/full-release-deploy-20261111-232759`，78 存档不变，未启动游戏。
 
 22:43 会话实体边界审计已验证：7 次捕获、8 次恢复最终零差异，恢复后四件群拖正常。首节点 1236 实体/111431 实体槽，运行态入边 2750，其中闭包/委托候选 1291；首节点审计 42 ms，仅诊断成本。仍未证明可裁剪。下一阶段新增 `Snapshot.SemanticEntityRecords=true`，每上下文首节点独立记录 GameItem 全部基类字段、精确格子/单槽成员及 GridShapeBuilder 全部字段和字节，原身份/顺序/共享/浮点位，schema/旧图字段覆盖/独立预算检查；恢复后只读对照。派生字段/回调/集合底层等仍 legacy-only，未知类型不迁移；不是完整实体覆盖或实体写回。262 项及原生六轮旧图/记录恢复对照、筛选根/超限隔离通过，待实机；详见 `research/2026-11-11-entity-readonly-records.md`。
 
@@ -118,7 +120,7 @@ docs/workshop/                     创意工坊文本
 - 普通标量比较器与读取委托分别按路径累计 32 次后尝试编译，仅 primitive/enum/decimal/对应 Nullable 许可；值从参数传入，不绑定对象/节点/数组/期望值。浮点按位，nullable 先比 HasValue，decimal 保持原 Equals 语义；自定义结构/无 reader/缓存满/生成不可用回退，真实读取异常不能吞掉。开关 `Snapshot.TypedScalarComparisons` 决定新访问器是否使用，禁用重启不影响旧载荷。比较器依附同一 4096 上限缓存，不额外无限缓存；Capture 最终校验、恢复预检/差异/最终校验、普通免写判断仍逐槽读取，不新增值令牌。编译计时单列，已包含对应阶段；不与原 walkReaderCompileMs 混算。
 - 普通引用完整比较可由 `IStateReferenceComparer` 许可直接身份比较；ManagedStateAccess 的 `Snapshot.DirectReferenceComparisons` 读取真实存储后，仅与该节点 `_retained` 目标做 ReferenceEquals（null 仍 null），不调用业务 Equals/运算符。全图 Validate 和全部扫描不变，未知后端/禁用仍旧 ID 路径；Capture/Census 引用发现、Tag 块、写回不变。扫描不再仅为比较而登记变化 live 引用的全局 ID，仍完整识别变化；读取/身份异常直接传播。referenceComparisons 是普通引用成功比较调用数，不是新身份数。
 - `Snapshot.SemanticEntityAudit` 仅在每上下文首个采样节点只读扫描旧拓扑，不调用业务 getter、Validate/Restore/Differences，不认证实体独占或覆盖完整。callback 为 delegate/CompilerGenerated 类型元数据启发式，普通目标方法不一定分类；全部其他边仍计数。数组入边不等于独占成员链接，图外/opaque/静态引用未知。禁止从零别名或有限日志批准裁剪、集合重建或实体写回；实体迁移必须另有完整字段覆盖清单、外部句柄协议和旧图 oracle。
-- `Snapshot.SemanticEntityRecords` 每上下文最多尝试一次独立只读记录：严格完整的 GameItem 声明字段 schema、精确库存成员部分投影、精确 GridShapeBuilder 完整字段/全部 data 字节；保留原对象和引用身份。派生类/库存其他字段及集合物理存储/版本明确旧图负责，不据 MATCH 裁剪。投影字段必须逐 owner 被旧槽完整覆盖，未知类型/超预算/读取失败只记录诊断失败，完整主图仍权威；采样节点恢复后完整比较记录但不写入，不增加业务重试。CAPTURE entityRecords 单列诊断成本，非提速。
+- `Snapshot.SemanticEntityRecords` 每上下文最多尝试一次独立只读记录：精确 GameItemElement/GameItem/GameItemFunc 完整继承链、精确库存完整继承链、PixelWindow 与 GridShapeBuilder 完整字段角色清单/全部 data 字节；保留原对象和引用身份，未知子类 legacy-only。不据 MATCH 裁剪。每个实体/运行态字段必须被旧槽完整覆盖，Visual 必须排除；未知字段/超预算/读取失败只记录诊断失败，完整主图仍权威。采样节点恢复后校验句柄原身份并完整比较记录但不写入，不增加业务重试。CAPTURE entityRecords 单列诊断成本，包含句柄/分区/拓扑重放，不是提速。
 - 实体记录现扩展精确库存完整继承链与精确 PixelWindow 的 Entity/Runtime/Visual manifest，名称/精确类型/完整声明数全部检查，不给未知字段默认分区。Entity/Runtime 必须各有完整旧槽，Visual 必须未进业务图；除已明确保留额外字段的 Item 基类投影外，精确 owner 未知槽即拒绝诊断。Runtime 回调/缓存/标签等仍旧图负责，MATCH 不认证可删；stolenUI、parent、父物品/链接库存等读取真实字段，不调用 ChildStorage/childItems/UncheckedAccept/Expel/Validate。style enum 全宽值保留；现有 VisualState 及实际恢复完全不变。
 - Mono 普通字段写回不生成委托：需要写入的单字段直接 FieldInfo.SetValue，标量/引用数组元素直接 Array.SetValue；引用字段保留 ReferenceEquals 守卫（不能用 Equals）。`Snapshot.SkipUnchangedScalars=true` 仅对 null/框架 primitive/enum/decimal 的普通槽先读真实存储，按与 ValueEquals 相同的比较语义（浮点按位）免写完全相同值，自定义 nullable 结构体不增加 Equals 调用；配置关闭则无条件写普通标量，配置只影响新节点访问器，关闭后重启。不同值的嵌套结构体和结构体数组保持逐层装箱、递归及父层复制回写。全图 Restore 仍访问全部槽位，普通标量/块标量/普通引用/块引用顺序不变，块不免写；二次写回可按下述 owner 规则筛选，但不能省略完整校验。新读取异常沿原失败流程，不重试无条件写入。五参数 ManagedStateAccess 构造器的 directWrites=false 默认禁用免写，仅为离线/原生夹具保留递归对照，不是新的玩家设置。
 - 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`，默认 **200000 / 3000000 / 256**。

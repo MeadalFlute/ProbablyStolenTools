@@ -80,3 +80,11 @@ CAPTURE 的 `ms(...)` 单列 `entityAudit`，包含类型分类/临时索引/完
 后续：上述审计已完成 22:43 会话检查（7 捕获/8 恢复最终零差异、首节点审计 42 ms），详细数据及首批只读记录阶段见 `2026-11-11-entity-readonly-records.md`。
 
 首批只读记录已完成 23:01 会话检查（7 捕获/6 恢复最终零差异、两次 RECORD RESTORE MATCH）；第 2 步继续推进精确库存/窗口完整角色清单及关系记录，物品派生字段清单仍未完成。详见 `2026-11-11-inventory-window-records.md`。第 3/4/5 步仍未开放。
+
+最新：23:15 库存/窗口已验证（5 捕获/6 恢复最终零差异）。第 2 步当前精确
+GameItemElement/GameItem/GameItemFunc、库存全继承链、PixelWindow、GridShapeBuilder
+完整角色清单已补齐，未知子类仍 legacy-only。第 3 步新增节点隔离原对象句柄、
+完整槽位分区、运行态入口计划及仅运行态边的全对象发现重放，284 项及原生夹具
+通过；这不是独立 RuntimeIslandGraph 值载荷，runtimeCut=false。
+完整物品/句柄待实机；第 4/5 步未开放。详见
+`2026-11-11-complete-item-records.md`，不再按前述历史停止点判断当前进度。

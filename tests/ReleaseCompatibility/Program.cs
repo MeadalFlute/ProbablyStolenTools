@@ -490,6 +490,31 @@ try
         return (int)entityCoreType.GetMethod("Differences", dataFlags).Invoke(core, new object[] { null, 1 });
     }
     using var entityRecords = (IDisposable)EntityCapture();
+    var boundaryPlan = entityType.GetField("_boundary", dataFlags).GetValue(entityRecords);
+    var boundaryPlanType = boundaryPlan.GetType();
+    var handleMethod = boundaryPlanType.GetMethod("GetHandle", dataFlags);
+    var resolveMethod = boundaryPlanType.GetMethod("Resolve", dataFlags);
+    var firstHandle = handleMethod.Invoke(boundaryPlan, new object[] { Identity(boundaryItems[0]) });
+    var secondHandle = handleMethod.Invoke(boundaryPlan, new object[] { Identity(boundaryItems[1]) });
+    if (!ReferenceEquals(resolveMethod.Invoke(boundaryPlan, new[] { firstHandle, (object)boundaryItems[0].GetType() }), boundaryItems[0])
+        || !ReferenceEquals(resolveMethod.Invoke(boundaryPlan, new[] { secondHandle, (object)boundaryItems[1].GetType() }), boundaryItems[1])
+        || (int)boundaryPlanType.GetProperty("TotalSlots", dataFlags).GetValue(boundaryPlan)
+            != (int)graphType.GetProperty("SlotCount", dataFlags).GetValue(boundaryGraph)
+        || (int)boundaryPlanType.GetProperty("RuntimeReachableObjects", dataFlags).GetValue(boundaryPlan)
+            != (int)graphType.GetProperty("ObjectCount", dataFlags).GetValue(boundaryGraph)
+        || (int)boundaryPlanType.GetProperty("RuntimeHandleLinks", dataFlags).GetValue(boundaryPlan) < 3)
+        throw new Exception("Native external handles or complete runtime topology replay lost aliases or slots.");
+    using (var secondRecords = (IDisposable)EntityCapture())
+    {
+        var otherPlan = entityType.GetField("_boundary", dataFlags).GetValue(secondRecords);
+        try
+        {
+            resolveMethod.Invoke(otherPlan, new[] { firstHandle, (object)boundaryItems[0].GetType() });
+            throw new Exception("Native external handle leaked across checkpoint scopes.");
+        }
+        catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    }
+    Console.WriteLine("PASS native scoped external entity handles, same-uniqueId distinction, callback/container alias counts and complete runtime-only topology replay");
     if (EntityDifferences(entityRecords) != 0
         || !((string)entityType.GetProperty("Summary", dataFlags).GetValue(entityRecords)).Contains("shapes=1"))
         throw new Exception("Native entity projection capture did not match exact item/inventory/shape schemas.");

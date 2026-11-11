@@ -10,6 +10,12 @@ namespace ProbablyStolenTools
         internal int RequiredCount { get; }
         internal int FieldCount => _fields.Count;
         internal int VisualCount => FieldCount - RequiredCount;
+        internal SemanticFieldRole RoleOf(string name)
+        {
+            if (!_fields.TryGetValue(name, out var field))
+                throw new InvalidOperationException("Unclassified entity owner slot: " + name);
+            return field.Role;
+        }
 
         internal SemanticSlotSchema(IEnumerable<(string Name, bool Reference, SemanticFieldRole Role)> fields)
         {
