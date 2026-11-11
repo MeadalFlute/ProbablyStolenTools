@@ -48,6 +48,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 22:43 会话实体边界审计已验证：7 次捕获、8 次恢复最终零差异，恢复后四件群拖正常。首节点 1236 实体/111431 实体槽，运行态入边 2750，其中闭包/委托候选 1291；首节点审计 42 ms，仅诊断成本。仍未证明可裁剪。下一阶段新增 `Snapshot.SemanticEntityRecords=true`，每上下文首节点独立记录 GameItem 全部基类字段、精确格子/单槽成员及 GridShapeBuilder 全部字段和字节，原身份/顺序/共享/浮点位，schema/旧图字段覆盖/独立预算检查；恢复后只读对照。派生字段/回调/集合底层等仍 legacy-only，未知类型不迁移；不是完整实体覆盖或实体写回。262 项及原生六轮旧图/记录恢复对照、筛选根/超限隔离通过，待实机；详见 `research/2026-11-11-entity-readonly-records.md`。
 
+实体记录首批投影已于 23:00 部署（独立运行时提交 `5d69429`，版本 0.8.14）；备份 `out/full-release-deploy-20261111-230000`，78 存档文件校验未变，未启动游戏。等待 RECORD CAPTURE/RESTORE MATCH 和 entityRecords 实机数据，不叠加运行态切分/实体写回。
+
 21:54 会话已检查普通引用直接比较：4 次捕获、6 次恢复全部 diff=0/releaseOk=True，无最终回退；采样节点两次 RESTORE MATCH，恢复后两对四件群拖正常结束。preflight/finalVerify/total 中位数 64.5/46/630.5 ms（上轮 82/54/651），非 A/B，不宣称同比例整体提速。非默认议价与实机全图回退仍未覆盖；详见直接引用比较文档。
 
 完整实体语义化的 22:10 首步 878cef9 当时尚未启用实体记录/运行态切分或实体写回：`Snapshot.SemanticEntityAudit=true` 只读边界审计，每上下文最多一次，已捕获槽完整扫描，计实体/库存、运行态/数组/闭包候选入出边，成功在主图捕获校验后输出 BOUNDARY。只保留计数及六条有界来源，索引不跨节点保留；失败不影响旧图，明确 pruningAllowed=false/restoreAllowed=false，未知/opaque/静态不认证。CAPTURE 单列 entityAudit，确实增加首节点诊断成本，不是提速。251 项及原生同 uniqueId 不同实体/格子/单槽/闭包/旧图恢复对照通过，现已完成 22:43 实机检查。路线为“原对象实体记录 + 剩余运行态小图”，完整设计见 `research/2026-11-11-entity-backend-roadmap.md`。
