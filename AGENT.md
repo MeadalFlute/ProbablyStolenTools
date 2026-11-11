@@ -48,7 +48,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 21:39 会话已检查强类型标量比较：7 次捕获（含三个手动）、5 次恢复全部 diff=0/releaseOk=True，独立标签 CAPTURE/RESTORE MATCH，无最终回退。常规捕获 305-412 ms、首节点 1006 ms，其中比较器编译 36 ms；整次恢复中位数 651 ms（上轮 704 ms），非 A/B，不能全归因于此优化。8 对群拖都在首次恢复前，本轮恢复后群拖/六次往返/非默认议价及实机全图回退未覆盖。完整记录见强类型比较文档。
 
-接续普通引用直接比较：`Snapshot.DirectReferenceComparisons=true` 在完整差异扫描读取普通引用后，与该节点强引用保留的目标做 ReferenceEquals，省去每槽全局弱身份查询；捕获/Census 的身份发现、全图 Validate、块/预算/写回/视觉/owner/full 回退不变。关闭并重启新节点走原 ID 比较，未知后端仍原路径。243 项回归及原生 ID oracle 完整差异对照通过；两轮原生类型隔离基准完整校验约快 32%，捕获/写回无稳定收益、分配不变，不推算 Unity 收益。Session/CAPTURE/RESTORE 增加开关和命中计数，待部署实机；详见 `research/2026-11-11-direct-reference-comparisons.md`。
+已部署普通引用直接比较（21:50，fcf4c74）：`Snapshot.DirectReferenceComparisons=true` 在完整差异扫描读取普通引用后，与该节点强引用保留的目标做 ReferenceEquals，省去每槽全局弱身份查询；捕获/Census 的身份发现、全图 Validate、块/预算/写回/视觉/owner/full 回退不变。关闭并重启新节点走原 ID 比较，未知后端仍原路径。243 项回归及原生 ID oracle 完整差异对照通过；两轮原生类型隔离基准完整校验约快 32%，捕获/写回无稳定收益、分配不变，不推算 Unity 收益。Session/CAPTURE/RESTORE 增加开关和命中计数，待实机；详见 `research/2026-11-11-direct-reference-comparisons.md`。
 
 已部署普通标量比较减装箱（21:31）：`Snapshot.TypedScalarComparisons=true` 在元数据路径比较 32 次后尝试只读强类型比较器，覆盖 primitive/enum/decimal/对应 Nullable，浮点按位；自定义类型/无 reader/生成不可用回退旧比较，真实读错误传播。完整扫描、值令牌表、捕获载荷、Census、块与引用、owner/full 修复及视觉均不变。235 项回归及原生装箱 oracle 对照通过；两次隔离基准校验约快 7-14%，校验/写回各少约 1.85 MiB 临时分配，写回耗时无稳定改善；冷样本比较器编译约 1 ms，不据此保证完整游戏首节点成本。待实机；新增命中和独立编译计时，详见 `research/2026-11-11-typed-scalar-comparisons.md`。
 

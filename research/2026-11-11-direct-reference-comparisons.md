@@ -49,3 +49,12 @@ dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.
 2. 买卖/旋转/单件及群组移动后，在过去/未来/手动节点间往返至少六次；至少在恢复后再次批量拖拽，核对贴图/碰撞、数量、金钱。方便时覆盖非默认议价。
 3. 无需 Verbose；检查 referenceComparisons 命中、diff=0、releaseOk=True，以及 verify/preflight/reconcile scan/finalVerify/total。不以隔离比例推算整次恢复收益。
 4. 异常时保留日志并停止回溯；不进一步开放集合重建或跨帧捕获。
+
+## 部署记录
+
+运行时代码独立提交 fcf4c74，2026-11-11 21:50 标准脚本部署，版本保持 0.8.14。
+
+- 备份：`out/full-release-deploy-20261111-215050`。
+- DLL SHA256：`23288AA846A888964EE7961DB1127727F351335C019C3E04365B81F91A71E590`，构建与部署一致。
+- 78 个存档文件校验未变，SettingsImported=False，GameStarted=False；没有启动游戏。
+- 待上述实机操作，不把离线零差异或约 32% 校验收益当作 Unity 验收结论。
