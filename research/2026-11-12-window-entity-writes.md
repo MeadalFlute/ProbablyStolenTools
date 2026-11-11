@@ -82,3 +82,11 @@ releaseOk=True and RECORD RESTORE MATCH / runtimeDiffSamples=0, with no pilot
 unavailable or restore errors. Rendering still needs human inspection.
 
 Stop here before item/inventory entity writes or runtime-payload restoration.
+
+## Deployment
+
+2026-11-12 00:22, runtime commit 69f20cd, version 0.8.14, no push.
+Backup: out/full-release-deploy-20261112-002237.
+DLL SHA256: 02BE83621A1A89AB0CF9B858C2C7BEF35216D38BE841ECD85FB4C860A3171C5D.
+78 save files verified unchanged; settings not imported, game not started.
+Awaiting the first live window writer validation above.
