@@ -331,6 +331,37 @@ try
     if (differences.Count != 0) throw new Exception("Actual game data graph has differences after restore.");
     Console.WriteLine("PASS real PlayerStore/StoreStation/GameItemElement graph, four distinct array items and dictionary round trip"
         + " (compiled readers=" + compiledReaders + ")");
+    var recursiveAccess = accessType.GetConstructor(dataFlags, null,
+        new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool) }, null)
+        .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"),
+            "Assembly-CSharp", true, true, false });
+    foreach (var root in new[] { player, station, itemArray })
+        accessType.GetMethod("AddRoot", dataFlags).Invoke(recursiveAccess, new object[] { Identity(root), Array.Empty<string>() });
+    var recursiveGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { recursiveAccess, new[] { Identity(player), Identity(station), Identity(itemArray) },
+            50000, 1000000, 64L * 1024 * 1024 });
+    try
+    {
+        foreach (var writerGraph in new[] { graph, recursiveGraph, graph })
+        {
+            cashField.SetValue(player, -123); dayField.SetValue(station, -1);
+            itemField.SetValue(player, null); unitProperty.SetValue(item, -1);
+            itemArray.SetValue(null, 3);
+            for (int i = 0; i < 100; i++) zoomLevels["grow-" + i] = i;
+            zoomLevels["inspection"] = -1;
+            graphType.GetMethod("Restore", dataFlags).Invoke(writerGraph, null);
+            foreach (var oracle in new[] { graph, recursiveGraph })
+                if (((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                    .Invoke(oracle, new object[] { 12 })).Count != 0)
+                    throw new Exception("Native direct/recursive writer parity failed.");
+            if ((int)cashField.GetValue(player) != 135 || (int)dayField.GetValue(station) != 12
+                || !ReferenceEquals(itemArray.GetValue(3), items[3]) || zoomLevels.Count != 3
+                || zoomLevels["inspection"] != 2 || !ReferenceEquals(itemField.GetValue(player), item))
+                throw new Exception("Native direct writer lost original values, identities or collection storage.");
+        }
+        Console.WriteLine("PASS native direct/recursive writer parity after real field, array and dictionary growth mutations");
+    }
+    finally { ((IDisposable)recursiveGraph).Dispose(); }
 }
 finally { ((IDisposable)graph).Dispose(); }
 
@@ -590,8 +621,9 @@ finally
     ((IDisposable)legacyTagGraph).Dispose();
 }
 
-if (args.Contains("--benchmark-tags"))
+if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes"))
 {
+    bool benchmarkWrites = args.Contains("--benchmark-writes");
     // Isolated native business objects on .NET 6, not a Unity/Mono frame-time measurement.
     var fixture = Array.CreateInstance(systemType, 1024);
     for (int i = 0; i < fixture.Length; i++)
@@ -608,7 +640,7 @@ if (args.Contains("--benchmark-tags"))
         }
         fixture.SetValue(system, i);
     }
-    var samples = new Dictionary<bool, List<(double Capture, double Verify, double Restore, long Allocated)>>
+    var samples = new Dictionary<bool, List<(double Capture, double Verify, double Restore, long Allocated, long RestoreAllocated)>>
         { [false] = new(), [true] = new() };
     long? expectedSlots = null, expectedBytes = null, expectedObjects = null;
     var captureMethod = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic);
@@ -618,9 +650,10 @@ if (args.Contains("--benchmark-tags"))
         foreach (bool compact in round % 2 == 0 ? new[] { true, false } : new[] { false, true })
         {
             GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
-            var benchAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
-                .Invoke(new object[] { null, "Assembly-CSharp" });
-            if (compact) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
+            var benchAccess = accessType.GetConstructor(dataFlags, null,
+                new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool) }, null)
+                .Invoke(new object[] { null, "Assembly-CSharp", true, true, !benchmarkWrites || compact });
+            if (benchmarkWrites || compact) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new[] { benchAccess });
             accessType.GetMethod("AddRoot", dataFlags).Invoke(benchAccess, new object[] { Identity(fixture), Array.Empty<string>() });
             long before = GC.GetAllocatedBytesForCurrentThread();
@@ -645,11 +678,13 @@ if (args.Contains("--benchmark-tags"))
                 foreach (object system in fixture)
                     foreach (var state in ((System.Collections.IDictionary)mapField.GetValue(system)).Values)
                         tagFields[2].SetValue(state, -1);
+                long beforeRestore = GC.GetAllocatedBytesForCurrentThread();
                 clock.Restart(); restoreMethod.Invoke(benchGraph, null);
                 double restored = clock.Elapsed.TotalMilliseconds;
+                long restoreAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeRestore;
                 if (((System.Collections.ICollection)verifyMethod.Invoke(benchGraph, new object[] { 12 })).Count != 0)
                     throw new Exception("Native benchmark restoration verification failed.");
-                if (round >= 0) samples[compact].Add((captured, verified, restored, allocated));
+                if (round >= 0) samples[compact].Add((captured, verified, restored, allocated, restoreAllocated));
             }
             finally { ((IDisposable)benchGraph).Dispose(); }
         }
@@ -657,7 +692,9 @@ if (args.Contains("--benchmark-tags"))
     foreach (bool compact in new[] { false, true })
     {
         var values = samples[compact];
+        string mode = benchmarkWrites ? (compact ? "hybrid-direct-write" : "hybrid-recursive-write")
+            : (compact ? "hybrid" : "legacy");
         Console.WriteLine(FormattableString.Invariant(
-            $"TAG_BLOCK_BENCH runtime=net6-not-Unity mode={(compact ? "hybrid" : "legacy")} samples=5 objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0}"));
+            $"TAG_BLOCK_BENCH runtime=net6-not-Unity mode={mode} samples=5 objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
     }
 }

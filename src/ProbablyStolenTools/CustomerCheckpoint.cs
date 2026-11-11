@@ -563,8 +563,15 @@ namespace ProbablyStolenTools
                     Cash = store.GetCash(), At = DateTime.Now, Random = RNG.random
                 };
                 phase = "walk";
+#if MONO
+                long readerCompileBefore = SnapshotFieldReader.CompileTicks;
+#endif
                 candidate.Graph = StateGraph.Capture(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
                 long tWalk = timing.ElapsedMilliseconds;
+#if MONO
+                long walkReaderCompileMs = SnapshotFieldReader.CompileMilliseconds(
+                    SnapshotFieldReader.CompileTicks - readerCompileBefore);
+#endif
                 phase = "items";
                 candidate.Customer = new CustomerVisual();
                 candidate.Shop = new ShopPhaseVisual();
@@ -693,6 +700,7 @@ namespace ProbablyStolenTools
                 if (manual) PanelNotice.Show("已建立手动节点 #" + _active.Id);
 #if MONO
                 string readers = $" backend={access.BlockMode} tagBlocks={_active.Graph.BlockCount} " +
+                    $"walkReaderCompileMs={walkReaderCompileMs} " +
                     SnapshotFieldReader.Summary + " " + access.ArraySchemaSummary +
                     (Plugin.CfgVerboseLog?.Value == true ? " " + access.WorkloadSummary() : "");
 #else
@@ -828,6 +836,9 @@ namespace ProbablyStolenTools
             var timing = System.Diagnostics.Stopwatch.StartNew();
             long tValidate = 0, tCensus = 0, tPreflight = 0, tWrite = 0, tRefresh = 0;
             long tReconcile = 0, tVerify = 0, tSemanticVerify = 0, tCleanup = 0;
+            long tReconcileScan = 0, tReconcileWrite = 0, tReconcileViews = 0, tGeometry = 0;
+            bool reconcileRewrite = false;
+            int reconcileReportedDiff = 0;
             int censusObjects = 0, censusSlots = 0;
             int finalDifferences = -1;
             long censusBytes = 0;
@@ -922,20 +933,30 @@ namespace ProbablyStolenTools
 #endif
                 UnityRandomState.Restore(target.UnityRandom);
                 tRefresh = timing.ElapsedMilliseconds;
-                phase = "reconcile";
+                phase = "reconcile-scan";
                 var diff = target.Graph.Differences();
+                tReconcileScan = timing.ElapsedMilliseconds;
+                reconcileReportedDiff = diff.Count;
                 if (diff.Count != 0)
                 {
                     // Validate()/ValidatePartialSprite() 会重建 TagSystem 的字典，导致字典内部
                     // 布局与快照不一致。再写一遍业务图把标签状态压回去，然后重新校验。
+                    phase = "reconcile-write";
+                    reconcileRewrite = true;
                     target.Graph.Restore();
                 }
+                tReconcileWrite = timing.ElapsedMilliseconds;
                 // A second Graph.Restore above can change shape/origin again.
                 // Restore native views and finish geometry only after that write.
+                phase = "reconcile-views";
                 foreach (var view in target.Visuals) view.Restore();
+                tReconcileViews = timing.ElapsedMilliseconds;
+                phase = "reconcile-geometry";
                 RestoreItemGeometry(target);
+                tGeometry = timing.ElapsedMilliseconds;
                 // 旋转/翻转/锚点/尺寸以快照里的原生 RectTransform 为准：几何恢复之后再套一次，
                 // 避免 UpdateRectTransform() 用被清零的 modifiedShape.orientation 覆盖旋转。
+                phase = "reconcile-transforms";
                 foreach (var view in target.Visuals) view.RestoreTransforms();
                 tReconcile = timing.ElapsedMilliseconds;
                 phase = "final-verify";
@@ -1018,7 +1039,11 @@ namespace ProbablyStolenTools
                         $"write={tWrite - tPreflight},refresh={tRefresh - tWrite},reconcile={tReconcile - tRefresh}," +
                         $"finalVerify={tVerify - tReconcile},semanticVerify={tSemanticVerify - tVerify}," +
                         $"cleanup={tCleanup - tSemanticVerify}," +
-                        $"release={tFinish - tCleanup},total={tFinish})" + workload);
+                        $"release={tFinish - tCleanup},total={tFinish}) " +
+                        $"reconcileDetail(rewrite={reconcileRewrite},reportedDiff={reconcileReportedDiff}," +
+                        $"scan={tReconcileScan - tRefresh},write={tReconcileWrite - tReconcileScan}," +
+                        $"views={tReconcileViews - tReconcileWrite},geometry={tGeometry - tReconcileViews}," +
+                        $"transforms={tReconcile - tGeometry})" + workload);
                 }
                 if (releaseError != null)
                     EventLog.Write($"[Customer] CENSUS RELEASE FAILED restoreCompleted={completed} " +

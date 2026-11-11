@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Security;
+using System.Diagnostics;
+using System.Threading;
 
 namespace ProbablyStolenTools
 {
@@ -12,6 +14,11 @@ namespace ProbablyStolenTools
         private const int CacheLimit = 4096;
         private const int CompileAfterReads = 32;
         private static readonly Dictionary<(Type Owner, string Name), SnapshotFieldReader> Cache = new();
+        private static long _compileTicks;
+        private static int _compileAttempts;
+        internal static long CompileTicks => Interlocked.Read(ref _compileTicks);
+        internal static int CompileAttempts => Volatile.Read(ref _compileAttempts);
+        internal static long CompileMilliseconds(long ticks) => (long)(ticks * (1000.0 / Stopwatch.Frequency));
         private readonly Type _ownerType;
         private readonly FieldInfo[] _path;
         private readonly bool _element;
@@ -51,6 +58,7 @@ namespace ProbablyStolenTools
         private void Compile()
         {
             _attempted = true;
+            long started = Stopwatch.GetTimestamp();
             try
             {
                 var owner = Expression.Parameter(typeof(object), "owner");
@@ -62,6 +70,11 @@ namespace ProbablyStolenTools
                     Expression.Convert(value, typeof(object)), owner, index).Compile();
             }
             catch (Exception e) when (Unavailable(e) || e is ArgumentException) { }
+            finally
+            {
+                Interlocked.Add(ref _compileTicks, Stopwatch.GetTimestamp() - started);
+                Interlocked.Increment(ref _compileAttempts);
+            }
         }
 
         private static bool Unavailable(Exception e) => e is NotSupportedException
@@ -70,7 +83,12 @@ namespace ProbablyStolenTools
 
         internal static void ClearCache()
         {
-            lock (Cache) Cache.Clear();
+            lock (Cache)
+            {
+                Cache.Clear();
+                Interlocked.Exchange(ref _compileTicks, 0);
+                Interlocked.Exchange(ref _compileAttempts, 0);
+            }
         }
 
         internal static string Summary
@@ -83,7 +101,8 @@ namespace ProbablyStolenTools
                     foreach (var reader in Cache.Values)
                         if (reader.Compiled) compiled++;
                         else if (reader._attempted) fallback++;
-                    return $"readers(compiled={compiled},fallback={fallback},cached={Cache.Count})";
+                    return $"readers(compiled={compiled},fallback={fallback},cached={Cache.Count}," +
+                        $"compileAttemptsTotal={CompileAttempts},compileMsTotal={CompileMilliseconds(CompileTicks)})";
                 }
             }
         }

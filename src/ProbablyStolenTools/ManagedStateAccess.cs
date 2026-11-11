@@ -75,6 +75,7 @@ namespace ProbablyStolenTools
         private readonly string _gameAssembly;
         private readonly bool _fastReads;
         private readonly bool _reuseArraySchemas;
+        private readonly bool _directWrites;
         internal string ArraySchemaSummary => $"arraySchemas(cached={_arraySchemas.Count}," +
             $"hits={_arraySchemaHits},slotsReused={_arraySlotsReused})";
 
@@ -119,11 +120,16 @@ namespace ProbablyStolenTools
             : this(unityObject, gameAssembly, fastReads, true) { }
 
         internal ManagedStateAccess(Type unityObject, string gameAssembly, bool fastReads, bool reuseArraySchemas)
+            : this(unityObject, gameAssembly, fastReads, reuseArraySchemas, true) { }
+
+        internal ManagedStateAccess(Type unityObject, string gameAssembly, bool fastReads, bool reuseArraySchemas,
+            bool directWrites)
         {
             _unityObject = unityObject;
             _gameAssembly = gameAssembly;
             _fastReads = fastReads;
             _reuseArraySchemas = reuseArraySchemas;
+            _directWrites = directWrites;
         }
 
         internal void AddRoot(IntPtr id, params string[] fields)
@@ -385,11 +391,39 @@ namespace ProbablyStolenTools
                 return;
             }
             object owner = _retained[id];
+            if (_directWrites)
+            {
+                // Scalar/reference array elements have no nested fields to read or copy back.
+                if (storage.Index >= 0 && storage.Path.Length == 0)
+                {
+                    ((Array)owner).SetValue(value, storage.Index);
+                    return;
+                }
+                if (storage.Index < 0 && storage.Path.Length == 1)
+                {
+                    var field = storage.Path[0];
+                    // Keep the old reference-equality guard (including unchanged readonly fields).
+                    if (field.FieldType.IsValueType || !ReferenceEquals(field.GetValue(owner), value))
+                        field.SetValue(owner, value);
+                    return;
+                }
+            }
+            WriteNested(owner, storage, value, _directWrites);
+        }
+
+        private static void WriteNested(object owner, Storage storage, object value, bool directWrites)
+        {
             object element = storage.Index < 0 ? owner : ((Array)owner).GetValue(storage.Index);
             object Set(object target, int at)
             {
                 if (at == storage.Path.Length) return value;
                 var field = storage.Path[at];
+                // The old recursion unconditionally writes scalar leaves. No old leaf value is needed.
+                if (directWrites && at == storage.Path.Length - 1 && field.FieldType.IsValueType)
+                {
+                    field.SetValue(target, value);
+                    return target;
+                }
                 object previous = field.GetValue(target);
                 object restored = Set(previous, at + 1);
                 if (!ReferenceEquals(previous, restored) || field.FieldType.IsValueType)
