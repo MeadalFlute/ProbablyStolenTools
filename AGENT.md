@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**243 项**离线测试；正式版 **57 个** Harmony 挂点、**74 个**快照/私有字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**251 项**离线测试；正式版 **57 个** Harmony 挂点、**74 个**快照/私有字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -45,6 +45,10 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 已部署普通标量免写（19:40）：`Snapshot.SkipUnchangedScalars=true` 仍逐槽读取，只有 null/框架 primitive/enum/decimal 与捕获值精确相同时才省去真实写入，浮点按位比较；自定义 nullable 结构体无条件写入，不新增其 Equals 调用。不同值仍递归复制写回，块、引用、捕获、普查、预检/最终完整校验及 owner/full 回退保持。Session 追加开关，RESTORE 追加本次 ordinaryScalarWrites(checked/skipped)，仅计普通标量调用、不含块/引用。两次原生隔离开关对照写回约快 30-32%，少分配约 1.04 MiB；大量变化样本快约 15.6%但多分配约 1.21 MiB，不代表 Unity 或整次恢复收益。226 项回归及原生兼容通过，待实机，详见 `research/2026-11-11-unchanged-scalar-writes.md`。局部递归改静态递归候选无收益，已撤除。
 
 ### 版本与发布
+
+21:54 会话已检查普通引用直接比较：4 次捕获、6 次恢复全部 diff=0/releaseOk=True，无最终回退；采样节点两次 RESTORE MATCH，恢复后两对四件群拖正常结束。preflight/finalVerify/total 中位数 64.5/46/630.5 ms（上轮 82/54/651），非 A/B，不宣称同比例整体提速。非默认议价与实机全图回退仍未覆盖；详见直接引用比较文档。
+
+完整实体语义化开始推进，但尚未启用实体记录/运行态切分或实体写回。本轮先加 `Snapshot.SemanticEntityAudit=true` 只读边界审计：每上下文最多一次，已捕获槽完整扫描，计实体/库存、运行态/数组/闭包候选入出边，成功在主图捕获校验后输出 BOUNDARY。只保留计数及六条有界来源，索引不跨节点保留；失败不影响旧图，明确 pruningAllowed=false/restoreAllowed=false，未知/opaque/静态不认证。CAPTURE 单列 entityAudit，确实增加首节点诊断成本，不是提速。251 项及原生同 uniqueId 不同实体/格子/单槽/闭包/旧图恢复对照通过，待部署实机。路线为“原对象实体记录 + 剩余运行态小图”，完整设计见 `research/2026-11-11-entity-backend-roadmap.md`。
 
 21:39 会话已检查强类型标量比较：7 次捕获（含三个手动）、5 次恢复全部 diff=0/releaseOk=True，独立标签 CAPTURE/RESTORE MATCH，无最终回退。常规捕获 305-412 ms、首节点 1006 ms，其中比较器编译 36 ms；整次恢复中位数 651 ms（上轮 704 ms），非 A/B，不能全归因于此优化。8 对群拖都在首次恢复前，本轮恢复后群拖/六次往返/非默认议价及实机全图回退未覆盖。完整记录见强类型比较文档。
 
@@ -76,6 +80,7 @@ src/ProbablyStolenTools/           Mod 本体
   SemanticTagBlock.cs              精确原生 TagState 的无损混合字段载荷（负责自身九字段恢复）
   SnapshotIntArrayBlock.cs         精确 int[] 的完整物理载荷（不重建集合、不裁剪容量）
   SemanticTagOwnershipAudit.cs     仅限旧图的字典/数组/视图/枚举器别名诊断
+  SemanticEntityBoundaryAudit.cs / SemanticEntityBoundaryShadow.cs  物品/库存实体边界只读审计
   LiquidComposition.cs             成分、纯度、评级、空瓶/容量判定
   AnnotationLabels.cs              原版水质/化学/酿酒语言键与回退文本
   WaterQualityPatch.cs / WineAppraisal.cs / TooltipHooks.cs / TooltipNamePatch.cs
@@ -100,6 +105,7 @@ docs/workshop/                     创意工坊文本
 - 普通字段用反射读；同一路径累计读取 32 次后尝试生成只读委托，失败则回退。字段/类型缓存上限 4096，跨节点复用；每份快照的值/根/数组索引缓存相互隔离，卸载时清理。精确 TagState 可用下述专用无损字段载荷。
 - 普通标量比较器与读取委托分别按路径累计 32 次后尝试编译，仅 primitive/enum/decimal/对应 Nullable 许可；值从参数传入，不绑定对象/节点/数组/期望值。浮点按位，nullable 先比 HasValue，decimal 保持原 Equals 语义；自定义结构/无 reader/缓存满/生成不可用回退，真实读取异常不能吞掉。开关 `Snapshot.TypedScalarComparisons` 决定新访问器是否使用，禁用重启不影响旧载荷。比较器依附同一 4096 上限缓存，不额外无限缓存；Capture 最终校验、恢复预检/差异/最终校验、普通免写判断仍逐槽读取，不新增值令牌。编译计时单列，已包含对应阶段；不与原 walkReaderCompileMs 混算。
 - 普通引用完整比较可由 `IStateReferenceComparer` 许可直接身份比较；ManagedStateAccess 的 `Snapshot.DirectReferenceComparisons` 读取真实存储后，仅与该节点 `_retained` 目标做 ReferenceEquals（null 仍 null），不调用业务 Equals/运算符。全图 Validate 和全部扫描不变，未知后端/禁用仍旧 ID 路径；Capture/Census 引用发现、Tag 块、写回不变。扫描不再仅为比较而登记变化 live 引用的全局 ID，仍完整识别变化；读取/身份异常直接传播。referenceComparisons 是普通引用成功比较调用数，不是新身份数。
+- `Snapshot.SemanticEntityAudit` 仅在每上下文首个采样节点只读扫描旧拓扑，不调用业务 getter、Validate/Restore/Differences，不认证实体独占或覆盖完整。callback 为 delegate/CompilerGenerated 类型元数据启发式，普通目标方法不一定分类；全部其他边仍计数。数组入边不等于独占成员链接，图外/opaque/静态引用未知。禁止从零别名或有限日志批准裁剪、集合重建或实体写回；实体迁移必须另有完整字段覆盖清单、外部句柄协议和旧图 oracle。
 - Mono 普通字段写回不生成委托：需要写入的单字段直接 FieldInfo.SetValue，标量/引用数组元素直接 Array.SetValue；引用字段保留 ReferenceEquals 守卫（不能用 Equals）。`Snapshot.SkipUnchangedScalars=true` 仅对 null/框架 primitive/enum/decimal 的普通槽先读真实存储，按与 ValueEquals 相同的比较语义（浮点按位）免写完全相同值，自定义 nullable 结构体不增加 Equals 调用；配置关闭则无条件写普通标量，配置只影响新节点访问器，关闭后重启。不同值的嵌套结构体和结构体数组保持逐层装箱、递归及父层复制回写。全图 Restore 仍访问全部槽位，普通标量/块标量/普通引用/块引用顺序不变，块不免写；二次写回可按下述 owner 规则筛选，但不能省略完整校验。新读取异常沿原失败流程，不重试无条件写入。五参数 ManagedStateAccess 构造器的 directWrites=false 默认禁用免写，仅为离线/原生夹具保留递归对照，不是新的玩家设置。
 - 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`，默认 **200000 / 3000000 / 256**。
 - 超限跳过本次捕获，释放半成品并保留旧节点；不使用不完整快照，不自动无限加大上限。面板显示失败、提示去重，日志包含实际计数、各上限及来源路径。

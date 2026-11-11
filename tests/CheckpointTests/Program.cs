@@ -22,6 +22,7 @@ SnapshotWriteTests.Run(Test, Check);
 SnapshotScalarWriteTests.Run(Test, Check);
 SnapshotTypedComparisonTests.Run(Test, Check);
 SnapshotReferenceComparisonTests.Run(Test, Check);
+SemanticEntityBoundaryTests.Run(Test, Check);
 SnapshotDifferenceSourceTests.Run(Test, Check);
 SnapshotReconciliationTests.Run(Test, Check);
 SnapshotIntArrayTests.Run(Test, Check);

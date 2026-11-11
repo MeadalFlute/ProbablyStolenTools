@@ -58,3 +58,22 @@ dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.
 - DLL SHA256：`23288AA846A888964EE7961DB1127727F351335C019C3E04365B81F91A71E590`，构建与部署一致。
 - 78 个存档文件校验未变，SettingsImported=False，GameStarted=False；没有启动游戏。
 - 待上述实机操作，不把离线零差异或约 32% 校验收益当作 Unity 验收结论。
+
+## 21:54 实机结果
+
+Session 21:54:43，directReferenceComparisons=True；4 次捕获（含一个手动节点）、6 次内存恢复，全部 diff=0/releaseOk=True、owners/eligible、finalFallback=False。采样节点 CAPTURE MATCH，恢复至该节点两次 RESTORE MATCH。恢复后的两对四件群拖正常结束；本次共九对群拖（其余七对在首次恢复前）。
+
+捕获 id=1..4 的 captureMs=894/283/448/312，verify=74/46/57/57，referenceComparisons=206333/206615/226394/226661。首节点比较器编译 30 ms，已包含 verify。没有把首节点自动顾客与上轮手动首节点作严格对照。
+
+| 恢复目标 | referenceComparisons | census | preflight | write | refresh | reconcile | finalVerify | total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 618999 | 135 | 69 | 131 | 84 | 153 | 44 | 626 |
+| 4 | 679983 | 122 | 65 | 153 | 84 | 159 | 48 | 635 |
+| 3 | 679182 | 139 | 70 | 151 | 72 | 154 | 50 | 639 |
+| 2 | 619845 | 174 | 64 | 125 | 80 | 152 | 39 | 641 |
+| 1 | 618999 | 126 | 61 | 123 | 75 | 183 | 40 | 616 |
+| 4 | 679983 | 120 | 64 | 133 | 78 | 131 | 73 | 603 |
+
+中位数 preflight=64.5、finalVerify=46、total=630.5 ms；上轮分别 82/54/651 ms。引用直接比较确实启用，完整读取阶段有下降，但不是严格 A/B，不归因全部收益、不推算离线约 32% 为整次提速。每次二次修复仍为 cassettePlayer.modifiedState.dict 四个差异槽、完整十槽 owner。
+
+本会话 PSTools 未见失败/异常；Player.log 仍为既有信任列表 TLS 和第三方 TryEquipItem 挂点错误，另一次初始 InventoryScene watchdog 约 7.7 秒后恢复，不归为快照回调卡顿。没有文件回溯/音频卸载路径，非默认议价与实机全图回退仍未覆盖。

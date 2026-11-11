@@ -32,6 +32,7 @@ namespace ProbablyStolenTools
         private static long _callbackId;
 #if MONO
         private static bool _semanticShadowAttempted;
+        private static bool _entityBoundaryAttempted;
 #endif
         internal static bool Restoring { get; private set; }
         internal static bool PatchesReady;
@@ -299,6 +300,7 @@ namespace ProbablyStolenTools
             if (Restoring) return;
 #if MONO
             _semanticShadowAttempted = false;
+            _entityBoundaryAttempted = false;
 #endif
             Failures.Clear();
             LastCaptureError = null;
@@ -668,6 +670,25 @@ namespace ProbablyStolenTools
                 }
 #endif
                 long tSemantic = timing.ElapsedMilliseconds;
+                phase = "entity-boundary-audit";
+                string entityAudit = null;
+#if MONO
+                if (!_entityBoundaryAttempted && Plugin.CfgSemanticEntityAudit?.Value == true)
+                {
+                    _entityBoundaryAttempted = true;
+                    var auditClock = System.Diagnostics.Stopwatch.StartNew();
+                    try
+                    {
+                        entityAudit = SemanticEntityBoundaryShadow.Capture(candidate.Graph, MaxSnapshotObjects).Summary;
+                    }
+                    catch (Exception e)
+                    {
+                        EventLog.Write($"[SemanticEntities] AUDIT FAILED id={candidate.Id} readOnly=true " +
+                            $"legacyAuthoritative=true elapsedMs={auditClock.ElapsedMilliseconds}: " + e);
+                    }
+                }
+#endif
+                long tEntityAudit = timing.ElapsedMilliseconds;
                 phase = "verify";
 #if MONO
                 long captureCompareCompileBefore = SnapshotFieldReader.CompareCompileTicks;
@@ -675,6 +696,8 @@ namespace ProbablyStolenTools
                 var diff = candidate.Graph.Differences();
                 if (diff.Count != 0) throw new InvalidOperationException("Capture changed while reading: " + string.Join(", ", diff));
                 long tVerify = timing.ElapsedMilliseconds;
+                if (entityAudit != null)
+                    EventLog.Write($"[SemanticEntities] BOUNDARY id={candidate.Id} " + entityAudit);
 #if MONO
                 if (candidate.SemanticTags != null)
                 {
@@ -726,7 +749,8 @@ namespace ProbablyStolenTools
                     $"arrivalWaitSeconds={(manual || closed ? 0 : Time.unscaledTime - _arrivedAt):0.00} " +
                     $"captureMs={tFinish} " +
                     $"ms(access={tAccess},walk={tWalk - tAccess},items={tItems - tWalk}," +
-                    $"semanticShadow={tSemantic - tItems},verify={tVerify - tSemantic},prepareHistory={tBeforeHistory - tVerify}," +
+                    $"semanticShadow={tSemantic - tItems},entityAudit={tEntityAudit - tSemantic}," +
+                    $"verify={tVerify - tEntityAudit},prepareHistory={tBeforeHistory - tVerify}," +
                     $"history={tHistory - tBeforeHistory},retain={tRetain - tHistory}," +
                     $"finish={tFinish - tRetain},total={tFinish})" + readers);
                 TraceBargain("CAPTURE");
@@ -1290,6 +1314,7 @@ namespace ProbablyStolenTools
         {
 #if MONO
             _semanticShadowAttempted = false;
+            _entityBoundaryAttempted = false;
 #endif
             Failures.Clear();
             LastCaptureError = null;

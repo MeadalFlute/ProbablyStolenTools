@@ -429,6 +429,54 @@ try
 }
 finally { ((IDisposable)graph).Dispose(); }
 
+// Two distinct items deliberately share uniqueId=0; entity boundaries use graph identities, not uniqueId.
+var boundaryItems = new[] { Data("GameItemElement"), Data("GameItemElement") };
+var boundaryGrid = Data("GameGridInventory");
+var boundarySlot = Data("GameSlotInventory");
+var boundaryClosure = Data("MiscItemDirectory+<>c__DisplayClass51_0");
+boundaryClosure.GetType().GetField("item", dataFlags).SetValue(boundaryClosure, boundaryItems[0]);
+var boundaryList = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(game.GetType("GameItem", true)));
+foreach (var boundaryItem in boundaryItems) boundaryList.Add(boundaryItem);
+boundaryGrid.GetType().GetField("items", dataFlags).SetValue(boundaryGrid, boundaryList);
+boundarySlot.GetType().GetField("currentItem", dataFlags).SetValue(boundarySlot, boundaryItems[0]);
+boundaryItems[0].GetType().GetProperty("parentInventory").SetValue(boundaryItems[0], boundaryGrid);
+var boundaryRoots = new[] { boundaryGrid, boundarySlot, boundaryClosure };
+var boundaryAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+    .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+foreach (var root in boundaryRoots)
+    accessType.GetMethod("AddRoot", dataFlags).Invoke(boundaryAccess, new object[] { Identity(root), Array.Empty<string>() });
+var boundaryGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+    .Invoke(null, new object[] { boundaryAccess, boundaryRoots.Select(Identity).ToArray(), 50000, 1000000, 64L * 1024 * 1024 });
+try
+{
+    var boundaryType = mod.GetType("ProbablyStolenTools.SemanticEntityBoundaryShadow", true);
+    object AuditBoundary() => boundaryType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { boundaryGraph, 50000 });
+    long BoundaryCount(object audit, string name)
+        => Convert.ToInt64(audit.GetType().GetField(name, dataFlags).GetValue(audit));
+    var audit = AuditBoundary();
+    if (BoundaryCount(audit, "Items") != 2 || BoundaryCount(audit, "GridInventories") != 1
+        || BoundaryCount(audit, "SlotInventories") != 1 || BoundaryCount(audit, "ExternalEntities") != 0
+        || BoundaryCount(audit, "RootEntities") != 2 || BoundaryCount(audit, "CallbackIncomingLinks") == 0
+        || BoundaryCount(audit, "ArrayIncomingLinks") < 2
+        || BoundaryCount(audit, "ScannedSlots") != (int)graphType.GetProperty("SlotCount", dataFlags).GetValue(boundaryGraph))
+        throw new Exception("Native entity audit lost item/inventory identities, closure bindings or complete slot coverage.");
+    boundaryList.Clear();
+    var changedAudit = AuditBoundary();
+    foreach (string name in new[] { "Items", "ScannedSlots", "EntitySlots", "IncomingRuntimeLinks", "CallbackIncomingLinks", "ArrayIncomingLinks" })
+        if (BoundaryCount(changedAudit, name) != BoundaryCount(audit, name))
+            throw new Exception("Native entity audit reread changed live topology: " + name);
+    if (((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+        .Invoke(boundaryGraph, new object[] { 12 })).Count == 0)
+        throw new Exception("Native entity fixture did not change.");
+    graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
+    if (((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+        .Invoke(boundaryGraph, new object[] { 12 })).Count != 0 || boundaryList.Count != 2)
+        throw new Exception("Native entity audit changed legacy restoration.");
+    Console.WriteLine("PASS native entity boundary audit: distinct zero-uniqueId items, grid/slot membership, native closure aliases, captured-only topology and unchanged legacy restoration");
+}
+finally { ((IDisposable)boundaryGraph).Dispose(); }
+
 // Exercise the read-only semantic adapter against installed game types, without Unity or save APIs.
 var tagType = game.GetType("TagState", true);
 var systemType = game.GetType("TagSystem", true);
