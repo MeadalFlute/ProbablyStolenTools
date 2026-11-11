@@ -365,9 +365,14 @@ tagRoots.SetValue(secondSystem, 1);
 tagRoots.SetValue(effectSystem, 2);
 var tagAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
     .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
-accessType.GetMethod("AddRoot", dataFlags).Invoke(tagAccess, new object[] { Identity(tagRoots), Array.Empty<string>() });
+var capturedEnumerator = tagMap.GetEnumerator();
+capturedEnumerator.MoveNext();
+var tagFixture = new object[] { tagRoots, tagMap,
+    mapType.GetField("_entries", dataFlags).GetValue(tagMap), tagMap.Keys, tagMap.Values,
+    capturedEnumerator, Data("TagState") };
+accessType.GetMethod("AddRoot", dataFlags).Invoke(tagAccess, new object[] { Identity(tagFixture), Array.Empty<string>() });
 var tagGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
-    .Invoke(null, new object[] { tagAccess, new[] { Identity(tagRoots) }, 50000, 1000000, 64L * 1024 * 1024 });
+    .Invoke(null, new object[] { tagAccess, new[] { Identity(tagFixture) }, 50000, 1000000, 64L * 1024 * 1024 });
 object shadow = null;
 try
 {
@@ -387,6 +392,11 @@ try
         || !summary.Contains("derivedSystems=2 derivedStates=1")
         || !summary.Contains("GameGridInventory:1") || !summary.Contains("ItemStateModifier:1"))
         throw new Exception("Semantic summary must disclose native subclass projection scope: " + summary);
+    string ownership = (string)shadowType.GetProperty("OwnershipSummary", dataFlags).GetValue(shadow);
+    foreach (string expected in new[] { "scope=captured-graph-only pruningAllowed=false", "sharedMaps=1",
+        "mapExternalEdges=4", "storageExternalEdges=1", "viewExternalEdges=2", "standaloneStates=1",
+        "unknownMapSlots=0" })
+        if (!ownership.Contains(expected)) throw new Exception("Native tag ownership audit missed " + expected + ": " + ownership);
     object[] changed = { true, "", 42, 0f, 99L, 1d, true, "changed", "Changed" };
     foreach (var state in new[] { tagState, modifierState })
         for (int i = 0; i < tagFields.Length; i++)
@@ -454,7 +464,7 @@ try
     }
     if (Diff(tagGraph, graphType) != 0 || Diff(semantic, semantic.GetType()) != 0)
         throw new Exception("Subtype refusal invalidated retained checkpoints.");
-    Console.WriteLine("PASS installed native tag base-field projection including GameGridInventory/CombatAbilityEffect/ItemStateModifier; extra fields remain legacy-only, external subtypes refused, shared maps and repeated restores intact");
+    Console.WriteLine("PASS installed native tag projection and ownership audit; detects map/storage/view/enumerator aliases and standalone tags, preserves extra fields, rejects external subtypes and matches repeated restores");
 }
 finally
 {

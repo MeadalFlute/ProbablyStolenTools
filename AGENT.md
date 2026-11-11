@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**115 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**125 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -45,6 +45,7 @@ src/ProbablyStolenTools/           Mod 本体
   StateGraph.cs                    槽位/对象/引用序列化与差异校验
   SnapshotFieldReader.cs           只读字段读取委托（dynamic-code）
   SemanticTagSnapshot.cs / SemanticTagShadow.cs  实验性标签语义只读对照（不负责恢复）
+  SemanticTagOwnershipAudit.cs     仅限旧图的字典/数组/视图/枚举器别名诊断
   LiquidComposition.cs             成分、纯度、评级、空瓶/容量判定
   AnnotationLabels.cs              原版水质/化学/酿酒语言键与回退文本
   WaterQualityPatch.cs / WineAppraisal.cs / TooltipHooks.cs / TooltipNamePatch.cs
@@ -156,6 +157,7 @@ docs/workshop/                     创意工坊文本
 - `[QuickSL/Geom]` 只在物品视图异常（DESTROYED / MISSING / NOSPRITE / HIDDEN / MISPLACED）时输出，是排查贴图问题的第一入口。
 - CAPTURE 仍一行摘要：access/walk/items/verify 后补 prepareHistory/history/retain/finish，history 包含正常历史淘汰。RESTORE OK 仍一行：validate/census/preflight/write/refresh/reconcile/finalVerify/cleanup/release/total，包含当前普查释放，但不包含入口拒绝门控和摘要日志自身 I/O。失败输出 phase 与 elapsedMs。
 - 标签对照另记 `[SemanticTags] CAPTURE MATCH / RESTORE MATCH / ... FAILED`，按同一 `id` 对应节点。捕获摘要追加 `semanticShadow`，恢复摘要追加 `semanticVerify`，避免把实验开销混进旧后端阶段；`logicalSlots/Bytes` 只表示语义标签载荷，不是内存占用或全图替代规模。回溯采样节点才能得到 RESTORE MATCH；普通节点没有这条日志。关闭 `Snapshot.SemanticTagShadow` 可停止后续采样，已捕获样本仍随节点验证/释放。
+- 采样节点另记一条 `[SemanticTags] OWNERSHIP`，只扫描已保存的槽位/引用，不重读 live 字段、不创建字典视图。统计共享字典、外部引用、内部数组、Keys/Values 视图、独立可达标签、未知布局和相关旧图槽数；最多输出六条来源、每条路径最多 280 字符，达到日志上限仍完整计数。`scope=captured-graph-only pruningAllowed=false` 始终成立：静态、图外和不透明第三方对象的内部引用不可见，不能据此许可裁剪。比较器与子类额外字段仍仅旧图负责。captureVerifyMs/semanticShadow 包含本轮审计成本，OWNERSHIP 的 auditMs 单列其中耗时，不得当作语义载荷捕获本身。
 - 临时普查释放异常单独记 CENSUS RELEASE FAILED，不覆盖已经完成的业务恢复：恢复完成时仍输出 RESTORE OK，releaseOk=False 表示仅释放异常。无论释放是否成功，都恢复 timeScale/Restoring；不能把这种情况误报为写入失败或要求再次恢复。
 - 仅 `Logging.Verbose=true` 时同一摘要追加 typesBySlots：最多展开 128 种类型、输出槽位前六类，其余合计；统计对象数、槽数、数组容量与最大数组长度。只读已有描述，不调用业务属性、不新增值令牌。它不是实际内存估算，也不代表集合有效条目数。
 
@@ -233,5 +235,6 @@ docs/workshop/                     创意工坊文本
 - `research/2026-11-11-snapshot-review-followup.md`：预算/释放异常评审跟进、下午真实游玩阶段分布与测量限制。
 - `research/2026-11-11-semantic-tags-step1.md`：标签语义只读实验、原版字段兼容验证、模型基准及启用写入前的边界。
 - `research/2026-11-11-semantic-tags-live-check.md`：首次实机采样失败、原版子类投影修正及本次真实耗时。
+- `research/2026-11-11-semantic-tags-boundary.md`：首次实机匹配、只读引用审计、集合替换风险与下一阶段门槛。
 - `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
 - `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。

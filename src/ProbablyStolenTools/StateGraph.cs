@@ -67,6 +67,19 @@ namespace ProbablyStolenTools
         internal IEnumerable<IntPtr> Objects => _objects;
         internal bool Contains(IntPtr id) => _objects.Contains(id);
 
+        // Inspect captured topology, never live fields; diagnostic consumers cannot write or prune entries.
+        internal void VisitCapturedSlots(Action<IntPtr, StateSlot, IntPtr> visit)
+        {
+            RequireCheckpoint();
+            foreach (var entry in _entries) visit(entry.Owner, entry.Slot, entry.Reference);
+        }
+
+        internal bool IsCapturedRoot(IntPtr id)
+        {
+            RequireCheckpoint();
+            return _sources.TryGetValue(id, out var source) && source.Parent == IntPtr.Zero;
+        }
+
         private StateGraph(IStateAccess access, bool captureValues)
         { _access = access; _captureValues = captureValues; }
 

@@ -660,8 +660,12 @@ namespace ProbablyStolenTools
                 long tVerify = timing.ElapsedMilliseconds;
 #if MONO
                 if (candidate.SemanticTags != null)
+                {
                     EventLog.Write($"[SemanticTags] CAPTURE MATCH id={candidate.Id} readOnly=true " +
                         $"captureVerifyMs={semanticCaptureVerifyMs} {candidate.SemanticTags.Summary}");
+                    EventLog.Write($"[SemanticTags] OWNERSHIP id={candidate.Id} readOnly=true " +
+                        candidate.SemanticTags.OwnershipSummary);
+                }
 #endif
                 phase = "history";
                 if (closed)

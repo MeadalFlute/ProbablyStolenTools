@@ -10,6 +10,7 @@
   <ItemGroup>
     <Compile Include="../../src/ProbablyStolenTools/StateGraph.cs" Link="StateGraph.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SemanticTagSnapshot.cs" Link="SemanticTagSnapshot.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/SemanticTagOwnershipAudit.cs" Link="SemanticTagOwnershipAudit.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CheckpointHistory.cs" Link="CheckpointHistory.cs" />
     <Compile Include="../../src/ProbablyStolenTools/PanelModel.cs" Link="PanelModel.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SaveMetadata.cs" Link="SaveMetadata.cs" />

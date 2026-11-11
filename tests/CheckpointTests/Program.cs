@@ -15,6 +15,7 @@ SnapshotArraySchemaTests.Run(Test, Check);
 SnapshotDiscoveryTests.Run(Test, Check);
 SnapshotCensusTests.Run(Test, Check);
 SemanticTagSnapshotTests.Run(Test, Check);
+SemanticTagOwnershipTests.Run(Test, Check);
 ItemLayoutTests.Run(Test, Check);
 ReportRegressionTests.Run(Test, Check);
 AnnotationLocaleTests.Run(Test, Check);

@@ -135,6 +135,13 @@ namespace ProbablyStolenTools
             }
         }
 
+        internal void VisitCapturedIdentities(Action<TSystem, Dictionary<string, TTag>> owner, Action<TTag> tag)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(SemanticTagSnapshot<TSystem, TTag>));
+            foreach (var value in _owners) owner(value.System, value.Map);
+            foreach (var value in _tags) tag(value.Instance);
+        }
+
         public void Dispose()
         {
             if (_disposed) return;

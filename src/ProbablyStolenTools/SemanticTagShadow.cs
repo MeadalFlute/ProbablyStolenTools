@@ -12,12 +12,15 @@ namespace ProbablyStolenTools
         private readonly SemanticTagSnapshot<TagSystem, TagState> _snapshot;
         private readonly int _derivedSystems, _derivedStates;
         private readonly string _systemTypes, _stateTypes;
+        private readonly string _ownership;
+        internal string OwnershipSummary => _ownership;
         private SemanticTagShadow(SemanticTagSnapshot<TagSystem, TagState> snapshot,
-            int derivedSystems, int derivedStates, string systemTypes, string stateTypes)
+            int derivedSystems, int derivedStates, string systemTypes, string stateTypes, string ownership)
         {
             _snapshot = snapshot;
             _derivedSystems = derivedSystems; _derivedStates = derivedStates;
             _systemTypes = systemTypes; _stateTypes = stateTypes;
+            _ownership = ownership;
         }
 
         private static void CheckNativeType(Type type, Type baseType)
@@ -102,7 +105,9 @@ namespace ProbablyStolenTools
                 snapshot.ValidateCoverage(value => graph.Contains(ManagedObjects.Id(value)));
                 var diff = snapshot.Differences();
                 if (diff.Count != 0) throw new InvalidOperationException("Semantic tag capture changed: " + string.Join(", ", diff));
-                return new SemanticTagShadow(snapshot, derivedSystems, derivedStates, Types(systemTypes), Types(stateTypes));
+                var ownership = SemanticTagOwnershipAudit.Capture(graph, snapshot, "TagSystem.<dict>k__BackingField");
+                return new SemanticTagShadow(snapshot, derivedSystems, derivedStates, Types(systemTypes), Types(stateTypes),
+                    ownership.Summary);
             }
             catch { snapshot.Dispose(); throw; }
         }
