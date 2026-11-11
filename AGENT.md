@@ -48,6 +48,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 当前进度：2026-11-12 01:04:53.592 库存补测通过。3捕获/4恢复最终零差异，首节点两次286库存写回和双载荷 MATCH；两次恢复首节点后的四件群拖完成，用户确认无问题。首节点3557 ms（entityRecords2482含runtime1040），后续274/316 ms；恢复中位数685.5 ms，非 A/B、不归因提速。接续新增 `Snapshot.SemanticRuntimeRestore=true` 受限联合写回：仅采样节点、完整启用实体组与独立运行态逐槽无重叠覆盖旧图才准入，首次写回不再由旧图承担，旧完整捕获/预检/最终校验/owner/full修复/视觉顺序保留。关闭必要实体开关走既有实体/旧图路径，实际写错不隐藏重试。336项及原生六轮真实运行态标签/数组/字典/闭包/回调/成员对照通过。待联合运行态首次实机，生产捕获尚未替换，重复诊断暂保留，不是完整后端。详见 `research/2026-11-12-runtime-partition-writes.md`；以下为各历史阶段记录。
 
+最新部署：2026-11-12 01:15，运行时提交 `7a35d27`，备份 `out/full-release-deploy-20261112-011552`，DLL SHA256 `CF99A5648C9774735D1559F898DC9DF926145ECB7E533608D1FEE30B77227DF5`。78存档文件校验未变，未导入设置/启动游戏，版本0.8.14，未推送。停止等待联合运行态首次实机：容器/柜台/单槽间移动、旋转/买卖、关开窗口，后续及手动节点，至少三次往返首节点并恢复后群拖；检查成员/数量/锁/顾客/贴图碰撞。仅采样节点 runtimePilot=True/runtimePilotSlots>0，其他False/0，最终diff=0、双载荷MATCH；此验收前不替换生产捕获或移除诊断。
+
 最新实机为 2026-11-12 00:54:04.901 库存会话：5 捕获（含手动）/9 恢复最终 diff=0/releaseOk=True，无最终回退；首节点三次实际 inventoryPilotOwners=286（grid107/slot179），连同物品/窗口/形状完整覆盖 78095 Entity 槽，双载荷全部 MATCH。首节点 3084 ms（entityRecords2115，包含 runtime864），其他捕获 263-345 ms，恢复中位数 711 ms，非 A/B、不宣称提速。PSTools 无失败/不可用，Player.log 见启动 TLS/Curl 网络错误，未见快照异常；非默认议价仍未覆盖。用户明确未做回溯后群拖，日志十次群拖均在首次恢复前，不能认定交互全面验收。保持 `ae2ec9c` 部署，无运行时代码变更；先补首节点恢复后 2-4 件群拖、到后续节点再返回并重复，检查成员和贴图碰撞；此缺口补齐前不开放独立运行态写回/替换生产捕获。详见库存阶段 First Live Results。
 
 00:39:03.759 物品阶段已检查：6 捕获（含手动）/9 恢复最终 diff=0/releaseOk=True，无最终回退；首节点三次实际写回 953 物品/101 窗口/2966 形状，独立实体/运行态全部 MATCH，恢复后三件群拖完成。首节点 2681 ms，其中 entityRecords=1730/runtimeCaptureVerifyMs=1009（包含关系），其他捕获 287-422 ms；恢复中位数 698 ms，非 A/B，不宣称提速。PSTools 无失败/不可用，Player.log 仅原生 ModTrustList 启动 TLS 警告；非默认议价仍未覆盖。详见物品阶段记录。

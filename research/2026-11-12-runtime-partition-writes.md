@@ -117,3 +117,11 @@ Only sampled node should show runtimePilot=True and positive runtimePilotSlots
 releaseOk=True, independent MATCH/runtimeDiffSamples=0, no unavailable/failure.
 Do not remove old capture/diagnostics, broaden sampling or alter visual ordering
 before this first paired-runtime Unity acceptance.
+
+## Deployment
+
+2026-11-12 01:15, runtime commit7a35d27, version0.8.14, no push.
+Backup: out/full-release-deploy-20261112-011552.
+DLL SHA256: CF99A5648C9774735D1559F898DC9DF926145ECB7E533608D1FEE30B77227DF5.
+78 save files verified unchanged; no settings imported, no game started.
+Awaiting the first paired-runtime live test above.
