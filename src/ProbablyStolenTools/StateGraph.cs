@@ -42,6 +42,21 @@ namespace ProbablyStolenTools
         IReadOnlyList<StateSlot> Describe(IntPtr id, int remainingSlots, long remainingBytes);
     }
 
+    // Optional lossless managed-field payload: scalars retain the eight-byte logical token budget.
+    // Topology, discovery, ownership and all budget enforcement still belong to StateGraph.
+    internal interface IStateBlockAccess
+    {
+        IStateBlock CaptureBlock(IntPtr id, IReadOnlyList<StateSlot> slots);
+    }
+
+    internal interface IStateBlock
+    {
+        IntPtr ReferenceAt(StateSlot slot);
+        void RestoreValues();
+        void RestoreReferences();
+        void CollectDifferences(List<string> result, int max);
+    }
+
     internal sealed class SnapshotDescriptionLimitException : InvalidOperationException
     {
         internal readonly string Kind;
@@ -58,12 +73,14 @@ namespace ProbablyStolenTools
         private readonly IStateAccess _access;
         private readonly bool _captureValues;
         private readonly List<Entry> _entries = new();
+        private readonly List<(IntPtr Owner, IReadOnlyList<StateSlot> Slots, IStateBlock Payload)> _blocks = new();
         private readonly HashSet<IntPtr> _objects = new();
         private readonly Dictionary<IntPtr, (IntPtr Parent, string Field)> _sources = new();
         private bool _disposed;
         internal int ObjectCount => _objects.Count;
         internal int SlotCount { get; private set; }
         internal long ByteCount { get; private set; }
+        internal int BlockCount => _blocks.Count;
         internal IEnumerable<IntPtr> Objects => _objects;
         internal bool Contains(IntPtr id) => _objects.Contains(id);
 
@@ -72,6 +89,9 @@ namespace ProbablyStolenTools
         {
             RequireCheckpoint();
             foreach (var entry in _entries) visit(entry.Owner, entry.Slot, entry.Reference);
+            foreach (var block in _blocks)
+                foreach (var slot in block.Slots)
+                    visit(block.Owner, slot, slot.IsReference ? block.Payload.ReferenceAt(slot) : IntPtr.Zero);
         }
 
         internal bool IsCapturedRoot(IntPtr id)
@@ -101,6 +121,7 @@ namespace ProbablyStolenTools
                 var pending = new Queue<IntPtr>();
                 var budgeted = access as IBudgetedStateDescription;
                 var probe = captureValues ? null : access as IStateValueProbe;
+                var blockAccess = captureValues ? access as IStateBlockAccess : null;
                 void Discover(IntPtr id, IntPtr parent, string field)
                 {
                     if (id == IntPtr.Zero || graph._sources.ContainsKey(id)) return;
@@ -133,6 +154,7 @@ namespace ProbablyStolenTools
                             $" -> array requires slots={e.RequiredSlots}, bytes={e.RequiredBytes} before expansion",
                             graph._sources.Count);
                     }
+                    var block = blockAccess?.CaptureBlock(id, description);
                     foreach (var slot in description)
                     {
                         if (graph.SlotCount >= maxSlots)
@@ -141,15 +163,17 @@ namespace ProbablyStolenTools
                                 graph._sources.Count);
                         if (slot.IsReference)
                         {
-                            var value = access.ReadReference(id, slot);
-                            if (captureValues) graph._entries.Add(new Entry(id, slot, null, value));
+                            var value = block == null ? access.ReadReference(id, slot) : block.ReferenceAt(slot);
+                            if (captureValues && block == null) graph._entries.Add(new Entry(id, slot, null, value));
                             graph.SlotCount++;
                             graph.ByteCount += IntPtr.Size;
                             Discover(value, id, slot.Name);
                         }
                         else
                         {
-                            if (probe != null)
+                            if (block != null)
+                                graph.ByteCount += sizeof(long);
+                            else if (probe != null)
                                 graph.ByteCount += probe.ProbeValue(id, slot);
                             else
                             {
@@ -164,6 +188,7 @@ namespace ProbablyStolenTools
                                 maxObjects, maxSlots, maxBytes, pending.Count, graph.SourceOf(id) + " -> " + slot.Name,
                                 graph._sources.Count);
                     }
+                    if (block != null) graph._blocks.Add((id, description, block));
                 }
                 access.Validate();
                 return graph;
@@ -192,8 +217,10 @@ namespace ProbablyStolenTools
             // All original objects/arrays are retained. Restore their contents first and links second.
             foreach (var e in _entries)
                 if (!e.Slot.IsReference) _access.WriteValue(e.Owner, e.Slot, e.Bytes);
+            foreach (var block in _blocks) block.Payload.RestoreValues();
             foreach (var e in _entries)
                 if (e.Slot.IsReference) _access.WriteReference(e.Owner, e.Slot, e.Reference);
+            foreach (var block in _blocks) block.Payload.RestoreReferences();
         }
 
         internal IReadOnlyList<string> Differences(int max = 12)
@@ -214,6 +241,7 @@ namespace ProbablyStolenTools
                 }
                 if (!same && result.Count < max) result.Add(e.Slot.Name);
             }
+            foreach (var block in _blocks) block.Payload.CollectDifferences(result, max);
             return result;
         }
 
@@ -228,6 +256,7 @@ namespace ProbablyStolenTools
             if (_disposed) return;
             _disposed = true;
             _entries.Clear();
+            _blocks.Clear();
             SlotCount = 0;
             _objects.Clear();
             _sources.Clear();

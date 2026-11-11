@@ -48,6 +48,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<int> CfgMaxDiskMb;
         internal static ConfigEntry<int> CfgMaxObjects, CfgMaxSlots, CfgMaxBytesMb;
         internal static ConfigEntry<bool> CfgSemanticTagShadow;
+        internal static ConfigEntry<bool> CfgSemanticTagBlocks;
         internal static ConfigEntry<KeyCode> CfgKeyPrev;
         internal static ConfigEntry<KeyCode> CfgKeyManual;
         internal static ConfigEntry<KeyCode> CfgKeyDay;
@@ -250,7 +251,9 @@ namespace ProbablyStolenTools
             CfgMaxBytesMb = Config.Bind("Snapshot", "MaxBytesMB", 256,
                 "Snapshot byte budget in MiB.");
             CfgSemanticTagShadow = Config.Bind("Snapshot", "SemanticTagShadow", true,
-                "Experimental read-only tag comparison on one checkpoint per context. Legacy snapshots remain authoritative; adds diagnostic capture/verification work, not a speedup.");
+                "Experimental read-only tag comparison on one checkpoint per context. StateGraph remains authoritative; adds diagnostic capture/verification work, not a speedup.");
+            CfgSemanticTagBlocks = Config.Bind("Snapshot", "SemanticTagBlocks", true,
+                "Experimental lossless exact TagState field compression. Preserves identities, dictionary storage and full verification. Disable to capture new checkpoints with legacy field tokens.");
             CfgKeyManual = Config.Bind("Rewind", "KeyManualCheckpoint", KeyCode.F9,
                 "Create a checkpoint immediately, without waiting for a customer.");
             CfgKeyPrev = Config.Bind("Rewind", "KeyPrevCheckpoint", KeyCode.F6,
@@ -336,7 +339,7 @@ namespace ProbablyStolenTools
             TooltipHooks.Enable();
             EventLog.Write($"[Session] version={Version} game={Application.version} locale=deferred " +
                 $"snapshotLimits(objects={CfgMaxObjects.Value},slots={CfgMaxSlots.Value},MiB={CfgMaxBytesMb.Value}) " +
-                $"verbose={CfgVerboseLog.Value} semanticTagShadow={CfgSemanticTagShadow.Value}; " +
+                $"verbose={CfgVerboseLog.Value} semanticTagShadow={CfgSemanticTagShadow.Value} semanticTagBlocks={CfgSemanticTagBlocks.Value}; " +
                 "arrivalWaitSeconds is not capture duration; use captureMs");
             LogSource.LogInfo("Loaded.");
         }

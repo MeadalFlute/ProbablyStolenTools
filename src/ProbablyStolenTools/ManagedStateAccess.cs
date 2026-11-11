@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription
+    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess
     {
         private readonly struct Storage
         {
@@ -47,6 +47,15 @@ namespace ProbablyStolenTools
         private readonly Dictionary<long, object> _savedValues = new();
         private long _nextValue;
         private static readonly object NullValue = new();
+        internal Func<object, IReadOnlyList<StateSlot>, IStateBlock> BlockCapture;
+        internal string BlockMode = "legacy";
+
+        IStateBlock IStateBlockAccess.CaptureBlock(IntPtr id, IReadOnlyList<StateSlot> slots)
+        {
+            // Selected roots must retain exactly their requested surface.
+            if (BlockCapture == null || _roots.TryGetValue(id, out var fields) && fields != null) return null;
+            return BlockCapture(_retained[id], slots);
+        }
 
         // 纯运行时锁/转场计数：只由游戏自己维护，快照既不该保存也不该恢复。
         private static readonly HashSet<string> TransientLocks = new(StringComparer.Ordinal)
@@ -447,6 +456,7 @@ namespace ProbablyStolenTools
             _schemas.Clear(); _elementSchemas.Clear(); _traversable.Clear();
             _arraySchemas.Clear();
             _arraySchemaSlots = 0; _arraySchemaHits = 0; _arraySlotsReused = 0;
+            BlockCapture = null;
         }
     }
 }

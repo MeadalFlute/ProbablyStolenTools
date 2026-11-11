@@ -372,11 +372,29 @@ var tagFixture = new object[] { tagRoots, tagMap,
     mapType.GetField("_entries", dataFlags).GetValue(tagMap), tagMap.Keys, tagMap.Values,
     capturedEnumerator, Data("TagState") };
 accessType.GetMethod("AddRoot", dataFlags).Invoke(tagAccess, new object[] { Identity(tagFixture), Array.Empty<string>() });
-var tagGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+var legacyTagGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
     .Invoke(null, new object[] { tagAccess, new[] { Identity(tagFixture) }, 50000, 1000000, 64L * 1024 * 1024 });
+var compactType = mod.GetType("ProbablyStolenTools.SemanticTagBlock", true);
+var compactAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+    .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new[] { compactAccess });
+accessType.GetMethod("AddRoot", dataFlags).Invoke(compactAccess, new object[] { Identity(tagFixture), Array.Empty<string>() });
+var tagGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+    .Invoke(null, new object[] { compactAccess, new[] { Identity(tagFixture) }, 50000, 1000000, 64L * 1024 * 1024 });
 object shadow = null;
 try
 {
+    if ((int)graphType.GetProperty("BlockCount", dataFlags).GetValue(tagGraph) != 2)
+        throw new Exception("Exact native TagState and standalone state must compress; ItemStateModifier must fall back.");
+    foreach (string metric in new[] { "ObjectCount", "SlotCount", "ByteCount" })
+        if (!Equals(graphType.GetProperty(metric, dataFlags).GetValue(tagGraph),
+            graphType.GetProperty(metric, dataFlags).GetValue(legacyTagGraph)))
+            throw new Exception("Compact native budget/coverage mismatch: " + metric);
+    foreach (var id in (System.Collections.IEnumerable)graphType.GetProperty("Objects", dataFlags).GetValue(legacyTagGraph))
+        if (!(bool)graphType.GetMethod("Contains", dataFlags).Invoke(tagGraph, new[] { id })
+            || !Equals(graphType.GetMethod("SourceOf", dataFlags).Invoke(tagGraph, new[] { id }),
+                graphType.GetMethod("SourceOf", dataFlags).Invoke(legacyTagGraph, new[] { id })))
+            throw new Exception("Compact native identity or discovery source mismatch.");
     var shadowType = mod.GetType("ProbablyStolenTools.SemanticTagShadow", true);
     shadow = shadowType.GetMethod("Capture", BindingFlags.NonPublic | BindingFlags.Static)
         .Invoke(null, new object[] { tagGraph, 50000, 1000000, 64L * 1024 * 1024 });
@@ -403,10 +421,10 @@ try
         for (int i = 0; i < tagFields.Length; i++)
         {
             tagFields[i].SetValue(state, changed[i]);
-            if (Diff(semantic, semantic.GetType()) == 0)
+            if (Diff(semantic, semantic.GetType()) == 0 || Diff(tagGraph, graphType) == 0)
                 throw new Exception("Native semantic reader missed field: " + state.GetType().Name + "." + tagNames[i]);
             graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
-            if (Diff(semantic, semantic.GetType()) != 0)
+            if (Diff(semantic, semantic.GetType()) != 0 || Diff(legacyTagGraph, graphType) != 0)
                 throw new Exception("Native semantic field did not restore: " + tagNames[i]);
         }
     foreach (var state in new[] { tagState, modifierState })
@@ -420,7 +438,7 @@ try
             {
                 var identitySemantic = shadowType.GetField("_snapshot", dataFlags).GetValue(identityShadow);
                 tagFields[index].SetValue(state, new string(expected.ToCharArray()));
-                if (Diff(identitySemantic, identitySemantic.GetType()) == 0)
+                if (Diff(identitySemantic, identitySemantic.GetType()) == 0 || Diff(tagGraph, graphType) == 0)
                     throw new Exception("Native semantic reader missed equal-text replacement: " + tagNames[index]);
             }
             finally
@@ -499,10 +517,147 @@ try
     }
     if (Diff(tagGraph, graphType) != 0 || Diff(semantic, semantic.GetType()) != 0)
         throw new Exception("Subtype refusal invalidated retained checkpoints.");
-    Console.WriteLine("PASS installed native tag projection and ownership audit; detects map/storage/view/enumerator aliases and standalone tags, preserves extra fields, rejects external subtypes and matches repeated restores");
+    // The standalone exact state starts with null backing fields, outside the semantic shadow's map scope.
+    foreach (var state in new[] { tagState, tagFixture[6] })
+        for (int i = 0; i < tagFields.Length; i++)
+        {
+            object expected = tagFields[i].GetValue(state);
+            tagFields[i].SetValue(state, changed[i]);
+            bool unchanged = tagFields[i].FieldType == typeof(string) ? ReferenceEquals(expected, changed[i])
+                : expected is float f ? BitConverter.SingleToInt32Bits(f) == BitConverter.SingleToInt32Bits((float)changed[i])
+                : expected is double d ? BitConverter.DoubleToInt64Bits(d) == BitConverter.DoubleToInt64Bits((double)changed[i])
+                : Equals(expected, changed[i]);
+            if (unchanged) continue;
+            if (Diff(tagGraph, graphType) == 0)
+                throw new Exception("Compact native coverage missed standalone field " + tagNames[i]);
+            graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
+            object actual = tagFields[i].GetValue(state);
+            bool equal = tagFields[i].FieldType == typeof(string) ? ReferenceEquals(expected, actual)
+                : expected is float single ? BitConverter.SingleToInt32Bits(single) == BitConverter.SingleToInt32Bits((float)actual)
+                : expected is double number ? BitConverter.DoubleToInt64Bits(number) == BitConverter.DoubleToInt64Bits((double)actual)
+                : Equals(expected, actual);
+            if (!equal || Diff(legacyTagGraph, graphType) != 0)
+                throw new Exception("Compact native restore changed field bits/null/identity " + tagNames[i]);
+        }
+    // Explicitly verify exact null text: the public setter would incorrectly normalize this to empty.
+    if (tagFields[1].GetValue(tagFixture[6]) != null)
+        throw new Exception("Compact exact null text was normalized.");
+    var filteredAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+        .Invoke(new object[] { null, "Assembly-CSharp" });
+    compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new[] { filteredAccess });
+    accessType.GetMethod("AddRoot", dataFlags).Invoke(filteredAccess, new object[] { Identity(tagState), new[] { "valueInt" } });
+    var filteredGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { filteredAccess, new[] { Identity(tagState) }, 100, 100, 1000L });
+    try
+    {
+        if ((int)graphType.GetProperty("BlockCount", dataFlags).GetValue(filteredGraph) != 0
+            || (int)graphType.GetProperty("SlotCount", dataFlags).GetValue(filteredGraph) != 1)
+            throw new Exception("Compact native path expanded a selected root.");
+    }
+    finally { ((IDisposable)filteredGraph).Dispose(); }
+    // Retained checkpoints own their backend; changing capture mode cannot reinterpret their payload.
+    accessType.GetField("BlockCapture", dataFlags).SetValue(compactAccess, null);
+    tagFields[2].SetValue(tagState, 81);
+    var futureAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+        .Invoke(new object[] { null, "Assembly-CSharp" });
+    accessType.GetMethod("AddRoot", dataFlags).Invoke(futureAccess, new object[] { Identity(tagFixture), Array.Empty<string>() });
+    var futureGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { futureAccess, new[] { Identity(tagFixture) }, 50000, 1000000, 64L * 1024 * 1024 });
+    try
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            GC.Collect(); GC.WaitForPendingFinalizers();
+            graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
+            if ((int)tagFields[2].GetValue(tagState) != 0 || Diff(legacyTagGraph, graphType) != 0)
+                throw new Exception("Retained compact past checkpoint failed.");
+            graphType.GetMethod("Restore", dataFlags).Invoke(futureGraph, null);
+            if ((int)tagFields[2].GetValue(tagState) != 81 || Diff(futureGraph, graphType) != 0)
+                throw new Exception("Retained legacy future checkpoint failed.");
+        }
+    }
+    finally
+    {
+        ((IDisposable)futureGraph).Dispose();
+        graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
+    }
+    Console.WriteLine("PASS installed native hybrid tag payload: legacy identity/budget/field parity, all nine fields, exact null/bit/reference restore, subclass/selected-root fallback, captured topology audit and mixed-backend retained checkpoints");
 }
 finally
 {
     ((IDisposable)shadow)?.Dispose();
     ((IDisposable)tagGraph).Dispose();
+    ((IDisposable)legacyTagGraph).Dispose();
+}
+
+if (args.Contains("--benchmark-tags"))
+{
+    // Isolated native business objects on .NET 6, not a Unity/Mono frame-time measurement.
+    var fixture = Array.CreateInstance(systemType, 1024);
+    for (int i = 0; i < fixture.Length; i++)
+    {
+        var system = Data("TagSystem");
+        var map = (System.Collections.IDictionary)Activator.CreateInstance(mapType);
+        mapField.SetValue(system, map);
+        for (int j = 0; j < 16; j++)
+        {
+            var state = Data(j == 0 && i % 64 == 0 ? "ItemStateModifier" : "TagState");
+            for (int k = 0; k < tagFields.Length; k++) tagFields[k].SetValue(state, tagValues[k]);
+            tagFields[2].SetValue(state, (i + j) % 41);
+            map.Add("tag-" + j, state); map.Add("alias-" + j, state);
+        }
+        fixture.SetValue(system, i);
+    }
+    var samples = new Dictionary<bool, List<(double Capture, double Verify, double Restore, long Allocated)>>
+        { [false] = new(), [true] = new() };
+    long? expectedSlots = null, expectedBytes = null, expectedObjects = null;
+    var captureMethod = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic);
+    var verifyMethod = graphType.GetMethod("Differences", dataFlags);
+    var restoreMethod = graphType.GetMethod("Restore", dataFlags);
+    for (int round = -1; round < 5; round++)
+        foreach (bool compact in round % 2 == 0 ? new[] { true, false } : new[] { false, true })
+        {
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            var benchAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+                .Invoke(new object[] { null, "Assembly-CSharp" });
+            if (compact) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new[] { benchAccess });
+            accessType.GetMethod("AddRoot", dataFlags).Invoke(benchAccess, new object[] { Identity(fixture), Array.Empty<string>() });
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            object benchGraph = captureMethod.Invoke(null, new object[] { benchAccess, new[] { Identity(fixture) },
+                200000, 3000000, 256L * 1024 * 1024 });
+            double captured = clock.Elapsed.TotalMilliseconds;
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            try
+            {
+                long slots = Convert.ToInt64(graphType.GetProperty("SlotCount", dataFlags).GetValue(benchGraph));
+                long bytes = (long)graphType.GetProperty("ByteCount", dataFlags).GetValue(benchGraph);
+                long objects = Convert.ToInt64(graphType.GetProperty("ObjectCount", dataFlags).GetValue(benchGraph));
+                expectedSlots ??= slots; expectedBytes ??= bytes; expectedObjects ??= objects;
+                if (slots != expectedSlots || bytes != expectedBytes || objects != expectedObjects)
+                    throw new Exception("Native benchmark hybrid coverage or logical budget differs.");
+                clock.Restart();
+                int differences = ((System.Collections.ICollection)verifyMethod.Invoke(benchGraph, new object[] { 12 })).Count;
+                double verified = clock.Elapsed.TotalMilliseconds;
+                if (differences != 0) throw new Exception("Native benchmark capture verification failed.");
+                // Mutate all exact-state payloads before measuring restoration.
+                foreach (object system in fixture)
+                    foreach (var state in ((System.Collections.IDictionary)mapField.GetValue(system)).Values)
+                        tagFields[2].SetValue(state, -1);
+                clock.Restart(); restoreMethod.Invoke(benchGraph, null);
+                double restored = clock.Elapsed.TotalMilliseconds;
+                if (((System.Collections.ICollection)verifyMethod.Invoke(benchGraph, new object[] { 12 })).Count != 0)
+                    throw new Exception("Native benchmark restoration verification failed.");
+                if (round >= 0) samples[compact].Add((captured, verified, restored, allocated));
+            }
+            finally { ((IDisposable)benchGraph).Dispose(); }
+        }
+    double Median(IEnumerable<double> values) => values.OrderBy(v => v).ElementAt(2);
+    foreach (bool compact in new[] { false, true })
+    {
+        var values = samples[compact];
+        Console.WriteLine(FormattableString.Invariant(
+            $"TAG_BLOCK_BENCH runtime=net6-not-Unity mode={(compact ? "hybrid" : "legacy")} samples=5 objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0}"));
+    }
 }

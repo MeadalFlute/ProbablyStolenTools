@@ -426,6 +426,7 @@ namespace ProbablyStolenTools
         {
 #if MONO
             var access = new NativeStateAccess(typeof(UnityEngine.Object));
+            if (Plugin.CfgSemanticTagBlocks?.Value == true) SemanticTagBlock.Enable(access);
 #else
             var access = new NativeStateAccess();
 #endif
@@ -691,7 +692,8 @@ namespace ProbablyStolenTools
                 Status = "Checkpoint: " + Name(_active);
                 if (manual) PanelNotice.Show("已建立手动节点 #" + _active.Id);
 #if MONO
-                string readers = " " + SnapshotFieldReader.Summary + " " + access.ArraySchemaSummary +
+                string readers = $" backend={access.BlockMode} tagBlocks={_active.Graph.BlockCount} " +
+                    SnapshotFieldReader.Summary + " " + access.ArraySchemaSummary +
                     (Plugin.CfgVerboseLog?.Value == true ? " " + access.WorkloadSummary() : "");
 #else
                 string readers = "";

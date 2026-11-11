@@ -1,6 +1,6 @@
 ﻿# Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.8.14**（2026-11-11，含待发布的报告修复与分步快照优化）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
+> 适用源码：正式版 **0.8.14**（2026-11-11，含待发布的报告修复与分步快照优化）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，不再维护。本机旧 Demo 依赖下的非 Mono 编译目前失败，不能宣称兼容通过，详见标签混合载荷记录。
 > 旧版本文档（0.2.1–0.6.0、Demo、性能优化过程）已归档到 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
 本文只写当前仍然成立的事实。历史细节看 `research/`，实现细节以源码为准。
@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**130 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**140 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -45,6 +45,7 @@ src/ProbablyStolenTools/           Mod 本体
   StateGraph.cs                    槽位/对象/引用序列化与差异校验
   SnapshotFieldReader.cs           只读字段读取委托（dynamic-code）
   SemanticTagSnapshot.cs / SemanticTagShadow.cs  实验性标签语义只读对照（不负责恢复）
+  SemanticTagBlock.cs              精确原生 TagState 的无损混合字段载荷（负责自身九字段恢复）
   SemanticTagOwnershipAudit.cs     仅限旧图的字典/数组/视图/枚举器别名诊断
   LiquidComposition.cs             成分、纯度、评级、空瓶/容量判定
   AnnotationLabels.cs              原版水质/化学/酿酒语言键与回退文本
@@ -67,7 +68,7 @@ docs/workshop/                     创意工坊文本
   `appliedMinX`、`appliedMinY`、`appliedOrientation`、`appliedGridSize`、`appliedFlipped`、`validateLock`。
   只恢复这些缓存而不恢复实际 RectTransform，会让 `UpdateRectTransform()` 误判“无需布局”，表现为拖拽后回溯贴图不归位。
 - **数组偏移必须在元素内部计算** `offset = i * stride + j`，并记录 `Storage.Index = i`。把偏移提到循环外会让所有元素都读成第一个元素，而且 `diff=0` 也可能掩盖（读写共用同一错误读取器）。
-- 普通字段用反射读；同一路径累计读取 32 次后尝试生成只读委托，失败则回退。字段/类型缓存上限 4096，跨节点复用；每份快照的值/根/数组索引缓存相互隔离，卸载时清理。
+- 普通字段用反射读；同一路径累计读取 32 次后尝试生成只读委托，失败则回退。字段/类型缓存上限 4096，跨节点复用；每份快照的值/根/数组索引缓存相互隔离，卸载时清理。精确 TagState 可用下述专用无损字段载荷。
 - 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`，默认 **200000 / 3000000 / 256**。
 - 超限跳过本次捕获，释放半成品并保留旧节点；不使用不完整快照，不自动无限加大上限。面板显示失败、提示去重，日志包含实际计数、各上限及来源路径。
 - 对象上限在新身份入队前检查（包括显式根）；重复、空引用和环不重复计数。失败日志 `objects` 为已经展开的对象，`discovered` 为已发现数（对象超限时包括刚拒绝的一个），`pending` 为尚未展开的已接收对象。不能等出队时才检查，否则宽图会提前堆积超限队列。
@@ -79,7 +80,9 @@ docs/workshop/                     创意工坊文本
 - 捕获后必须跑完整 `Differences()`；差异非空就视为恢复失败，不能再报成功。
 - Mono 标量校验走 `IStateValueComparer`，只比较捕获值，不往节点值表登记新值；float/double 按位比较，保留正负零和 NaN 差别。其他后端仍走原字节比较；差异消息达到上限也必须扫描完整图。
 - `Storage`、`StateGraph.Entry` 是只读值类型；普通字段索引为 `-1`，不能依赖结构体默认值 `0`。
-- `Snapshot.SemanticTagShadow=true` 默认启用标签语义只读实验：每次上下文清空或文件重载后最多尝试捕获一个节点，随节点释放。保留所有禁用/零值标签、共享对象与浮点位模式；字段结构不匹配、超预算或读取异常只记录失败，旧快照仍为权威。原版库存等也是 TagSystem 子类，允许其**标签基类字段投影**，子类额外字段仍仅由旧图覆盖；日志明确 `scope=tag-base-fields extraFields=legacy-only` 并给出子类数量及前六种类型。第三方继承链仍拒绝，错误包含实际类型/程序集与旧图来源，不能因原版子类误拒整个样本。**没有语义 Restore/Write API，不裁剪原对象图，不减少原校验，不调用原版保存。此轮增加诊断工作，不是已启用的提速后端。**
+- `Snapshot.SemanticTagShadow=true` 默认启用标签语义只读对照：每次上下文清空或文件重载后最多尝试捕获一个节点，随节点释放。保留所有禁用/零值标签、共享对象与浮点位模式；字段结构不匹配、超预算或读取异常只记录失败，主图 StateGraph 仍为权威。原版库存等也是 TagSystem 子类，允许其**标签基类字段投影**，子类额外字段仍仅由旧字段路径覆盖；日志明确 `scope=tag-base-fields extraFields=legacy-only` 并给出子类数量及前六种类型。第三方继承链仍拒绝，错误包含实际类型/程序集与主图来源，不能因原版子类误拒整个样本。**Shadow/SemanticTagSnapshot 自身仍没有 Restore/Write API，只增加诊断工作，不是提速来源。**
+- `Snapshot.SemanticTagBlocks=true` 默认启用首轮真实混合载荷：只处理精确原生 `TagState`（包含不在字典中的独立标签），严格匹配九字段名称/类型及主图描述；子类、筛选根、不匹配结构捕获时走旧路径。每对象一个强类型字段块替代九条 Entry 与六次值令牌读/登记；仍保留全部对象/字符串身份、引用发现顺序、来源路径、逻辑槽位/字节预算以及字典 capacity/entries/buckets/version/free-list/视图/枚举器。禁止 Clear/Add 集合重建。`VisitCapturedSlots` 同时展开块内保存的九个槽，不读 live 字段。Census 仍完整走原字段普查，不创建块。
+- 字段块实际参与 Restore 与 Differences：全部普通标量和块标量先写，再写全部普通引用和块引用；三个字符串恢复真实存储字段（GC 屏障），不能用会将 null 归一化为空串的 `valueString` setter。保持浮点位和字符串引用身份。每块九字段始终完整校验，日志达到上限也继续读取；写入失败直接沿用原失败流程，不自动重试旧路径。开关只决定新节点载荷，保留节点始终由其捕获时后端解释。此轮须经实机验证后才能继续扩大范围；视觉/几何恢复顺序不变，不调用原版保存。
 - 语义标签字符串（Text / Identifier / DisplayName）和字典键均按捕获时的引用身份比较，不再只比较内容；同文字新字符串也算差异。此范围内与旧图的引用校验一致，但 MATCH 仍不覆盖字典底层版本、capacity、free-list、迭代器、比较器内部状态或子类额外字段。离线反例已证实“Clear + 按原键值重建”可语义匹配但旧图有差异、枚举器失效；不得据 MATCH 直接启用集合重建。
 
 ---
@@ -157,6 +160,7 @@ docs/workshop/                     创意工坊文本
 - 游戏内「设置 → 查看日志」用官方 `CustomUIManager.Window(...)` 构建（`LAYER_OVERLAY`、`BeginScrollFlexible`、`AddLabel`、`AddButton`），显示末尾 400 行。
 - `[QuickSL/Geom]` 只在物品视图异常（DESTROYED / MISSING / NOSPRITE / HIDDEN / MISPLACED）时输出，是排查贴图问题的第一入口。
 - CAPTURE 仍一行摘要：access/walk/items/verify 后补 prepareHistory/history/retain/finish，history 包含正常历史淘汰。RESTORE OK 仍一行：validate/census/preflight/write/refresh/reconcile/finalVerify/cleanup/release/total，包含当前普查释放，但不包含入口拒绝门控和摘要日志自身 I/O。失败输出 phase 与 elapsedMs。
+- CAPTURE 追加 `backend=hybrid-exact-tag tagBlocks=N`（关闭时 `backend=legacy tagBlocks=0`；原生字段结构不符为 `legacy-tag-schema-mismatch`）。slots/bytes 仍是相同逻辑预算，不代表压缩后的真实内存，不能用计数不减判断没有生效。当前只减少精确 TagState 的逐字段工作，不能承诺整个捕获/恢复达到隔离 .NET 6 标签夹具的提速幅度。
 - 标签对照另记 `[SemanticTags] CAPTURE MATCH / RESTORE MATCH / ... FAILED`，按同一 `id` 对应节点。捕获摘要追加 `semanticShadow`，恢复摘要追加 `semanticVerify`，避免把实验开销混进旧后端阶段；`logicalSlots/Bytes` 只表示语义标签载荷，不是内存占用或全图替代规模。回溯采样节点才能得到 RESTORE MATCH；普通节点没有这条日志。关闭 `Snapshot.SemanticTagShadow` 可停止后续采样，已捕获样本仍随节点验证/释放。
 - 采样节点另记一条 `[SemanticTags] OWNERSHIP`，只扫描已保存的槽位/引用，不重读 live 字段、不创建字典视图。统计共享字典、外部引用、内部数组、Keys/Values 视图、独立可达标签、未知布局和相关旧图槽数；最多输出六条来源、每条路径最多 280 字符，达到日志上限仍完整计数。`scope=captured-graph-only pruningAllowed=false` 始终成立：静态、图外和不透明第三方对象的内部引用不可见，不能据此许可裁剪。`comparerState=unproven`：语义对照只保留公开比较器身份，旧访问器还会将类型名含 Comparer 的实例视为不透明，不能保证自定义比较器可变内部状态。子类额外字段仍仅旧图负责。captureVerifyMs/semanticShadow 包含本轮审计成本，OWNERSHIP 的 auditMs 单列其中耗时，不得当作语义载荷捕获本身。
 - 临时普查释放异常单独记 CENSUS RELEASE FAILED，不覆盖已经完成的业务恢复：恢复完成时仍输出 RESTORE OK，releaseOk=False 表示仅释放异常。无论释放是否成功，都恢复 timeScale/Restoring；不能把这种情况误报为写入失败或要求再次恢复。
@@ -237,5 +241,6 @@ docs/workshop/                     创意工坊文本
 - `research/2026-11-11-semantic-tags-step1.md`：标签语义只读实验、原版字段兼容验证、模型基准及启用写入前的边界。
 - `research/2026-11-11-semantic-tags-live-check.md`：首次实机采样失败、原版子类投影修正及本次真实耗时。
 - `research/2026-11-11-semantic-tags-boundary.md`：首次实机匹配、只读引用审计、集合替换风险与下一阶段门槛。
+- `research/2026-11-11-semantic-tag-blocks.md`：精确 TagState 混合字段载荷、离线/原生验证、隔离基准、部署与实机操作要求。
 - `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
 - `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。
