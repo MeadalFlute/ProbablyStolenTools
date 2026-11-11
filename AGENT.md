@@ -36,7 +36,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 完整 `int[]` 载荷：只接受精确、非空、非筛选根的原生 int[]，保存整个数组副本并复制回原数组，不重建字典、不裁剪容量；所有元素仍完整比较，逻辑预算保持每槽 8 字节，Census 不变。配置 `Snapshot.IntArrayBlocks=true`，CAPTURE 新增 intArrayBlocks/intArraySlots，tagBlocks 仍只计标签块。18:31 会话 4 次捕获、6 次恢复最终零差异；int 块实际启用，两个节点覆盖 int 块 owner 修复，未最终回退。常规捕获 313-379 ms、首节点 865 ms；恢复中位数 732.5 ms（上一会话 773 ms），非严格 A/B、改善有限，不能推算隔离基准收益。用户同时报告批量拖拽失效，尚不能宣称 UI 全面通过。单对象查找缓存原型已撤除。详见 `research/2026-11-11-int-array-blocks.md`。
 
-框选/批量移动排查：原版 ItemMultiSelectHandler 自带此功能，本 Mod 不重写批量移动。已补单件拖拽、群组拖拽及按键未释放的框选/待拖拽统一门控（自动/闭店/手动捕获及恢复）；静态选区不阻塞建点，回溯通过预检后、业务写入前调用原版 Cancel 清除旧 selectedHomes/高亮，不调用 EndGroupDrag 提交操作。只在群组拖拽开始/结束记录计数和异常，不逐帧打印或吞掉原版异常。当前仅修复已证实的保护缺口，用户报告的确切触发条件/根因仍待复现；先验收交互，再继续载荷优化。详见 `research/2026-11-11-multi-select-rewind.md`。
+框选/批量移动排查：原版 ItemMultiSelectHandler 自带此功能，本 Mod 不重写批量移动。已补单件拖拽、群组拖拽及按键未释放的框选/待拖拽统一门控（自动/闭店/手动捕获及恢复）；静态选区不阻塞建点，回溯通过预检后、业务写入前调用原版 Cancel 清除旧 selectedHomes/高亮，不调用 EndGroupDrag 提交操作。只在群组拖拽开始/结束记录计数和异常，不逐帧打印或吞掉原版异常。用户已确认恢复可用；18:43 会话回溯前后各 3 次完整群组拖拽，2/4 件均正常结束，无相关异常；一次回溯最终零差异。此次没有命中静态选区清理日志或忙态拒绝，不能据此证明原始触发根因或所有边界已覆盖。详见 `research/2026-11-11-multi-select-rewind.md`。
 
 ### 版本与发布
 

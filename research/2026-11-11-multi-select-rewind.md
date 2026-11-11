@@ -44,3 +44,15 @@
 - DLL SHA256：`28EF77A3F6AD2B75AEE0EB0DD9FEE294EF333CCF07D33AC90D6BAB36574CE042`，构建与部署一致。
 - 78 个原有存档目录文件、游戏程序集及其他 Mod 原有文件哈希校验未变。
 - SettingsImported=False；GameStarted=False。未改变玩家设置，未启动游戏，实机交互验收待用户操作。
+
+## 18:43 会话验收
+
+用户反馈“已恢复可用”。检查本机 PSTools.log 与 Player.log，Session 为 2026-11-11 18:43:26.108：
+
+- 回溯前 3 次群组拖拽（4 / 4 / 2 件），回溯后 3 次（4 / 4 / 2 件），全部 START / END 成对。
+- 每次 START 的 before 与 selected 相同，groupDragging=True；END 为 selected=0、HasSelection=False、groupDragging=False，符合原版操作结束清选区行为，无相关异常。
+- 18:50:01 恢复首节点成功，diff=0、releaseOk=True、owners/eligible、finalFallback=False；独立语义校验匹配。随后连续三次批量拖拽均正常结束，支持用户的可用性确认。
+- 本会话未出现 cleared native selection 或 dragging 拒绝记录，不能声称静态选区清理及忙态保护均已实测命中；原始故障的精确触发条件仍未知。不从计数推断具体目标容器或所有物品实际落点。
+- 此次两次捕获耗时 1075 / 595 ms，一次恢复 1062 ms；多个阶段较前会话同时变慢，样本太少且非严格对照，不能据此归因交互保护的性能回退，也不宣称本轮提速。
+
+结论：批量操作按用户确认及回溯前后生命周期日志，记录为恢复可用；保留低频诊断。本次仅更新验收文档，不改运行时代码、不重部署或推送，版本仍为 0.8.14。
