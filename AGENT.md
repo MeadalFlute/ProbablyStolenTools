@@ -1,6 +1,6 @@
-# Probably Stolen Tools — 交接文档
+﻿# Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.8.13**（2026-11-11，含待发布的报告修复与分步快照优化）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
+> 适用源码：正式版 **0.8.14**（2026-11-11，含待发布的报告修复与分步快照优化）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
 > 旧版本文档（0.2.1–0.6.0、Demo、性能优化过程）已归档到 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
 本文只写当前仍然成立的事实。历史细节看 `research/`，实现细节以源码为准。
@@ -27,7 +27,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 ### 版本与发布
 
 - **唯一真源**：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
-- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**（0.8.12 → 0.8.13）。
+- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**（0.8.13 → 0.8.14）。
 - README / AGENT 等纯文档更新**不推进版本号**。
 - 发布流程：改两个版本号 → 构建 → 两组测试 → 部署 → 游戏内验收 → 提交 → 推送。
 - 快照优化按步骤独立提交；用户要求每轮验证通过后部署，便于游戏内测试，不自动启动游戏。未推送的测试轮次保持现有版本号。
