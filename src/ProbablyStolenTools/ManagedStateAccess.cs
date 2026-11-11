@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription
+    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess
     {
         private readonly struct Storage
         {

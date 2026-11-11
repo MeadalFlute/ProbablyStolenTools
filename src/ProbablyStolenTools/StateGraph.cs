@@ -43,6 +43,10 @@ namespace ProbablyStolenTools
         string ObjectTypeName(IntPtr id);
     }
 
+    // Opt-in only for real storage writes without setters/callbacks or cross-owner side effects.
+    internal interface IStateOwnerRepairAccess { }
+    internal interface IStateOwnerRepairBlock { }
+
     internal interface IBudgetedStateDescription
     {
         IReadOnlyList<StateSlot> Describe(IntPtr id, int remainingSlots, long remainingBytes);
@@ -60,7 +64,7 @@ namespace ProbablyStolenTools
         IntPtr ReferenceAt(StateSlot slot);
         void RestoreValues();
         void RestoreReferences();
-        void CollectDifferences(List<string> result, int max);
+        int CollectDifferences(List<string> result, int max);
     }
 
     internal sealed class SnapshotDescriptionLimitException : InvalidOperationException
@@ -83,12 +87,45 @@ namespace ProbablyStolenTools
         private readonly HashSet<IntPtr> _objects = new();
         private readonly Dictionary<IntPtr, (IntPtr Parent, string Field)> _sources = new();
         private bool _disposed;
+        private long _revision;
         internal int ObjectCount => _objects.Count;
         internal int SlotCount { get; private set; }
         internal long ByteCount { get; private set; }
         internal int BlockCount => _blocks.Count;
         internal IEnumerable<IntPtr> Objects => _objects;
         internal bool Contains(IntPtr id) => _objects.Contains(id);
+
+        internal sealed class Reconciliation
+        {
+            internal readonly StateGraph Graph;
+            internal readonly long Revision;
+            internal readonly HashSet<IntPtr> Owners = new();
+            internal readonly List<int> Entries = new(), Blocks = new();
+            internal readonly int MaxOwners;
+            internal bool Used;
+            internal long AppliedRevision = -1;
+            internal string Reason { get; set; }
+            internal int ChangedSlots { get; private set; }
+            internal int PlannedSlots { get; set; }
+            internal IReadOnlyList<string> Differences { get; set; }
+            internal string FallbackSummary { get; set; } = "";
+            internal string Mode => ChangedSlots == 0 ? "none" : Reason.Length == 0 ? "owners" : "full";
+            internal int TrackedOwners => Owners.Count;
+
+            internal Reconciliation(StateGraph graph, long revision, string reason, int maxOwners)
+            { Graph = graph; Revision = revision; Reason = reason; MaxOwners = maxOwners; }
+
+            internal void Changed(IntPtr owner, int slots)
+            {
+                ChangedSlots += slots;
+                if (Reason.Length != 0 || Owners.Contains(owner)) return;
+                if (Owners.Count >= MaxOwners) { Reason = "owner-limit"; return; }
+                Owners.Add(owner);
+            }
+
+            // Single-use, synchronous only; any intervening graph scan/write invalidates the plan.
+            internal void Apply() => Graph.ApplyReconciliation(this);
+        }
 
         // Inspect captured topology, never live fields; diagnostic consumers cannot write or prune entries.
         internal void VisitCapturedSlots(Action<IntPtr, StateSlot, IntPtr> visit)
@@ -219,6 +256,7 @@ namespace ProbablyStolenTools
         internal void Restore()
         {
             RequireCheckpoint();
+            _revision++;
             _access.Validate();
             // All original objects/arrays are retained. Restore their contents first and links second.
             foreach (var e in _entries)
@@ -235,9 +273,95 @@ namespace ProbablyStolenTools
         internal IReadOnlyList<string> DifferencesWithSources(int max = 12)
             => ScanDifferences(max, true);
 
-        private IReadOnlyList<string> ScanDifferences(int max, bool sources)
+        internal Reconciliation PrepareReconciliation(bool allowOwners = true, int maxOwners = 128, int maxSlots = 8192)
         {
             RequireCheckpoint();
+            if (maxOwners < 0 || maxSlots < 0) throw new ArgumentOutOfRangeException();
+            string reason = !allowOwners ? "disabled" : _access is not IStateOwnerRepairAccess ? "access"
+                : _blocks.Any(b => b.Payload is not IStateOwnerRepairBlock) ? "block" : "";
+            var plan = new Reconciliation(this, _revision + 1, reason, maxOwners);
+            plan.Differences = ScanDifferences(12, true, plan);
+            if (plan.Mode == "owners")
+            {
+                for (int i = 0; i < _entries.Count; i++)
+                    if (plan.Owners.Contains(_entries[i].Owner))
+                    {
+                        plan.Entries.Add(i);
+                        if (++plan.PlannedSlots > maxSlots) { plan.Reason = "slot-limit"; break; }
+                    }
+                if (plan.Reason.Length == 0)
+                    for (int i = 0; i < _blocks.Count; i++)
+                        if (plan.Owners.Contains(_blocks[i].Owner))
+                        {
+                            plan.Blocks.Add(i);
+                            if (_blocks[i].Slots.Count > maxSlots - plan.PlannedSlots)
+                            { plan.Reason = "slot-limit"; break; }
+                            plan.PlannedSlots += _blocks[i].Slots.Count;
+                        }
+            }
+            if (plan.Mode == "full")
+            {
+                plan.Entries.Clear(); plan.Blocks.Clear();
+                plan.PlannedSlots = SlotCount;
+            }
+            return plan;
+        }
+
+        private void ApplyReconciliation(Reconciliation plan)
+        {
+            RequireCheckpoint();
+            if (plan.Graph != this || plan.Used || plan.Revision != _revision)
+                throw new InvalidOperationException("Reconciliation plan is stale or already consumed.");
+            plan.Used = true;
+            _revision++;
+            if (plan.Mode == "full")
+            {
+                Restore();
+                plan.AppliedRevision = _revision;
+                return;
+            }
+            _access.Validate();
+            foreach (int i in plan.Entries)
+            {
+                var e = _entries[i];
+                if (!e.Slot.IsReference) _access.WriteValue(e.Owner, e.Slot, e.Bytes);
+            }
+            foreach (int i in plan.Blocks) _blocks[i].Payload.RestoreValues();
+            foreach (int i in plan.Entries)
+            {
+                var e = _entries[i];
+                if (e.Slot.IsReference) _access.WriteReference(e.Owner, e.Slot, e.Reference);
+            }
+            foreach (int i in plan.Blocks) _blocks[i].Payload.RestoreReferences();
+            plan.AppliedRevision = _revision;
+        }
+
+        internal IReadOnlyList<string> VerifyReconciliation(Reconciliation plan, Action afterFullRestore,
+            out bool fullFallback)
+        {
+            RequireCheckpoint();
+            fullFallback = false;
+            if (plan == null) throw new ArgumentNullException(nameof(plan));
+            if (plan.Graph != this || !plan.Used || plan.AppliedRevision != _revision)
+                throw new InvalidOperationException("Reconciliation verification is stale or not applied.");
+            if (afterFullRestore == null) throw new ArgumentNullException(nameof(afterFullRestore));
+            var differences = Differences();
+            if (differences.Count != 0 && plan.Mode == "owners")
+            {
+                // Only a completed mismatch can retry. Read/write/visual exceptions still fail closed.
+                fullFallback = true;
+                plan.FallbackSummary = string.Join(" | ", differences.Select(s => DiagnosticText(s, 128, true)));
+                Restore();
+                afterFullRestore();
+                differences = Differences();
+            }
+            return differences;
+        }
+
+        private IReadOnlyList<string> ScanDifferences(int max, bool sources, Reconciliation plan = null)
+        {
+            RequireCheckpoint();
+            _revision++;
             var result = new List<string>();
             var comparer = _access as IStateValueComparer;
             _access.Validate();
@@ -251,13 +375,20 @@ namespace ProbablyStolenTools
                     var value = _access.ReadValue(e.Owner, e.Slot);
                     same = ReferenceEquals(value, e.Bytes) || value.SequenceEqual(e.Bytes);
                 }
-                if (!same && result.Count < max)
-                    result.Add(sources ? DescribeDifference(e.Owner, e.Slot.Name, false) : e.Slot.Name);
+                if (!same)
+                {
+                    plan?.Changed(e.Owner, 1);
+                    if (result.Count < max)
+                        result.Add(sources ? DescribeDifference(e.Owner, e.Slot.Name, false) : e.Slot.Name);
+                }
             }
             foreach (var block in _blocks)
             {
                 int start = result.Count;
-                block.Payload.CollectDifferences(result, max);
+                int changed = block.Payload.CollectDifferences(result, max);
+                if (changed < 0 || changed > block.Slots.Count)
+                    throw new InvalidOperationException("Invalid block difference count.");
+                if (changed != 0) plan?.Changed(block.Owner, changed);
                 if (sources)
                     for (int i = start; i < result.Count; i++)
                         result[i] = DescribeDifference(block.Owner, result[i], true);

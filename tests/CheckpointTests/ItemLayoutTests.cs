@@ -66,6 +66,37 @@ internal static class ItemLayoutTests
                 check(later.Differences().Count == 0);
             }
         });
+        test("owner repair and full fallback preserve modeled native geometry across repeated timelines", () =>
+        {
+            var item = new GameItemElement { X = 4, Y = 6, Orientation = 1, Flipped = true, Units = 2 };
+            item.UpdateLayout();
+            using var earlier = Capture(item);
+            item.X = 10; item.Y = 3; item.Orientation = 3; item.Flipped = false; item.UpdateLayout();
+            using var later = Capture(item);
+            for (int i = 0; i < 4; i++)
+            {
+                earlier.Restore();
+                item.X = 0; item.Y = 0; item.Orientation = 2; item.UpdateLayout();
+                var plan = earlier.PrepareReconciliation();
+                check(plan.Mode == "owners");
+                plan.Apply();
+                item.appliedGridSize = -1; item.UpdateLayout();
+                bool forceFallback = i % 2 != 0;
+                if (forceFallback) item.Units = 0;
+                var diff = earlier.VerifyReconciliation(plan, () =>
+                {
+                    check(item.Units == 2);
+                    item.appliedGridSize = -1; item.UpdateLayout();
+                }, out bool fallback);
+                check(diff.Count == 0 && fallback == forceFallback
+                    && item.View.X == 64 && item.View.Y == -96
+                    && item.View.Orientation == 1 && item.View.Flipped && item.Units == 2);
+                later.Restore();
+                item.appliedGridSize = -1; item.UpdateLayout();
+                check(item.View.X == 160 && item.View.Y == -48 && item.View.Orientation == 3
+                    && !item.View.Flipped && later.Differences().Count == 0);
+            }
+        });
     }
 }
 

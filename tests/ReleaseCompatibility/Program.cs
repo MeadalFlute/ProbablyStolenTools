@@ -238,6 +238,17 @@ var access = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), ty
 foreach (var root in new[] { player, station, itemArray })
     accessType.GetMethod("AddRoot", dataFlags).Invoke(access, new object[] { Identity(root), Array.Empty<string>() });
 var graphType = mod.GetType("ProbablyStolenTools.StateGraph");
+object PrepareRepair(object target, bool enabled = true)
+    => graphType.GetMethod("PrepareReconciliation", dataFlags).Invoke(target, new object[] { enabled, 128, 8192 });
+void ApplyRepair(object plan) => plan.GetType().GetMethod("Apply", dataFlags).Invoke(plan, null);
+void VerifyRepair(object target, object plan)
+{
+    object[] arguments = { plan, (Action)(() => { }), false };
+    var result = (System.Collections.ICollection)graphType.GetMethod("VerifyReconciliation", dataFlags)
+        .Invoke(target, arguments);
+    if (result.Count != 0 || (bool)arguments[2])
+        throw new Exception("Native owner repair failed verification or unexpectedly required full fallback.");
+}
 var graph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
     .Invoke(null, new object[] { access, new[] { Identity(player), Identity(station), Identity(itemArray) }, 50000, 1000000, 64L * 1024 * 1024 });
 try
@@ -360,6 +371,26 @@ try
                 throw new Exception("Native direct writer lost original values, identities or collection storage.");
         }
         Console.WriteLine("PASS native direct/recursive writer parity after real field, array and dictionary growth mutations");
+        foreach (bool enabled in new[] { true, false, true })
+        {
+            cashField.SetValue(player, -10); dayField.SetValue(station, -3);
+            unitProperty.SetValue(item, -1); itemArray.SetValue(null, 2);
+            for (int i = 0; i < 100; i++) zoomLevels["owner-grow-" + i] = i;
+            zoomLevels.Remove("store");
+            var plan = PrepareRepair(graph, enabled);
+            string mode = (string)plan.GetType().GetProperty("Mode", dataFlags).GetValue(plan);
+            if (mode != (enabled ? "owners" : "full"))
+                throw new Exception("Native owner repair selected an unexpected mode: " + mode);
+            ApplyRepair(plan); VerifyRepair(graph, plan);
+            foreach (var oracle in new[] { graph, recursiveGraph })
+                if (((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                    .Invoke(oracle, new object[] { 12 })).Count != 0)
+                    throw new Exception("Native owner repair differs from the full recursive checkpoint.");
+            if (zoomLevels.Count != 3 || zoomLevels["store"] != 5
+                || !ReferenceEquals(itemArray.GetValue(2), items[2]))
+                throw new Exception("Native owner repair lost original array/collection storage.");
+        }
+        Console.WriteLine("PASS native owner repair/full fallback parity for actual fields arrays and dictionary growth");
     }
     finally { ((IDisposable)recursiveGraph).Dispose(); }
 }
@@ -461,7 +492,8 @@ try
                 || !attributed[0].Contains("storage=" + (ReferenceEquals(state, tagState) ? "block" : "field"))
                 || !attributed[0].Contains("source=root -> "))
                 throw new Exception("Native difference source missed compact/fallback field: " + tagNames[i]);
-            graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
+            var repair = PrepareRepair(tagGraph);
+            ApplyRepair(repair); VerifyRepair(tagGraph, repair);
             if (Diff(semantic, semantic.GetType()) != 0 || Diff(legacyTagGraph, graphType) != 0)
                 throw new Exception("Native semantic field did not restore: " + tagNames[i]);
         }
@@ -507,7 +539,8 @@ try
             throw new Exception("Native generic dictionary diagnostic lost its version field suffix.");
         if (Diff(semantic, semantic.GetType()) == 0)
             throw new Exception("Semantic adapter missed native tag mutations.");
-        graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
+        var repair = PrepareRepair(tagGraph);
+        ApplyRepair(repair); VerifyRepair(tagGraph, repair);
         if (Diff(tagGraph, graphType) != 0 || Diff(semantic, semantic.GetType()) != 0
             || !ReferenceEquals(mapField.GetValue(tagSystem), tagMap)
             || !ReferenceEquals(mapField.GetValue(secondSystem), tagMap)
@@ -633,9 +666,10 @@ finally
     ((IDisposable)legacyTagGraph).Dispose();
 }
 
-if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes"))
+if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || args.Contains("--benchmark-reconcile"))
 {
     bool benchmarkWrites = args.Contains("--benchmark-writes");
+    bool benchmarkReconcile = args.Contains("--benchmark-reconcile");
     // Isolated native business objects on .NET 6, not a Unity/Mono frame-time measurement.
     var fixture = Array.CreateInstance(systemType, 1024);
     for (int i = 0; i < fixture.Length; i++)
@@ -652,12 +686,15 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes"))
         }
         fixture.SetValue(system, i);
     }
-    var samples = new Dictionary<bool, List<(double Capture, double Verify, double Restore, long Allocated, long RestoreAllocated)>>
+    var samples = new Dictionary<bool, List<(double Capture, double Verify, double Restore, long Allocated, long RestoreAllocated, double Scan)>>
         { [false] = new(), [true] = new() };
     long? expectedSlots = null, expectedBytes = null, expectedObjects = null;
     var captureMethod = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic);
     var verifyMethod = graphType.GetMethod("Differences", dataFlags);
     var restoreMethod = graphType.GetMethod("Restore", dataFlags);
+    var sourceMethod = graphType.GetMethod("DifferencesWithSources", dataFlags);
+    var applyMethod = graphType.GetNestedType("Reconciliation", BindingFlags.NonPublic).GetMethod("Apply", dataFlags);
+    int repairedSlots = 0;
     for (int round = -1; round < 5; round++)
         foreach (bool compact in round % 2 == 0 ? new[] { true, false } : new[] { false, true })
         {
@@ -665,7 +702,7 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes"))
             var benchAccess = accessType.GetConstructor(dataFlags, null,
                 new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool) }, null)
                 .Invoke(new object[] { null, "Assembly-CSharp", true, true, !benchmarkWrites || compact });
-            if (benchmarkWrites || compact) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
+            if (benchmarkReconcile || benchmarkWrites || compact) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new[] { benchAccess });
             accessType.GetMethod("AddRoot", dataFlags).Invoke(benchAccess, new object[] { Identity(fixture), Array.Empty<string>() });
             long before = GC.GetAllocatedBytesForCurrentThread();
@@ -686,17 +723,43 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes"))
                 int differences = ((System.Collections.ICollection)verifyMethod.Invoke(benchGraph, new object[] { 12 })).Count;
                 double verified = clock.Elapsed.TotalMilliseconds;
                 if (differences != 0) throw new Exception("Native benchmark capture verification failed.");
-                // Mutate all exact-state payloads before measuring restoration.
-                foreach (object system in fixture)
-                    foreach (var state in ((System.Collections.IDictionary)mapField.GetValue(system)).Values)
-                        tagFields[2].SetValue(state, -1);
+                if (benchmarkReconcile)
+                {
+                    // Sparse refresh-like mutation: one tag plus one grown dictionary, not all tags.
+                    var map = (System.Collections.IDictionary)mapField.GetValue(fixture.GetValue(0));
+                    tagFields[2].SetValue(map["tag-1"], -1);
+                    for (int i = 0; i < 80; i++) map["refresh-" + i] = Data("TagState");
+                }
+                else
+                    foreach (object system in fixture)
+                        foreach (var state in ((System.Collections.IDictionary)mapField.GetValue(system)).Values)
+                            tagFields[2].SetValue(state, -1);
                 long beforeRestore = GC.GetAllocatedBytesForCurrentThread();
-                clock.Restart(); restoreMethod.Invoke(benchGraph, null);
+                double scanned = 0;
+                object repairPlan = null;
+                clock.Restart();
+                if (benchmarkReconcile)
+                {
+                    if (compact)
+                    {
+                        repairPlan = PrepareRepair(benchGraph);
+                        if ((string)repairPlan.GetType().GetProperty("Mode", dataFlags).GetValue(repairPlan) != "owners")
+                            throw new Exception("Sparse native benchmark unexpectedly fell back.");
+                        repairedSlots = (int)repairPlan.GetType().GetProperty("PlannedSlots", dataFlags).GetValue(repairPlan);
+                    }
+                    else if (((System.Collections.ICollection)sourceMethod.Invoke(benchGraph, new object[] { 12 })).Count == 0)
+                        throw new Exception("Sparse native benchmark mutation was not detected.");
+                    scanned = clock.Elapsed.TotalMilliseconds;
+                    clock.Restart();
+                }
+                if (repairPlan != null) applyMethod.Invoke(repairPlan, null);
+                else restoreMethod.Invoke(benchGraph, null);
                 double restored = clock.Elapsed.TotalMilliseconds;
                 long restoreAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeRestore;
+                if (repairPlan != null) VerifyRepair(benchGraph, repairPlan);
                 if (((System.Collections.ICollection)verifyMethod.Invoke(benchGraph, new object[] { 12 })).Count != 0)
                     throw new Exception("Native benchmark restoration verification failed.");
-                if (round >= 0) samples[compact].Add((captured, verified, restored, allocated, restoreAllocated));
+                if (round >= 0) samples[compact].Add((captured, verified, restored, allocated, restoreAllocated, scanned));
             }
             finally { ((IDisposable)benchGraph).Dispose(); }
         }
@@ -704,9 +767,14 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes"))
     foreach (bool compact in new[] { false, true })
     {
         var values = samples[compact];
-        string mode = benchmarkWrites ? (compact ? "hybrid-direct-write" : "hybrid-recursive-write")
+        string mode = benchmarkReconcile ? (compact ? "hybrid-owner-repair" : "hybrid-full-reconcile")
+            : benchmarkWrites ? (compact ? "hybrid-direct-write" : "hybrid-recursive-write")
             : (compact ? "hybrid" : "legacy");
-        Console.WriteLine(FormattableString.Invariant(
-            $"TAG_BLOCK_BENCH runtime=net6-not-Unity mode={mode} samples=5 objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+        if (benchmarkReconcile)
+            Console.WriteLine(FormattableString.Invariant(
+                $"RECONCILE_BENCH runtime=net6-not-Unity mode={mode} samples=5 objects={expectedObjects} slots={expectedSlots} plannedSlots={(compact ? repairedSlots : expectedSlots)} scanMs={Median(values.Select(v => v.Scan)):F2} writeMs={Median(values.Select(v => v.Restore)):F2} scanWriteMs={Median(values.Select(v => v.Scan + v.Restore)):F2} scanWriteAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+        else
+            Console.WriteLine(FormattableString.Invariant(
+                $"TAG_BLOCK_BENCH runtime=net6-not-Unity mode={mode} samples=5 objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
     }
 }

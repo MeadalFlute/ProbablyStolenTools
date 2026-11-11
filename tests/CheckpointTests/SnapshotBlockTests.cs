@@ -37,17 +37,20 @@ internal static class SnapshotBlockTests
             BeforeReferenceWrite?.Invoke();
             Writes++; _target.Link = _link;
         }
-        public void CollectDifferences(List<string> result, int max)
+        public int CollectDifferences(List<string> result, int max)
         {
+            int changed = 0;
             void Add(bool equal, string name)
             {
                 Reads++;
                 if (FailRead) throw new InvalidOperationException("block read");
                 if (!equal && result.Count < max) result.Add(typeof(Node).FullName + "." + name);
+                if (!equal) changed++;
             }
             Add(_target.Number == _number, "Number");
             Add(_target.Flag == _flag, "Flag");
             Add(ReferenceEquals(_target.Link, _link), "Link");
+            return changed;
         }
     }
     private static ManagedStateAccess Access(List<Block> blocks = null)

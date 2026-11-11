@@ -840,6 +840,8 @@ namespace ProbablyStolenTools
             bool reconcileRewrite = false;
             int reconcileReportedDiff = 0;
             string reconcileSources = "";
+            StateGraph.Reconciliation reconciliation = null;
+            bool finalRepairFallback = false;
             int censusObjects = 0, censusSlots = 0;
             int finalDifferences = -1;
             long censusBytes = 0;
@@ -935,20 +937,17 @@ namespace ProbablyStolenTools
                 UnityRandomState.Restore(target.UnityRandom);
                 tRefresh = timing.ElapsedMilliseconds;
                 phase = "reconcile-scan";
-                var diff = target.Graph.DifferencesWithSources();
+                reconciliation = target.Graph.PrepareReconciliation(Plugin.CfgOwnerReconcile?.Value == true);
+                var diff = reconciliation.Differences;
                 if (diff.Count != 0) reconcileSources = string.Join(" | ", diff);
                 tReconcileScan = timing.ElapsedMilliseconds;
                 reconcileReportedDiff = diff.Count;
-                if (diff.Count != 0)
-                {
-                    // Validate()/ValidatePartialSprite() 会重建 TagSystem 的字典，导致字典内部
-                    // 布局与快照不一致。再写一遍业务图把标签状态压回去，然后重新校验。
-                    phase = "reconcile-write";
-                    reconcileRewrite = true;
-                    target.Graph.Restore();
-                }
+                phase = "reconcile-write";
+                reconcileRewrite = reconciliation.ChangedSlots != 0;
+                // Restore complete changed owners, or the full graph when the plan cannot opt in.
+                reconciliation.Apply();
                 tReconcileWrite = timing.ElapsedMilliseconds;
-                // A second Graph.Restore above can change shape/origin again.
+                // A second business write above can change shape/origin again.
                 // Restore native views and finish geometry only after that write.
                 phase = "reconcile-views";
                 foreach (var view in target.Visuals) view.Restore();
@@ -962,7 +961,16 @@ namespace ProbablyStolenTools
                 foreach (var view in target.Visuals) view.RestoreTransforms();
                 tReconcile = timing.ElapsedMilliseconds;
                 phase = "final-verify";
-                diff = target.Graph.Differences();
+                diff = target.Graph.VerifyReconciliation(reconciliation, () =>
+                {
+                    phase = "final-fallback-views";
+                    foreach (var view in target.Visuals) view.Restore();
+                    phase = "final-fallback-geometry";
+                    RestoreItemGeometry(target);
+                    phase = "final-fallback-transforms";
+                    foreach (var view in target.Visuals) view.RestoreTransforms();
+                    phase = "final-fallback-verify";
+                }, out finalRepairFallback);
                 finalDifferences = diff.Count;
                 if (diff.Count != 0)
                     throw new InvalidOperationException("Final restore differs from checkpoint: " + string.Join(", ", diff));
@@ -1045,7 +1053,10 @@ namespace ProbablyStolenTools
                         $"reconcileDetail(rewrite={reconcileRewrite},reportedDiff={reconcileReportedDiff}," +
                         $"scan={tReconcileScan - tRefresh},write={tReconcileWrite - tReconcileScan}," +
                         $"views={tReconcileViews - tReconcileWrite},geometry={tGeometry - tReconcileViews}," +
-                        $"transforms={tReconcile - tGeometry})" + workload);
+                        $"transforms={tReconcile - tGeometry}) " +
+                        $"repair(mode={reconciliation.Mode},reason={(reconciliation.Reason.Length == 0 ? "eligible" : reconciliation.Reason)}," +
+                        $"changedSlots={reconciliation.ChangedSlots},trackedOwners={reconciliation.TrackedOwners}," +
+                        $"plannedSlots={reconciliation.PlannedSlots},finalFallback={finalRepairFallback})" + workload);
                 }
                 if (releaseError != null)
                     EventLog.Write($"[Customer] CENSUS RELEASE FAILED restoreCompleted={completed} " +
@@ -1054,6 +1065,9 @@ namespace ProbablyStolenTools
                     EventLog.Write($"[Customer] RECONCILE DIFF id={target.Id} restoreCompleted={completed} " +
                         $"reportedDiff={reconcileReportedDiff} sampleLimit=12 scanLimit=12 " +
                         $"scope=captured-graph-only values=omitted sample=[{reconcileSources}]");
+                if (reconciliation != null && reconciliation.FallbackSummary.Length != 0)
+                    EventLog.Write($"[Customer] REPAIR FULL FALLBACK id={target.Id} restoreCompleted={completed} " +
+                        $"reason=final-diff values=omitted sample=[{reconciliation.FallbackSummary}]");
             }
         }
 

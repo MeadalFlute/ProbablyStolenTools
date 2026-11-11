@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Exact native TagState only: no collection reconstruction, setters, callbacks or new identities.
-    internal sealed class SemanticTagBlock : IStateBlock
+    internal sealed class SemanticTagBlock : IStateBlock, IStateOwnerRepairBlock
     {
         private static readonly string[] Names = { "valueEnabled", "internalValueString", "valueInt",
             "valueFloat", "valueLong", "valueDouble", "valueBool",
@@ -99,23 +99,26 @@ namespace ProbablyStolenTools
             Fields[8].SetValue(_target, _value.DisplayName);
         }
 
-        public void CollectDifferences(List<string> result, int max)
+        public int CollectDifferences(List<string> result, int max)
         {
             // Evaluate every field even after the diagnostic cap.
-            Add(_target.valueEnabled == _value.Enabled, 0, result, max);
-            Add(ReferenceEquals(_target.valueString, _value.Text), 1, result, max);
-            Add(_target.valueInt == _value.Integer, 2, result, max);
-            Add(BitConverter.SingleToInt32Bits(_target.valueFloat) == _value.SingleBits, 3, result, max);
-            Add(_target.valueLong == _value.Long, 4, result, max);
-            Add(BitConverter.DoubleToInt64Bits(_target.valueDouble) == _value.DoubleBits, 5, result, max);
-            Add(_target.valueBool == _value.Boolean, 6, result, max);
-            Add(ReferenceEquals(_target.identifier, _value.Identifier), 7, result, max);
-            Add(ReferenceEquals(_target.identifierName, _value.DisplayName), 8, result, max);
+            int changed = 0;
+            changed += Add(_target.valueEnabled == _value.Enabled, 0, result, max);
+            changed += Add(ReferenceEquals(_target.valueString, _value.Text), 1, result, max);
+            changed += Add(_target.valueInt == _value.Integer, 2, result, max);
+            changed += Add(BitConverter.SingleToInt32Bits(_target.valueFloat) == _value.SingleBits, 3, result, max);
+            changed += Add(_target.valueLong == _value.Long, 4, result, max);
+            changed += Add(BitConverter.DoubleToInt64Bits(_target.valueDouble) == _value.DoubleBits, 5, result, max);
+            changed += Add(_target.valueBool == _value.Boolean, 6, result, max);
+            changed += Add(ReferenceEquals(_target.identifier, _value.Identifier), 7, result, max);
+            changed += Add(ReferenceEquals(_target.identifierName, _value.DisplayName), 8, result, max);
+            return changed;
         }
 
-        private static void Add(bool same, int index, List<string> result, int max)
+        private static int Add(bool same, int index, List<string> result, int max)
         {
             if (!same && result.Count < max) result.Add("TagState." + Names[index]);
+            return same ? 0 : 1;
         }
     }
 }

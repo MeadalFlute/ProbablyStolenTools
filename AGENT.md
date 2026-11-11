@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**163 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**192 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -30,7 +30,9 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 差异归属诊断已检查 17:18 会话：5 次捕获、7 次恢复（含手动及重复往返）均成功。每次 reportedDiff=7，已展示的 6 条集中于 cassettePlayer.modifiedState 的标签字典及底层数组；泛型长类型名使字段后缀截断，第七条尚未展示，不能据此直接缩小二次恢复。后续先修正诊断可读性，详见 `research/2026-11-11-reconcile-difference-sources.md`。
 
-诊断可读性已在 17:28 会话通过：6 次捕获、7 次恢复最终零差异。六次仅 cassettePlayer.modifiedState.dict 的 `_buckets/_entries/_count/_version` 变化，另一次手动节点还变了 BargainUIManager.trackedClient；样本全部显示。二次写回仍需 206-240 ms。下一阶段先独立设计/离线验证按实际差异修复的安全条件，不能硬编码四字段白名单或裁剪集合；当前仍完整二次写回。记录见同一诊断文档。
+诊断可读性已在 17:28 会话通过：6 次捕获、7 次恢复最终零差异。六次仅 cassettePlayer.modifiedState.dict 的 `_buckets/_entries/_count/_version` 变化，另一次手动节点还变了 BargainUIManager.trackedClient；样本全部显示。该会话仍完整二次写回，需 206-240 ms。记录见同一诊断文档。
+
+已实施独立的 owner 二次修复阶段：第一次全图写回不变，刷新后完整扫描并恢复变化对象的全部捕获字段；有界计划、后端显式许可、未知/超限全图回退、完整最终校验和一次完成差异后的全图回退均已离线/原生夹具验证。配置 `Snapshot.OwnerReconcile=true`，首次 Unity 实机验收尚待用户操作。不得硬编码字典四字段白名单、裁剪集合或继续扩大范围。详见 `research/2026-11-11-owner-reconciliation.md`。
 
 ### 版本与发布
 
@@ -77,7 +79,7 @@ docs/workshop/                     创意工坊文本
   只恢复这些缓存而不恢复实际 RectTransform，会让 `UpdateRectTransform()` 误判“无需布局”，表现为拖拽后回溯贴图不归位。
 - **数组偏移必须在元素内部计算** `offset = i * stride + j`，并记录 `Storage.Index = i`。把偏移提到循环外会让所有元素都读成第一个元素，而且 `diff=0` 也可能掩盖（读写共用同一错误读取器）。
 - 普通字段用反射读；同一路径累计读取 32 次后尝试生成只读委托，失败则回退。字段/类型缓存上限 4096，跨节点复用；每份快照的值/根/数组索引缓存相互隔离，卸载时清理。精确 TagState 可用下述专用无损字段载荷。
-- Mono 普通字段写回不生成委托：单字段直接 FieldInfo.SetValue，标量/引用数组元素直接 Array.SetValue；引用字段保留 ReferenceEquals 守卫（不能用 Equals），标量仍无条件写回。嵌套结构体和结构体数组保持逐层装箱、递归及父层复制回写，只省去最末标量旧值的读取。没有省略槽位、改变标量/引用两轮顺序、跳过二次恢复或校验。五参数 ManagedStateAccess 构造器的 directWrites=false 仅为离线/原生夹具保留递归对照，不是新的玩家设置。
+- Mono 普通字段写回不生成委托：单字段直接 FieldInfo.SetValue，标量/引用数组元素直接 Array.SetValue；引用字段保留 ReferenceEquals 守卫（不能用 Equals），标量仍无条件写回。嵌套结构体和结构体数组保持逐层装箱、递归及父层复制回写，只省去最末标量旧值的读取。全图 Restore 仍写全部槽位，标量/引用两轮顺序不变；二次写回可按下述 owner 规则筛选，但不能省略完整校验。五参数 ManagedStateAccess 构造器的 directWrites=false 仅为离线/原生夹具保留递归对照，不是新的玩家设置。
 - 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`，默认 **200000 / 3000000 / 256**。
 - 超限跳过本次捕获，释放半成品并保留旧节点；不使用不完整快照，不自动无限加大上限。面板显示失败、提示去重，日志包含实际计数、各上限及来源路径。
 - 对象上限在新身份入队前检查（包括显式根）；重复、空引用和环不重复计数。失败日志 `objects` 为已经展开的对象，`discovered` 为已发现数（对象超限时包括刚拒绝的一个），`pending` 为尚未展开的已接收对象。不能等出队时才检查，否则宽图会提前堆积超限队列。
@@ -88,6 +90,7 @@ docs/workshop/                     创意工坊文本
 - 捕获仍在同一回调同步完成；**未启用分帧快照**。任何跨帧实现须独立提交，并解决业务图一致性，不能只靠 `timeScale=0`。
 - 捕获后必须跑完整 `Differences()`；差异非空就视为恢复失败，不能再报成功。
 - Mono 标量校验走 `IStateValueComparer`，只比较捕获值，不往节点值表登记新值；float/double 按位比较，保留正负零和 NaN 差别。其他后端仍走原字节比较；差异消息达到上限也必须扫描完整图。
+- `Snapshot.OwnerReconcile=true` 仅改变同步原生刷新后的第二次写回：PrepareReconciliation 完整扫描并独立计数不同槽位，最多记录 128 个变化 owner，按其全部捕获字段（块也完整）生成最多 8192 逻辑槽的计划。仅 ManagedStateAccess / 精确 SemanticTagBlock 显式许可；未知访问器/块、配置禁用或规模超限时全图 Restore。不能从有限日志消息决定写入集合，不硬编码字段名、不重建字典或裁剪数组；保留普通标量 -> 块标量 -> 普通引用 -> 块引用顺序和真实存储写入。无差异不写业务字段。计划一次性、同回调立即应用，中间图扫描/写入或新计划使其失效；不支持跨帧/并发使用。局部写回后的完整最终校验若完成但有差异，最多一次全图 Restore + 全视觉/几何/最终变换 + 再次完整校验；读取/写回/视觉异常不重试。再次不一致沿原失败流程重载，清理视图必须在成功之后。
 - `Storage`、`StateGraph.Entry` 是只读值类型；普通字段索引为 `-1`，不能依赖结构体默认值 `0`。
 - `Snapshot.SemanticTagShadow=true` 默认启用标签语义只读对照：每次上下文清空或文件重载后最多尝试捕获一个节点，随节点释放。保留所有禁用/零值标签、共享对象与浮点位模式；字段结构不匹配、超预算或读取异常只记录失败，主图 StateGraph 仍为权威。原版库存等也是 TagSystem 子类，允许其**标签基类字段投影**，子类额外字段仍仅由旧字段路径覆盖；日志明确 `scope=tag-base-fields extraFields=legacy-only` 并给出子类数量及前六种类型。第三方继承链仍拒绝，错误包含实际类型/程序集与主图来源，不能因原版子类误拒整个样本。**Shadow/SemanticTagSnapshot 自身仍没有 Restore/Write API，只增加诊断工作，不是提速来源。**
 - `Snapshot.SemanticTagBlocks=true` 默认启用首轮真实混合载荷：只处理精确原生 `TagState`（包含不在字典中的独立标签），严格匹配九字段名称/类型及主图描述；子类、筛选根、不匹配结构捕获时走旧路径。每对象一个强类型字段块替代九条 Entry 与六次值令牌读/登记；仍保留全部对象/字符串身份、引用发现顺序、来源路径、逻辑槽位/字节预算以及字典 capacity/entries/buckets/version/free-list/视图/枚举器。禁止 Clear/Add 集合重建。`VisitCapturedSlots` 同时展开块内保存的九个槽，不读 live 字段。Census 仍完整走原字段普查，不创建块。
@@ -102,7 +105,7 @@ docs/workshop/                     创意工坊文本
 
 写入前：验证目标视觉状态；当前业务图用 `StateGraph.Census` 完整普查（同根、同引用覆盖、逐字段读取、同预算），只为寻找新增物品/窗口，不保存 Entry 或 Mono 值令牌。目标 `Differences()` 完整读取预检仍保留。普查结果禁止 Restore/Differences，失败不写入。
 
-1. 还原业务图（`StateGraph.Restore`，必要时第二次还原，因为原生 Validate/UI 刷新可能改动业务图）。
+1. 首次完整还原业务图（`StateGraph.Restore`）；原生 Validate/UI 刷新后完整扫描，按 owner 规则第二次还原或回退完整 Restore。
 2. `foreach (var view in target.Visuals) view.Restore();`
    `VisualState` 保存并还原：父级、`anchorMin/anchorMax`、`pivot`、`sizeDelta`、`anchoredPosition3D`、`localScale`、`localRotation`、激活状态，以及 Image 的 sprite/color/`enabled`/`raycastTarget`。
 3. `RestoreItemGeometry(target)`：按还原后的 `modifiedShape` / `modifiedXOrigin` 调一次原生 `UpdateRectTransform()`，并写回物品正常层与拖拽层的尺寸、锚点和背景原点；若写入后仍与期望不符，直接抛异常（不要静默成功）。
@@ -170,6 +173,7 @@ docs/workshop/                     创意工坊文本
 - `[QuickSL/Geom]` 只在物品视图异常（DESTROYED / MISSING / NOSPRITE / HIDDEN / MISPLACED）时输出，是排查贴图问题的第一入口。
 - CAPTURE 仍一行摘要：access/walk/items/verify 后补 prepareHistory/history/retain/finish，history 包含正常历史淘汰。RESTORE OK 仍一行：validate/census/preflight/write/refresh/reconcile/finalVerify/cleanup/release/total，包含当前普查释放，但不包含入口拒绝门控和摘要日志自身 I/O。失败输出 phase 与 elapsedMs。
 - CAPTURE 的 `walkReaderCompileMs` 是本次 walk 内读取委托编译时间，**已包含在 walk 中，不能再加一次**；readers 的 compileAttemptsTotal/compileMsTotal 是 ClearCache 以来的累计值，包含失败编译，只在实际编译时计时，不为每次字段读取打点，不改变读取 32 次后才编译的策略。RESTORE 同行追加 `reconcileDetail(rewrite=...,reportedDiff=...,scan=...,write=...,views=...,geometry=...,transforms=...)`；五项时间和为原 reconcile，reportedDiff 是最多 12 条诊断数而非实际差异总数，仍扫描全部字段。rewrite=False 不等于没有做最终视觉/几何处理。失败 phase 细分为 reconcile-scan/write/views/geometry/transforms。
+- RESTORE 另加 `repair(mode=owners|full|none,reason=...,changedSlots=...,trackedOwners=...,plannedSlots=...,finalFallback=...)`：changedSlots 是完整扫描的真实不同槽数（按原比较语义），trackedOwners 是有界已跟踪数而非总数，plannedSlots 为完整变化 owner 的逻辑写回槽数，full 时为全图槽数。scan 包含捕获条目索引筛选，不新增 live 扫描；write 为计划验证和写回。finalFallback=True 时 finalVerify 包含一次失败的完整校验、全图回退及视觉/几何/最终变换和再次完整校验；另记 REPAIR FULL FALLBACK 的有限无值字段名，不能将该耗时当纯扫描。未知/超限 full 模式及 none 模式不增加最终重试。
 - 刷新后的同次差异扫描使用 DifferencesWithSources，恢复结束后追加一条 RECONCILE DIFF：最多收集并展示 12 条对象身份/类型/字段/捕获来源，字段块与普通字段均覆盖；不额外扫描或重读字段，不输出业务值，不调用业务 getter/ToString。日志文本中的程序集限定泛型参数组缩写为 `<...>`，保留数组索引/字段路径；原始槽名和 SourceOf 不变。类型/字段各限 128 字符、路径限 240 字符，字段/路径超长保留尾部，保持单行；无需 Verbose。scanLimit 是诊断条数上限，绝不是扫描字段上限；仍检查全部字段并传播末尾异常。来源格式化计入 scan，日志 I/O 不计入恢复摘要；scope=captured-graph-only 不能作为集合所有权或选择性恢复的依据。
 - CAPTURE 追加 `backend=hybrid-exact-tag tagBlocks=N`（关闭时 `backend=legacy tagBlocks=0`；原生字段结构不符为 `legacy-tag-schema-mismatch`）。slots/bytes 仍是相同逻辑预算，不代表压缩后的真实内存，不能用计数不减判断没有生效。当前只减少精确 TagState 的逐字段工作，不能承诺整个捕获/恢复达到隔离 .NET 6 标签夹具的提速幅度。
 - 标签对照另记 `[SemanticTags] CAPTURE MATCH / RESTORE MATCH / ... FAILED`，按同一 `id` 对应节点。捕获摘要追加 `semanticShadow`，恢复摘要追加 `semanticVerify`，避免把实验开销混进旧后端阶段；`logicalSlots/Bytes` 只表示语义标签载荷，不是内存占用或全图替代规模。回溯采样节点才能得到 RESTORE MATCH；普通节点没有这条日志。关闭 `Snapshot.SemanticTagShadow` 可停止后续采样，已捕获样本仍随节点验证/释放。
@@ -255,5 +259,6 @@ docs/workshop/                     创意工坊文本
 - `research/2026-11-11-semantic-tag-blocks.md`：精确 TagState 混合字段载荷、离线/原生验证、隔离基准、部署与实机操作要求。
 - `research/2026-11-11-snapshot-write-fastpath.md`：普通字段写回减重、首节点编译计时、reconcile 子阶段计时、验证和部署。
 - `research/2026-11-11-reconcile-difference-sources.md`：刷新后差异归属诊断、完整扫描回归与下一轮实机要求。
+- `research/2026-11-11-owner-reconciliation.md`：完整变化对象的有界二次修复、全图回退、192 项回归及隔离基准，首次实机前停止边界。
 - `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
 - `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。
