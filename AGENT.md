@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**336 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**341 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -45,6 +45,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 已部署普通标量免写（19:40）：`Snapshot.SkipUnchangedScalars=true` 仍逐槽读取，只有 null/框架 primitive/enum/decimal 与捕获值精确相同时才省去真实写入，浮点按位比较；自定义 nullable 结构体无条件写入，不新增其 Equals 调用。不同值仍递归复制写回，块、引用、捕获、普查、预检/最终完整校验及 owner/full 回退保持。Session 追加开关，RESTORE 追加本次 ordinaryScalarWrites(checked/skipped)，仅计普通标量调用、不含块/引用。两次原生隔离开关对照写回约快 30-32%，少分配约 1.04 MiB；大量变化样本快约 15.6%但多分配约 1.21 MiB，不代表 Unity 或整次恢复收益。226 项回归及原生兼容通过，待实机，详见 `research/2026-11-11-unchanged-scalar-writes.md`。局部递归改静态递归候选无收益，已撤除。
 
 ### 版本与发布
+
+当前最新：2026-11-12 01:18:14.077 联合运行态实机通过，4捕获/7恢复最终diff=0/releaseOk=True，无最终回退；首节点4次实际runtimePilot=True/483607槽、完整78095 Entity槽写回，双载荷全MATCH，恢复后四件群拖完成。首节点3553 ms（entityRecords2643含runtime882），其他315-349 ms，恢复中位数769 ms，非A/B、不归因提速；无FAILED/UNAVAILABLE，Player.log只有启动TLS/Curl网络错误。接续新增 `Snapshot.SemanticManualSample=true`，每上下文首个采样之外，再为首个后续手动节点准备独立载荷，最多两次尝试；失败/淘汰不重试，普通后续节点不扩展。341项及原生两个完整游戏类型节点六轮往返/不同字典容量/成员顺序/跨节点拒绝/释放隔离通过。待双节点实机，旧图/全部校验/修复/视觉及重复诊断保留，额外手动节点也会明显停顿；生产捕获尚未替换。详见 `research/2026-11-12-semantic-two-node-sampling.md`。以下为历史阶段记录。
 
 当前进度：2026-11-12 01:04:53.592 库存补测通过。3捕获/4恢复最终零差异，首节点两次286库存写回和双载荷 MATCH；两次恢复首节点后的四件群拖完成，用户确认无问题。首节点3557 ms（entityRecords2482含runtime1040），后续274/316 ms；恢复中位数685.5 ms，非 A/B、不归因提速。接续新增 `Snapshot.SemanticRuntimeRestore=true` 受限联合写回：仅采样节点、完整启用实体组与独立运行态逐槽无重叠覆盖旧图才准入，首次写回不再由旧图承担，旧完整捕获/预检/最终校验/owner/full修复/视觉顺序保留。关闭必要实体开关走既有实体/旧图路径，实际写错不隐藏重试。336项及原生六轮真实运行态标签/数组/字典/闭包/回调/成员对照通过。待联合运行态首次实机，生产捕获尚未替换，重复诊断暂保留，不是完整后端。详见 `research/2026-11-12-runtime-partition-writes.md`；以下为各历史阶段记录。
 
@@ -157,7 +159,7 @@ docs/workshop/                     创意工坊文本
 - 普通标量比较器与读取委托分别按路径累计 32 次后尝试编译，仅 primitive/enum/decimal/对应 Nullable 许可；值从参数传入，不绑定对象/节点/数组/期望值。浮点按位，nullable 先比 HasValue，decimal 保持原 Equals 语义；自定义结构/无 reader/缓存满/生成不可用回退，真实读取异常不能吞掉。开关 `Snapshot.TypedScalarComparisons` 决定新访问器是否使用，禁用重启不影响旧载荷。比较器依附同一 4096 上限缓存，不额外无限缓存；Capture 最终校验、恢复预检/差异/最终校验、普通免写判断仍逐槽读取，不新增值令牌。编译计时单列，已包含对应阶段；不与原 walkReaderCompileMs 混算。
 - 普通引用完整比较可由 `IStateReferenceComparer` 许可直接身份比较；ManagedStateAccess 的 `Snapshot.DirectReferenceComparisons` 读取真实存储后，仅与该节点 `_retained` 目标做 ReferenceEquals（null 仍 null），不调用业务 Equals/运算符。全图 Validate 和全部扫描不变，未知后端/禁用仍旧 ID 路径；Capture/Census 引用发现、Tag 块、写回不变。扫描不再仅为比较而登记变化 live 引用的全局 ID，仍完整识别变化；读取/身份异常直接传播。referenceComparisons 是普通引用成功比较调用数，不是新身份数。
 - `Snapshot.SemanticEntityAudit` 仅在每上下文首个采样节点只读扫描旧拓扑，不调用业务 getter、Validate/Restore/Differences，不认证实体独占或覆盖完整。callback 为 delegate/CompilerGenerated 类型元数据启发式，普通目标方法不一定分类；全部其他边仍计数。数组入边不等于独占成员链接，图外/opaque/静态引用未知。禁止从零别名或有限日志批准裁剪、集合重建或实体写回；实体迁移必须另有完整字段覆盖清单、外部句柄协议和旧图 oracle。
-- `Snapshot.SemanticEntityRecords` 每上下文最多尝试一次独立只读记录：精确 GameItemElement/GameItem/GameItemFunc 完整继承链、精确库存完整继承链、PixelWindow 与 GridShapeBuilder 完整字段角色清单/全部 data 字节；保留原对象和引用身份，未知子类 legacy-only。不据 MATCH 裁剪。每个实体/运行态字段必须被旧槽完整覆盖，Visual 必须排除；未知字段/超预算/读取失败只记录诊断失败，完整主图仍权威。采样节点恢复后校验句柄原身份并完整比较记录但不写入，不增加业务重试。CAPTURE entityRecords 单列诊断成本，包含句柄/分区/拓扑重放，不是提速。
+- `Snapshot.SemanticEntityRecords` 每上下文首个采样节点尝试独立只读记录，`Snapshot.SemanticManualSample=true` 时额外允许首个后续手动节点（最多两次尝试，失败/淘汰不重试，既有上下文/文件重载清理时重置）：精确 GameItemElement/GameItem/GameItemFunc 完整继承链、精确库存完整继承链、PixelWindow 与 GridShapeBuilder 完整字段角色清单/全部 data 字节；保留原对象和引用身份，未知子类 legacy-only。不据 MATCH 裁剪。每个实体/运行态字段必须被旧槽完整覆盖，Visual 必须排除；未知字段/超预算/读取失败只记录诊断失败，完整主图仍权威。采样节点恢复后校验句柄原身份并完整比较记录但不写入，不增加业务重试。CAPTURE entityRecords 单列诊断成本，包含句柄/分区/拓扑重放，不是提速。
 - 实体记录现扩展精确库存完整继承链与精确 PixelWindow 的 Entity/Runtime/Visual manifest，名称/精确类型/完整声明数全部检查，不给未知字段默认分区。Entity/Runtime 必须各有完整旧槽，Visual 必须未进业务图；除已明确保留额外字段的 Item 基类投影外，精确 owner 未知槽即拒绝诊断。Runtime 回调/缓存/标签等保留完整物理存储，MATCH 不认证可删；stolenUI、parent、父物品/链接库存等读取真实字段，不调用 ChildStorage/childItems/UncheckedAccept/Expel/Validate。style enum 全宽值保留；现有 VisualState 及实际恢复顺序不变。
 - `Snapshot.SemanticRuntimeRestore` 只允许完整实体组与独立 Runtime 的受限联合首次写回。绑定同一旧 checkpoint，核对全部对象、逐槽完整描述/引用身份及无重叠/缺失覆盖；准备后才允许获许可的普通真实存储和块写入，未知块拒绝。所有实体及两图/句柄/写权限先预检，全部标量先于全部引用；失效或真实写错不隐藏重试。只用捕获时冻结的完整实体组，禁用必要开关走原组合。旧图仍完整捕获、Census/预检/最终读取、owner/full二次修复不变；不得据试点删除旧载荷/诊断或重建集合。RESTORE 的 runtimePilot/runtimePilotSlots 为实际参与，runtimeScalarWrites 单列独立普通标量写入；ordinaryScalarWrites 不再代表两载荷总工作。
 - Mono 普通字段写回不生成委托：需要写入的单字段直接 FieldInfo.SetValue，标量/引用数组元素直接 Array.SetValue；引用字段保留 ReferenceEquals 守卫（不能用 Equals）。`Snapshot.SkipUnchangedScalars=true` 仅对 null/框架 primitive/enum/decimal 的普通槽先读真实存储，按与 ValueEquals 相同的比较语义（浮点按位）免写完全相同值，自定义 nullable 结构体不增加 Equals 调用；配置关闭则无条件写普通标量，配置只影响新节点访问器，关闭后重启。不同值的嵌套结构体和结构体数组保持逐层装箱、递归及父层复制回写。全图 Restore 仍访问全部槽位，普通标量/块标量/普通引用/块引用顺序不变，块不免写；二次写回可按下述 owner 规则筛选，但不能省略完整校验。新读取异常沿原失败流程，不重试无条件写入。五参数 ManagedStateAccess 构造器的 directWrites=false 默认禁用免写，仅为离线/原生夹具保留递归对照，不是新的玩家设置。

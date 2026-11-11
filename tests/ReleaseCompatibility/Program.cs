@@ -888,6 +888,59 @@ try
     if ((long)runtimeWrites.GetType().GetField("Item1").GetValue(runtimeWrites) == 0)
         throw new Exception("Native independent runtime ordinary write diagnostics did not count actual writes.");
     Console.WriteLine("PASS native paired entity/runtime writer: incomplete group rejection, six actual independent storage restores, original tag/int blocks and dictionary capacity, callbacks and closure aliases, all partial switch selections rejected without writes, no ordinary oracle writes");
+    boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 29);
+    boundaryItems[0].GetType().GetProperty("parentInventory").SetValue(boundaryItems[0], boundarySlot);
+    boundaryList.Clear(); boundaryList.Add(boundaryItems[1]); boundaryList.Add(boundaryItems[0]);
+    boundarySlot.GetType().GetField("currentItem", dataFlags).SetValue(boundarySlot, boundaryItems[1]);
+    boundaryTagType.GetField("valueInt", dataFlags).SetValue(boundaryTag, 43);
+    for (int i = 0; i < 6; i++) boundaryTagMap["future-" + i] = boundaryTag;
+    boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, -11);
+    var futureAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+        .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+    mod.GetType("ProbablyStolenTools.SemanticTagBlock", true).GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new[] { futureAccess });
+    foreach (var root in boundaryRoots)
+        accessType.GetMethod("AddRoot", dataFlags).Invoke(futureAccess, new object[] { Identity(root), Array.Empty<string>() });
+    using (var futureGraph = (IDisposable)graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { futureAccess, boundaryRoots.Select(Identity).ToArray(), 50000, 1000000, 64L * 1024 * 1024 }))
+    using (var futureRecords = (IDisposable)entityType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { futureGraph, 50000, 1000000, 64L * 1024 * 1024 }))
+    {
+        foreach (string enable in new[] { "EnableShapeRestore", "EnableWindowRestore", "EnableItemRestore", "EnableInventoryRestore" })
+            entityType.GetMethod(enable, dataFlags).Invoke(futureRecords,
+                new object[] { futureGraph, 50000, 1000000, 64L * 1024 * 1024 });
+        entityType.GetMethod("EnableRuntimeRestore", dataFlags).Invoke(futureRecords,
+            new object[] { futureGraph, 50000, 1000000 });
+        try
+        {
+            entityType.GetMethod("TryRestoreRuntime", dataFlags).Invoke(futureRecords,
+                new object[] { boundaryGraph, true, true, true, true });
+            throw new Exception("Future native paired plan crossed checkpoint scopes.");
+        }
+        catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+        for (int iteration = 0; iteration < 6; iteration++)
+        {
+            if (!RestoreWithRuntime(15) || EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0
+                || boundaryTagMap.Count != 1 || !ReferenceEquals(boundaryList[0], boundaryItems[0])
+                || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                    .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
+                throw new Exception("Native past paired node lost independent original state.");
+            if (!(bool)entityType.GetMethod("TryRestoreRuntime", dataFlags).Invoke(futureRecords,
+                    new object[] { futureGraph, true, true, true, true })
+                || EntityDifferences(futureRecords) != 0 || RuntimeDifferences(futureRecords) != 0
+                || boundaryTagMap.Count != 7 || !ReferenceEquals(boundaryList[0], boundaryItems[1])
+                || (int)boundaryItems[0].GetType().GetProperty("unitCount").GetValue(boundaryItems[0]) != 29
+                || (int)boundaryTagType.GetField("valueInt", dataFlags).GetValue(boundaryTag) != 43
+                || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                    .Invoke(futureGraph, new object[] { 12 })).Count != 0)
+                throw new Exception("Native future paired node lost independent original state.");
+        }
+        RestoreWithRuntime(15);
+    }
+    if (EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0
+        || !RestoreWithRuntime(15))
+        throw new Exception("Disposing a future native node invalidated the retained past node.");
+    Console.WriteLine("PASS native two independent complete entity/runtime checkpoints: six past/future round trips, different dictionary capacities and member order, cross-node rejection and future disposal isolation");
     gridWriter.Dispose(); slotWriter.Dispose();
     boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 77);
     boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, 81);

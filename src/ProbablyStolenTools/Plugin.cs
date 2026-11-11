@@ -62,6 +62,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgSemanticItemRestore;
         internal static ConfigEntry<bool> CfgSemanticInventoryRestore;
         internal static ConfigEntry<bool> CfgSemanticRuntimeRestore;
+        internal static ConfigEntry<bool> CfgSemanticManualSample;
         internal static ConfigEntry<KeyCode> CfgKeyPrev;
         internal static ConfigEntry<KeyCode> CfgKeyManual;
         internal static ConfigEntry<KeyCode> CfgKeyDay;
@@ -282,17 +283,19 @@ namespace ProbablyStolenTools
             CfgSemanticEntityAudit = Config.Bind("Snapshot", "SemanticEntityAudit", true,
                 "Read-only item/inventory boundary audit on one checkpoint per context. Adds diagnostic work, not a speedup; never prunes the graph or writes entity state.");
             CfgSemanticEntityRecords = Config.Bind("Snapshot", "SemanticEntityRecords", true,
-                "Independent read-only entity and runtime payloads on one checkpoint per context. Adds diagnostic capture/verification cost. Does not replace production capture.");
+                "Prepare independent entity/runtime payloads on the primary sample and optionally one later manual sample per context. Read-only unless writer pilots are enabled; adds diagnostic cost and does not replace production capture.");
             CfgSemanticShapeRestore = Config.Bind("Snapshot", "SemanticShapeRestore", true,
                 "Pilot exact GridShapeBuilder entity writes on the sampled entity checkpoint only. Keeps the full old graph, full verification, normal reconciliation and visual ordering. Disable for original first writes.");
             CfgSemanticWindowRestore = Config.Bind("Snapshot", "SemanticWindowRestore", true,
-                "Pilot exact PixelWindow business-field writes on the sampled entity checkpoint only. Callbacks and runtime fields remain on the old graph; full verification and visual ordering are unchanged.");
+                "Pilot exact PixelWindow business-field writes on sampled checkpoints only. Callback/runtime storage uses the old graph or the paired runtime pilot; full verification and visual ordering are unchanged.");
             CfgSemanticItemRestore = Config.Bind("Snapshot", "SemanticItemRestore", true,
-                "Pilot exact GameItemElement business-field writes on the sampled entity checkpoint only. Keeps original identities, callbacks/collection storage on the old graph, full verification and visual ordering.");
+                "Pilot exact GameItemElement business-field writes on sampled checkpoints only. Keeps original identities and physical callback/collection storage, full verification and visual ordering.");
             CfgSemanticInventoryRestore = Config.Bind("Snapshot", "SemanticInventoryRestore", true,
-                "Pilot exact grid and slot inventory business-field writes as one atomic group on the sampled checkpoint. Keeps callbacks, caches, tags and collection storage on the old graph, with full verification.");
+                "Pilot exact grid and slot inventory business-field writes as one atomic group on sampled checkpoints. Keeps physical callbacks, caches, tags and collection storage via the old graph or paired runtime pilot, with full verification.");
             CfgSemanticRuntimeRestore = Config.Bind("Snapshot", "SemanticRuntimeRestore", true,
                 "Pilot independent runtime storage writes only with a complete enabled entity partition on the sampled checkpoint. Keeps the full old capture, verification, repair and visual sequence.");
+            CfgSemanticManualSample = Config.Bind("Snapshot", "SemanticManualSample", true,
+                "Prepare one additional entity/runtime sample on the first later manual checkpoint per context. At most two attempts; retains the full old graph and diagnostics for independent past/future testing.");
             CfgKeyManual = Config.Bind("Rewind", "KeyManualCheckpoint", KeyCode.F9,
                 "Create a checkpoint immediately, without waiting for a customer.");
             CfgKeyPrev = Config.Bind("Rewind", "KeyPrevCheckpoint", KeyCode.F6,
@@ -379,7 +382,7 @@ namespace ProbablyStolenTools
             EventLog.Write($"[Session] version={Version} game={Application.version} locale=deferred " +
                 $"snapshotLimits(objects={CfgMaxObjects.Value},slots={CfgMaxSlots.Value},MiB={CfgMaxBytesMb.Value}) " +
                 $"verbose={CfgVerboseLog.Value} semanticTagShadow={CfgSemanticTagShadow.Value} semanticTagBlocks={CfgSemanticTagBlocks.Value} ownerReconcile={CfgOwnerReconcile.Value} intArrayBlocks={CfgIntArrayBlocks.Value} semanticTagCensus={CfgSemanticTagCensus.Value} skipUnchangedScalars={CfgSkipUnchangedScalars.Value} typedScalarComparisons={CfgTypedScalarComparisons.Value} directReferenceComparisons={CfgDirectReferenceComparisons.Value} semanticEntityAudit={CfgSemanticEntityAudit.Value} semanticEntityRecords={CfgSemanticEntityRecords.Value} semanticShapeRestore={CfgSemanticShapeRestore.Value}; " +
-                $"semanticWindowRestore={CfgSemanticWindowRestore.Value} semanticItemRestore={CfgSemanticItemRestore.Value} semanticInventoryRestore={CfgSemanticInventoryRestore.Value} semanticRuntimeRestore={CfgSemanticRuntimeRestore.Value}; arrivalWaitSeconds is not capture duration; use captureMs");
+                $"semanticWindowRestore={CfgSemanticWindowRestore.Value} semanticItemRestore={CfgSemanticItemRestore.Value} semanticInventoryRestore={CfgSemanticInventoryRestore.Value} semanticRuntimeRestore={CfgSemanticRuntimeRestore.Value} semanticManualSample={CfgSemanticManualSample.Value}; arrivalWaitSeconds is not capture duration; use captureMs");
             LogSource.LogInfo("Loaded.");
         }
 

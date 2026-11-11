@@ -33,7 +33,7 @@ namespace ProbablyStolenTools
 #if MONO
         private static bool _semanticShadowAttempted;
         private static bool _entityBoundaryAttempted;
-        private static bool _entityRecordsAttempted;
+        private static readonly SemanticCheckpointSampling EntitySamples = new();
 #endif
         internal static bool Restoring { get; private set; }
         internal static bool PatchesReady;
@@ -304,7 +304,7 @@ namespace ProbablyStolenTools
 #if MONO
             _semanticShadowAttempted = false;
             _entityBoundaryAttempted = false;
-            _entityRecordsAttempted = false;
+            EntitySamples.Reset();
 #endif
             Failures.Clear();
             LastCaptureError = null;
@@ -559,6 +559,7 @@ namespace ProbablyStolenTools
             Snapshot candidate = null;
             var timing = System.Diagnostics.Stopwatch.StartNew();
             string phase = "access";
+            string entitySample = "none";
             try
             {
                 var access = Access(store, out var roots);
@@ -695,9 +696,9 @@ namespace ProbablyStolenTools
                 long tEntityAudit = timing.ElapsedMilliseconds;
                 phase = "entity-records";
 #if MONO
-                if (!_entityRecordsAttempted && Plugin.CfgSemanticEntityRecords?.Value == true)
+                if (Plugin.CfgSemanticEntityRecords?.Value == true
+                    && EntitySamples.TryBegin(manual, Plugin.CfgSemanticManualSample?.Value == true, out entitySample))
                 {
-                    _entityRecordsAttempted = true;
                     var recordClock = System.Diagnostics.Stopwatch.StartNew();
                     try
                     {
@@ -772,7 +773,7 @@ namespace ProbablyStolenTools
                     catch (Exception e)
                     {
                         EventLog.Write($"[SemanticEntities] RECORD CAPTURE FAILED id={candidate.Id} readOnly=true " +
-                            $"legacyAuthoritative=true elapsedMs={recordClock.ElapsedMilliseconds}: " + e);
+                            $"sample={entitySample} legacyAuthoritative=true elapsedMs={recordClock.ElapsedMilliseconds}: " + e);
                     }
                 }
 #endif
@@ -789,7 +790,7 @@ namespace ProbablyStolenTools
 #if MONO
                 if (candidate.SemanticEntities != null)
                     EventLog.Write($"[SemanticEntities] RECORD CAPTURE MATCH id={candidate.Id} readOnly=true " +
-                        $"captureVerifyMs={tEntityRecords - tEntityAudit} {candidate.SemanticEntities.Summary}");
+                        $"sample={entitySample} captureVerifyMs={tEntityRecords - tEntityAudit} {candidate.SemanticEntities.Summary}");
                 if (candidate.SemanticTags != null)
                 {
                     EventLog.Write($"[SemanticTags] CAPTURE MATCH id={candidate.Id} readOnly=true " +
@@ -1444,7 +1445,7 @@ namespace ProbablyStolenTools
 #if MONO
             _semanticShadowAttempted = false;
             _entityBoundaryAttempted = false;
-            _entityRecordsAttempted = false;
+            EntitySamples.Reset();
 #endif
             Failures.Clear();
             LastCaptureError = null;
