@@ -571,6 +571,32 @@ try
             .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
         throw new Exception("Inventory/window/runtime original identities did not survive legacy restoration.");
     Console.WriteLine("PASS native complete inventory/window field partitions, ten independent relationship mutations and legacy-only callback/cache restoration without business callbacks");
+    var elementType = boundaryItems[0].GetType();
+    foreach (string name in new[] { "fakePinOverlayVisible", "markHiddenWithBackground", "destroyed" })
+        elementType.GetField(name, dataFlags).SetValue(boundaryItems[0], true);
+    elementType.GetField("<tempShape>k__BackingField", dataFlags).SetValue(boundaryItems[0], boundaryShape);
+    if (EntityDifferences(entityRecords) != 4)
+        throw new Exception("Full item hierarchy missed derived state and temporary shape identity.");
+    graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
+    var itemFunctionType = game.GetType("GameItemFunc", true);
+    var callbackField = itemFunctionType.GetField("<onLoaded>k__BackingField", dataFlags);
+    // The generic callback needs an exact signature; bind a fixture method without invoking it.
+    var actionItemType = typeof(Action<>).MakeGenericType(game.GetType("GameItem", true));
+    var throwingMethod = typeof(NativeEntityCallbackFixture).GetMethod("Throw", BindingFlags.Static | BindingFlags.Public)
+        .MakeGenericMethod(game.GetType("GameItem", true));
+    callbackField.SetValue(boundaryItems[0], Delegate.CreateDelegate(actionItemType, throwingMethod));
+    foreach (string name in new[] { "appliedMinX", "appliedMinY", "appliedOrientation", "appliedGridSize" })
+        elementType.GetField(name, dataFlags).SetValue(boundaryItems[0], 321);
+    foreach (string name in new[] { "appliedFlipped", "validateLock" })
+        elementType.GetField(name, dataFlags).SetValue(boundaryItems[0], true);
+    if (EntityDifferences(entityRecords) != 0
+        || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+            .Invoke(boundaryGraph, new object[] { 12 })).Count != 1)
+        throw new Exception("Full item classification lost callbacks or reintroduced excluded geometry caches.");
+    graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
+    if (callbackField.GetValue(boundaryItems[0]) != null || EntityDifferences(entityRecords) != 0)
+        throw new Exception("Full item runtime callback identity did not restore.");
+    Console.WriteLine("PASS complete native item hierarchy: four derived mutations, callback legacy coverage, all six geometry-cache exclusions and multiword field coverage");
     var fieldPlans = (Array)mod.GetType("ProbablyStolenTools.SemanticInventorySchemas", true)
         .GetMethod("Create", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null);
     var entityOnlyGridFields = fieldPlans.Cast<object>()
@@ -1176,4 +1202,9 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
             Console.WriteLine(FormattableString.Invariant(
                 $"TAG_BLOCK_BENCH runtime=net6-not-Unity mode={mode} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
     }
+}
+
+public static class NativeEntityCallbackFixture
+{
+    public static void Throw<T>(T item) => throw new Exception("Item business callback must not run.");
 }

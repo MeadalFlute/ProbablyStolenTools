@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**269 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**276 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -45,6 +45,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 已部署普通标量免写（19:40）：`Snapshot.SkipUnchangedScalars=true` 仍逐槽读取，只有 null/框架 primitive/enum/decimal 与捕获值精确相同时才省去真实写入，浮点按位比较；自定义 nullable 结构体无条件写入，不新增其 Equals 调用。不同值仍递归复制写回，块、引用、捕获、普查、预检/最终完整校验及 owner/full 回退保持。Session 追加开关，RESTORE 追加本次 ordinaryScalarWrites(checked/skipped)，仅计普通标量调用、不含块/引用。两次原生隔离开关对照写回约快 30-32%，少分配约 1.04 MiB；大量变化样本快约 15.6%但多分配约 1.21 MiB，不代表 Unity 或整次恢复收益。226 项回归及原生兼容通过，待实机，详见 `research/2026-11-11-unchanged-scalar-writes.md`。局部递归改静态递归候选无收益，已撤除。
 
 ### 版本与发布
+
+23:15 会话库存/窗口已检查：5 捕获/6 恢复最终零差异，首节点两次 RECORD RESTORE MATCH（20/16 ms），恢复后四件群拖正常。七处 reconcile 差异均属 cassettePlayer 标签字典及其底层数组，三 owner / 45 槽完整修复，无最终回退。已补齐精确 GameItemElement/GameItem/GameItemFunc 全继承链角色清单，四个派生实体字段进入只读记录、全部回调留 Runtime、六布局缓存继续 Visual 排除；覆盖改多字位图，未知物品子类不认证。276 项和原生派生字段/回调/布局排除通过，完整物品记录待实机。详见 `research/2026-11-11-complete-item-records.md`。
 
 23:01 会话首批实体记录已检查：7 捕获/6 恢复最终零差异，首节点两次 RECORD RESTORE MATCH（15/16 ms），恢复后四件群拖正常；首节点 entityRecords=209 ms、总捕获 1337 ms，仅增加诊断成本。后续阶段补齐精确库存完整继承链及 PixelWindow 的显式 Entity/Runtime/Visual 字段清单：实体记录纳入归属、锁、形状、stolenUI、父物品/链接库存/子控件等；回调/刷新缓存/集合底层仍旧图负责。逐槽检查 Entity/Runtime 都有旧覆盖，Visual 不应出现，精确 owner 未分类槽拒绝，未知 schema 只使本次诊断失败。269 项及原生十处关系变化、runtime 保留/恢复、缺 runtime 根拒绝通过，待实机。物品派生字段完整清单、外部句柄/图切分/实体写回仍未实现，详见 `research/2026-11-11-inventory-window-records.md`。
 

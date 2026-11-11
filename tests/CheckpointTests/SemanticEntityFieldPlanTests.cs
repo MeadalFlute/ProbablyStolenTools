@@ -43,6 +43,46 @@ internal static class SemanticEntityFieldPlanTests
     }
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
+        SemanticSlotSchema Wide(int count) => new(Enumerable.Range(0, count)
+            .Select(i => ("field" + i, i % 2 == 0, i % 3 == 0 ? SemanticFieldRole.Runtime : SemanticFieldRole.Entity))
+            .Append(("visual", true, SemanticFieldRole.Visual)));
+        foreach (int width in new[] { 63, 64, 65, 128, 129 })
+            test("entity coverage preserves every bit across width " + width, () =>
+            {
+                var schema = Wide(width);
+                var coverage = new SemanticSlotSchema.Coverage(schema);
+                check(schema.FieldCount == width + 1 && schema.RequiredCount == width && schema.VisualCount == 1);
+                for (int i = width - 1; i >= 0; i--)
+                {
+                    check(!coverage.Complete);
+                    check(coverage.Observe("field" + i, i % 2 == 0)
+                        == (i % 3 == 0 ? SemanticFieldRole.Runtime : SemanticFieldRole.Entity));
+                }
+                check(coverage.Complete);
+            });
+        test("entity wide coverage rejects duplicate late fields wrong kinds visual and unknown slots", () =>
+        {
+            var coverage = new SemanticSlotSchema.Coverage(Wide(130));
+            coverage.Observe("field129", false);
+            Throws(() => coverage.Observe("field129", false), check);
+            Throws(() => coverage.Observe("field128", false), check);
+            Throws(() => coverage.Observe("visual", true), check);
+            Throws(() => coverage.Observe("unknown", true), check);
+            check(!coverage.Complete);
+        });
+        test("entity coverage shares only schema not owner progress and rejects duplicate schema names", () =>
+        {
+            var schema = Wide(129);
+            var first = new SemanticSlotSchema.Coverage(schema);
+            var second = new SemanticSlotSchema.Coverage(schema);
+            for (int i = 0; i < 129; i++) first.Observe("field" + i, i % 2 == 0);
+            check(first.Complete && !second.Complete);
+            Throws(() => new SemanticSlotSchema(new[]
+            {
+                ("same", true, SemanticFieldRole.Entity), ("same", true, SemanticFieldRole.Runtime)
+            }), check);
+            Throws(() => new SemanticSlotSchema(new[] { ("bad", false, (SemanticFieldRole)12) }), check);
+        });
         test("entity field plans require exhaustive explicit entity runtime and visual partitions", () =>
         {
             var plan = Plan();
