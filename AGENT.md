@@ -125,6 +125,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ## 6. 加载器能力弃用（前向兼容阻断项）
 
+- 后续进展：`research/2026-11-12-static-type-token-proof.md` 已证明构建时固定 ldtoken 可表达私有泛型 Entry/Slot：生成 DLL 官方扫描零能力，游戏自带 Mono 离线字段读写通过。普通 C# 查找链的旧限制仍存在，但不再阻断静态字段表开发。工具/原生离线宿主绝不随 Mod 发布；没有生产替换或实机验收。
 - 官方公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.9.0 只保证**当前游戏版本**可用，发行说明不得写“已兼容下一版”。
 - 当前源码仍依赖 `Expression.Compile` 与运行时 `GetFields/GetMethod`；只删 manifest 声明或关闭 DevelopmentChecks **不是修复**，扫描器按编译进 DLL 的方法判断。
 - 迁移四阶段与探针结果见 `research/2026-11-12-loader-capability-migration.md`；在完成迁移并把退役能力门槛加入 `ReleaseCompatibility` 之前，不得宣称前向兼容。

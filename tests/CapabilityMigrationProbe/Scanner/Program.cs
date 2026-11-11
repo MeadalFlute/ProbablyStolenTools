@@ -5,7 +5,7 @@ using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 
 if (args.Length != 3)
-    throw new ArgumentException("Usage: Scanner <GAME_DIR> <probe.dll> clean|private|negative");
+    throw new ArgumentException("Usage: Scanner <GAME_DIR> <probe.dll> clean|tokens|private|negative");
 string managed = Path.Combine(args[0], "Probably Stolen_Data", "Managed");
 AssemblyLoadContext.Default.Resolving += (_, name) =>
 {
@@ -29,13 +29,14 @@ string[] List(string name) => ((IEnumerable)result.GetType().GetField(name).GetV
 var expected = args[2] switch
 {
     "clean" => Array.Empty<string>(),
+    "tokens" => Array.Empty<string>(),
     "private" => new[] { "reflection-external" },
     "negative" => new[] { "reflection-external", "dynamic-code" },
     _ => throw new ArgumentException("Unknown expectation.")
 };
 if (!List("Capabilities").ToHashSet().SetEquals(expected))
     throw new Exception("Unexpected capability set.");
-if (args[2] == "clean" && List("Findings").Length != 0)
+if ((args[2] == "clean" || args[2] == "tokens") && List("Findings").Length != 0)
     throw new Exception("Clean probe must not produce findings.");
 if (List("HardFlags").Length != 0 || List("Pending").Length != 0
     || result.GetType().GetField("Error").GetValue(result) is string { Length: > 0 })

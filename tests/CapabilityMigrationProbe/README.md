@@ -45,3 +45,32 @@ fixture. No save, game process, loader policy or trust record is changed.
 This does not execute the probe accessors inside Unity/Mono. A clean static scan
 is not proof of complete graph coverage, private-field write safety, reference
 topology preservation, performance or future scanner compatibility.
+
+## Build-time literal type tokens
+
+`LiteralTokens` uses Mono.Cecil only at build time to emit explicit generic
+private nested type tokens followed by fixed `GetField("value"/"next")` calls.
+The generated IL is equivalent to a literal `typeof(Dictionary<K,V>.Entry)`,
+which C# syntax cannot compile because the nested type is private. No visibility
+relaxation, dynamic assembly, runtime emission or scanner modification is used.
+
+```powershell
+$tokens = "out/capability-migration-probe/LiteralTypeTokens.dll"
+# Use a new output path on each run; the generator refuses to overwrite files.
+dotnet run -c Release --project tests/CapabilityMigrationProbe/LiteralTokens -- $game $tokens
+dotnet run -c Release --project $scanner -- $game $tokens tokens
+dotnet build tests/CapabilityMigrationProbe/MonoFixture -c Release
+dotnet run -c Release --project tests/CapabilityMigrationProbe/MonoHost -- $game `
+  tests/CapabilityMigrationProbe/MonoFixture/bin/Release/netstandard2.1/MonoFixture.dll $tokens
+```
+
+The token scan must be clean. MonoHost is a Windows x64 offline subprocess that
+embeds the game's own Mono and loads only the fixture plus generated token
+assembly, using fresh in-memory collections. It does not launch the game or
+access saves. Its native calls and the fixture's dynamic reflection belong only
+to test tools and MUST NOT be included in a mod package.
+
+The target-specific token assembly is not a .NET 8 fixture: the host's private
+BCL nested types do not resolve identically through mscorlib forwarding. Actual
+game-Mono execution is required for this test. Passing it proves the narrow
+Entry/Slot access path, not complete static schema coverage or Unity UI safety.
