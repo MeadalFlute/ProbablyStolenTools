@@ -40,6 +40,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 已部署只读 Census 优化（19:10）：`Snapshot.SemanticTagCensus=true` 对精确 TagState、完整匹配的九字段描述，直接消费同九字段临时值，代替六次通用标量读；三个引用仍逐槽走原身份发现，子类/筛选根/描述或原生结构不匹配走旧路径。捕获载荷、第一次/第二次写回、预检、最终校验不变，无持久值/块进入普查。RESTORE 的 census 追加 exactTagProbes，Session 追加开关。219 项回归、原生覆盖/预算/身份/来源/回退对照通过；两次隔离基准 Census 约快 6-8%、少分配约 1.12 MiB，不推算 Unity 或整次回溯收益。引用数组载荷、值令牌索引表两个原型因收益不稳或捕获/写回退化已完全撤除，未部署。详见 `research/2026-11-11-exact-tag-census.md`，本轮待实机验收。
 
+19:27 会话已检查：5 次捕获、3 次内存恢复（含手动）均成功，exactTagProbes=16212-16782，最终 diff=0，无最终全图回退。Census 中位数 127 ms（18:31 为 127.5 ms），实机未证明提速；整次恢复中位数 697 ms 也不能据非 A/B 样本归因。3 对群组拖拽均在恢复前；恢复后群拖、至少 6 次往返、非默认议价及实机全图回退未覆盖。随后“开业前”文件回溯在原生 OnDisable -> CloseUI -> AudioSource.Play 出现一次空 source 异常，但读档收尾完成；独立记录，不认定为 Census 回归，也不忽略。详见同一普查文档。
+
 ### 版本与发布
 
 - **唯一真源**：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。

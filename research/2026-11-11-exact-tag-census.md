@@ -71,3 +71,25 @@ dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.
 - 部署 DLL SHA256：`8D871871D61EFC9EBA5D581BC314A88C093CBFB80FCDFCB7CCD787AD136253A8`。
 - 校验 78 个存档文件未变；SettingsImported=False，GameStarted=False。
 - 待用户实机操作；本轮不据离线基准宣称真实游戏提速或 UI 验收通过。
+
+## 19:27 会话实机日志检查
+
+用户反馈已完成操作。检查本机 PSTools.log 的 2026-11-11 19:27:37 Session 至 19:29:31，以及同次 Player.log。
+
+- Session.semanticTagCensus=True；5 次捕获（4 个顾客、1 个手动），首节点 927 ms，其余 344/449/308/292 ms。捕获路径未改，不将其波动归因于本轮。
+- 实际记录 3 次内存恢复，目标 id=2/4/5（含手动），均 diff=0、releaseOk=True；exactTagProbes=16779/16212/16782，确认原生精确标签快路径实际命中。
+- Census=127/116/141 ms，中位数 127 ms；整次恢复=696/697/753 ms，中位数 697 ms。首次写回=197/207/211 ms；预检中位数 88 ms，最终校验中位数 61 ms。
+- 对照 18:31 会话六次恢复：Census 中位数 127.5 ms，整次恢复中位数 732.5 ms。样本、图和目标不完全相同，没有开关 A/B；Census 实机未见显著改善，不能将总时间差归因于快路径，也不能直接证实隔离基准的 6-8%。
+- 三次二次修复均 owners/eligible，4 个差异槽、一个字典 owner、10 个计划槽，全部来自 cassettePlayer.modifiedState.dict；无最终全图回退。无本 Mod 捕获/内存恢复失败或异常几何诊断。
+- 记录 3 对群组拖拽 START/END（2/4/4 件），全部在本次首次恢复前。没有恢复后的群组拖拽记录，不能据本会话验证该边界。也未采样恢复 id=1，因此只有 CAPTURE MATCH，没有新增 RESTORE MATCH。
+- 此次内存恢复只有 3 次，未覆盖原计划至少 6 次往返、非默认议价或实机全图回退；日志也不能独立证明画面/碰撞/数量/金钱正确。
+
+### 文件回溯另记
+
+19:29:19 用户随后触发“开业前”文件回溯。Player.log 在卸载场景期间记录 NegotiationTablet sibling 警告和一次 ArgumentNullException(source)：AudioSource.Play -> EmporiumAudioPlayer.PlayUnMatched -> NegociationUIManager.CloseUI -> StoreUIManager.CloseUI -> StoreUI.OnDisable。之后菜单加载、存档加载和 post-load 收尾完成，19:29:31 回到 state=2。
+
+调用栈位于原生场景卸载关闭 UI 的音频路径；目前无法证明由本轮只读 Census 引起，也不能断言与 Mod 文件回溯无关。不吞异常、不擅自增加原版音频补丁，作为独立待排查问题保留。
+
+两次 StallWatchdog 均为 InventoryScene 加载阶段（初次载入 7.6 s、文件回溯再载入 6.5 s），不是本次 696-753 ms 的内存恢复回调。另有其他 Mod 的 TryEquipItem 参数不匹配和信任列表 TLS 请求失败，不作为本 Mod 快照失败。
+
+本轮结论：路径已命中，现有样本内存恢复校验通过，实机提速未获证明；保留完整图覆盖、预算和最终校验，不据此扩大语义后端范围。
