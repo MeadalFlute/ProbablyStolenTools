@@ -426,8 +426,10 @@ var tagRoots = Array.CreateInstance(systemType, 3);
 tagRoots.SetValue(tagSystem, 0);
 tagRoots.SetValue(secondSystem, 1);
 tagRoots.SetValue(effectSystem, 2);
-var tagAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
-    .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+var tagAccess = accessType.GetConstructor(dataFlags, null,
+    new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool) }, null)
+    .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"),
+        "Assembly-CSharp", true, true, false });
 var capturedEnumerator = tagMap.GetEnumerator();
 capturedEnumerator.MoveNext();
 var tagFixture = new object[] { tagRoots, tagMap,
@@ -437,8 +439,10 @@ accessType.GetMethod("AddRoot", dataFlags).Invoke(tagAccess, new object[] { Iden
 var legacyTagGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
     .Invoke(null, new object[] { tagAccess, new[] { Identity(tagFixture) }, 50000, 1000000, 64L * 1024 * 1024 });
 var compactType = mod.GetType("ProbablyStolenTools.SemanticTagBlock", true);
-var compactAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
-    .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+var compactAccess = accessType.GetConstructor(dataFlags, null,
+    new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool) }, null)
+    .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"),
+        "Assembly-CSharp", true, true, true, true });
 compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new[] { compactAccess });
 accessType.GetMethod("AddRoot", dataFlags).Invoke(compactAccess, new object[] { Identity(tagFixture), Array.Empty<string>() });
 var tagGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
@@ -446,7 +450,9 @@ var tagGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags
 object shadow = null;
 try
 {
-    if ((int)graphType.GetProperty("BlockCount", dataFlags).GetValue(tagGraph) != 2)
+    int nativeIntArrays = (int)accessType.GetProperty("IntArrayBlockCount", dataFlags).GetValue(compactAccess);
+    if (nativeIntArrays == 0
+        || (int)graphType.GetProperty("BlockCount", dataFlags).GetValue(tagGraph) - nativeIntArrays != 2)
         throw new Exception("Exact native TagState and standalone state must compress; ItemStateModifier must fall back.");
     foreach (string metric in new[] { "ObjectCount", "SlotCount", "ByteCount" })
         if (!Equals(graphType.GetProperty(metric, dataFlags).GetValue(tagGraph),
@@ -541,7 +547,7 @@ try
             throw new Exception("Semantic adapter missed native tag mutations.");
         var repair = PrepareRepair(tagGraph);
         ApplyRepair(repair); VerifyRepair(tagGraph, repair);
-        if (Diff(tagGraph, graphType) != 0 || Diff(semantic, semantic.GetType()) != 0
+        if (Diff(tagGraph, graphType) != 0 || Diff(legacyTagGraph, graphType) != 0 || Diff(semantic, semantic.GetType()) != 0
             || !ReferenceEquals(mapField.GetValue(tagSystem), tagMap)
             || !ReferenceEquals(mapField.GetValue(secondSystem), tagMap)
             || !ReferenceEquals(mapField.GetValue(effectSystem), tagMap))
@@ -658,6 +664,7 @@ try
         graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
     }
     Console.WriteLine("PASS installed native hybrid tag payload: legacy identity/budget/field parity, all nine fields, exact null/bit/reference restore, subclass/selected-root fallback, captured topology audit and mixed-backend retained checkpoints");
+    Console.WriteLine("PASS installed native int array blocks combined with tag blocks preserve dictionary buckets, full recursive oracle and ownership audit");
 }
 finally
 {
@@ -666,10 +673,12 @@ finally
     ((IDisposable)legacyTagGraph).Dispose();
 }
 
-if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || args.Contains("--benchmark-reconcile"))
+if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || args.Contains("--benchmark-reconcile")
+    || args.Contains("--benchmark-int-arrays"))
 {
     bool benchmarkWrites = args.Contains("--benchmark-writes");
     bool benchmarkReconcile = args.Contains("--benchmark-reconcile");
+    bool benchmarkIntArrays = args.Contains("--benchmark-int-arrays");
     // Isolated native business objects on .NET 6, not a Unity/Mono frame-time measurement.
     var fixture = Array.CreateInstance(systemType, 1024);
     for (int i = 0; i < fixture.Length; i++)
@@ -686,23 +695,27 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
         }
         fixture.SetValue(system, i);
     }
-    var samples = new Dictionary<bool, List<(double Capture, double Verify, double Restore, long Allocated, long RestoreAllocated, double Scan)>>
+    var samples = new Dictionary<bool, List<(double Capture, double Verify, double Restore, long Allocated, long RestoreAllocated, double Scan, double Census, long CensusAllocated)>>
         { [false] = new(), [true] = new() };
     long? expectedSlots = null, expectedBytes = null, expectedObjects = null;
     var captureMethod = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic);
     var verifyMethod = graphType.GetMethod("Differences", dataFlags);
     var restoreMethod = graphType.GetMethod("Restore", dataFlags);
     var sourceMethod = graphType.GetMethod("DifferencesWithSources", dataFlags);
+    var censusMethod = graphType.GetMethod("Census", BindingFlags.Static | BindingFlags.NonPublic);
     var applyMethod = graphType.GetNestedType("Reconciliation", BindingFlags.NonPublic).GetMethod("Apply", dataFlags);
-    int repairedSlots = 0;
-    for (int round = -1; round < 5; round++)
+    int repairedSlots = 0, intBlocks = 0, intSlots = 0;
+    int sampleCount = benchmarkIntArrays ? 9 : 5;
+    int warmups = benchmarkIntArrays ? 3 : 1;
+    for (int round = -warmups; round < sampleCount; round++)
         foreach (bool compact in round % 2 == 0 ? new[] { true, false } : new[] { false, true })
         {
             GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
             var benchAccess = accessType.GetConstructor(dataFlags, null,
-                new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool) }, null)
-                .Invoke(new object[] { null, "Assembly-CSharp", true, true, !benchmarkWrites || compact });
-            if (benchmarkReconcile || benchmarkWrites || compact) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
+                new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool) }, null)
+                .Invoke(new object[] { null, "Assembly-CSharp", true, true, !benchmarkWrites || compact,
+                    benchmarkIntArrays && compact });
+            if (benchmarkReconcile || benchmarkWrites || benchmarkIntArrays || compact) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new[] { benchAccess });
             accessType.GetMethod("AddRoot", dataFlags).Invoke(benchAccess, new object[] { Identity(fixture), Array.Empty<string>() });
             long before = GC.GetAllocatedBytesForCurrentThread();
@@ -723,6 +736,37 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
                 int differences = ((System.Collections.ICollection)verifyMethod.Invoke(benchGraph, new object[] { 12 })).Count;
                 double verified = clock.Elapsed.TotalMilliseconds;
                 if (differences != 0) throw new Exception("Native benchmark capture verification failed.");
+                double censusMs = 0;
+                long censusAllocated = 0;
+                if (benchmarkIntArrays)
+                {
+                    if (compact)
+                    {
+                        intBlocks = (int)accessType.GetProperty("IntArrayBlockCount", dataFlags).GetValue(benchAccess);
+                        intSlots = (int)accessType.GetProperty("IntArraySlotCount", dataFlags).GetValue(benchAccess);
+                    }
+                    if (((int)accessType.GetProperty("IntArrayBlockCount", dataFlags).GetValue(benchAccess) > 0) != compact)
+                        throw new Exception("Native int array benchmark did not exercise the requested payload mode.");
+                    var censusAccess = accessType.GetConstructor(dataFlags, null,
+                        new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool) }, null)
+                        .Invoke(new object[] { null, "Assembly-CSharp", true, true, true, compact });
+                    accessType.GetMethod("AddRoot", dataFlags).Invoke(censusAccess,
+                        new object[] { Identity(fixture), Array.Empty<string>() });
+                    long beforeCensus = GC.GetAllocatedBytesForCurrentThread();
+                    clock.Restart();
+                    var censusGraph = censusMethod.Invoke(null, new object[] { censusAccess, new[] { Identity(fixture) },
+                        200000, 3000000, 256L * 1024 * 1024 });
+                    censusMs = clock.Elapsed.TotalMilliseconds;
+                    censusAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeCensus;
+                    try
+                    {
+                        if (Convert.ToInt64(graphType.GetProperty("SlotCount", dataFlags).GetValue(censusGraph)) != slots
+                            || Convert.ToInt64(graphType.GetProperty("ObjectCount", dataFlags).GetValue(censusGraph)) != objects
+                            || (long)graphType.GetProperty("ByteCount", dataFlags).GetValue(censusGraph) != bytes)
+                            throw new Exception("Native int array benchmark census coverage or budgets differ.");
+                    }
+                    finally { ((IDisposable)censusGraph).Dispose(); }
+                }
                 if (benchmarkReconcile)
                 {
                     // Sparse refresh-like mutation: one tag plus one grown dictionary, not all tags.
@@ -759,18 +803,22 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
                 if (repairPlan != null) VerifyRepair(benchGraph, repairPlan);
                 if (((System.Collections.ICollection)verifyMethod.Invoke(benchGraph, new object[] { 12 })).Count != 0)
                     throw new Exception("Native benchmark restoration verification failed.");
-                if (round >= 0) samples[compact].Add((captured, verified, restored, allocated, restoreAllocated, scanned));
+                if (round >= 0) samples[compact].Add((captured, verified, restored, allocated, restoreAllocated, scanned,
+                    censusMs, censusAllocated));
             }
             finally { ((IDisposable)benchGraph).Dispose(); }
         }
-    double Median(IEnumerable<double> values) => values.OrderBy(v => v).ElementAt(2);
+    double Median(IEnumerable<double> values) => values.OrderBy(v => v).ElementAt(sampleCount / 2);
     foreach (bool compact in new[] { false, true })
     {
         var values = samples[compact];
         string mode = benchmarkReconcile ? (compact ? "hybrid-owner-repair" : "hybrid-full-reconcile")
             : benchmarkWrites ? (compact ? "hybrid-direct-write" : "hybrid-recursive-write")
             : (compact ? "hybrid" : "legacy");
-        if (benchmarkReconcile)
+        if (benchmarkIntArrays)
+            Console.WriteLine(FormattableString.Invariant(
+                $"INT_ARRAY_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} compact={compact} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} intArrayBlocks={(compact ? intBlocks : 0)} intArraySlots={(compact ? intSlots : 0)} captureMs={Median(values.Select(v => v.Capture)):F2} censusMs={Median(values.Select(v => v.Census)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} censusAllocatedBytes={Median(values.Select(v => (double)v.CensusAllocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+        else if (benchmarkReconcile)
             Console.WriteLine(FormattableString.Invariant(
                 $"RECONCILE_BENCH runtime=net6-not-Unity mode={mode} samples=5 objects={expectedObjects} slots={expectedSlots} plannedSlots={(compact ? repairedSlots : expectedSlots)} scanMs={Median(values.Select(v => v.Scan)):F2} writeMs={Median(values.Select(v => v.Restore)):F2} scanWriteMs={Median(values.Select(v => v.Scan + v.Restore)):F2} scanWriteAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
         else

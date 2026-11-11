@@ -425,7 +425,8 @@ namespace ProbablyStolenTools
         private static NativeStateAccess Access(PlayerStore store, out List<IntPtr> roots)
         {
 #if MONO
-            var access = new NativeStateAccess(typeof(UnityEngine.Object));
+            var access = new NativeStateAccess(typeof(UnityEngine.Object), "Assembly-CSharp", true, true, true,
+                Plugin.CfgIntArrayBlocks?.Value == true);
             if (Plugin.CfgSemanticTagBlocks?.Value == true) SemanticTagBlock.Enable(access);
 #else
             var access = new NativeStateAccess();
@@ -699,7 +700,8 @@ namespace ProbablyStolenTools
                 Status = "Checkpoint: " + Name(_active);
                 if (manual) PanelNotice.Show("已建立手动节点 #" + _active.Id);
 #if MONO
-                string readers = $" backend={access.BlockMode} tagBlocks={_active.Graph.BlockCount} " +
+                string readers = $" backend={access.BlockMode} tagBlocks={_active.Graph.BlockCount - access.IntArrayBlockCount} " +
+                    $"intArrayBlocks={access.IntArrayBlockCount} intArraySlots={access.IntArraySlotCount} " +
                     $"walkReaderCompileMs={walkReaderCompileMs} " +
                     SnapshotFieldReader.Summary + " " + access.ArraySchemaSummary +
                     (Plugin.CfgVerboseLog?.Value == true ? " " + access.WorkloadSummary() : "");

@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**192 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**209 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -33,6 +33,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 诊断可读性已在 17:28 会话通过：6 次捕获、7 次恢复最终零差异。六次仅 cassettePlayer.modifiedState.dict 的 `_buckets/_entries/_count/_version` 变化，另一次手动节点还变了 BargainUIManager.trackedClient；样本全部显示。该会话仍完整二次写回，需 206-240 ms。记录见同一诊断文档。
 
 已实施独立的 owner 二次修复阶段：第一次全图写回不变，刷新后完整扫描并恢复变化对象的全部捕获字段；有界计划、后端显式许可、未知/超限全图回退、完整最终校验和一次完成差异后的全图回退均已离线/原生夹具验证。配置 `Snapshot.OwnerReconcile=true`，17:50 会话首次实机日志已检查：5 次捕获、9 次恢复（含手动及重复往返）最终零差异，全部 owners/eligible，无最终回退；二次写回 14-16 ms（上一会话 206-240 ms），整次恢复中位数 773 ms（上一会话 980 ms），非严格 A/B。日志不证明画面正确，非默认议价及实机全图回退未覆盖；第三方 opaque 状态仍不恢复。当前主要成本转为首次全图写回、普查及完整读取，不能据此删除校验或放宽集合重建。详见 `research/2026-11-11-owner-reconciliation.md`。
+
+下一轮已实施独立的完整 `int[]` 载荷：只接受精确、非空、非筛选根的原生 int[]，保存整个数组副本并复制回原数组，不重建字典、不裁剪容量；所有元素仍完整比较，逻辑预算保持每槽 8 字节，Census 不变。配置 `Snapshot.IntArrayBlocks=true`，CAPTURE 新增 intArrayBlocks/intArraySlots，tagBlocks 仍只计标签块。209 项测试及原生标签/桶数组/普通槽位对照通过；隔离 .NET 基准捕获有改善，但分配未下降、不能推算 Unity 收益，首次实机待用户操作。单对象查找缓存原型因基准收益不足已撤除，未部署。详见 `research/2026-11-11-int-array-blocks.md`。
 
 ### 版本与发布
 
@@ -56,6 +58,7 @@ src/ProbablyStolenTools/           Mod 本体
   SnapshotFieldReader.cs           只读字段读取委托（dynamic-code）
   SemanticTagSnapshot.cs / SemanticTagShadow.cs  实验性标签语义只读对照（不负责恢复）
   SemanticTagBlock.cs              精确原生 TagState 的无损混合字段载荷（负责自身九字段恢复）
+  SnapshotIntArrayBlock.cs         精确 int[] 的完整物理载荷（不重建集合、不裁剪容量）
   SemanticTagOwnershipAudit.cs     仅限旧图的字典/数组/视图/枚举器别名诊断
   LiquidComposition.cs             成分、纯度、评级、空瓶/容量判定
   AnnotationLabels.cs              原版水质/化学/酿酒语言键与回退文本
@@ -90,11 +93,12 @@ docs/workshop/                     创意工坊文本
 - 捕获仍在同一回调同步完成；**未启用分帧快照**。任何跨帧实现须独立提交，并解决业务图一致性，不能只靠 `timeScale=0`。
 - 捕获后必须跑完整 `Differences()`；差异非空就视为恢复失败，不能再报成功。
 - Mono 标量校验走 `IStateValueComparer`，只比较捕获值，不往节点值表登记新值；float/double 按位比较，保留正负零和 NaN 差别。其他后端仍走原字节比较；差异消息达到上限也必须扫描完整图。
-- `Snapshot.OwnerReconcile=true` 仅改变同步原生刷新后的第二次写回：PrepareReconciliation 完整扫描并独立计数不同槽位，最多记录 128 个变化 owner，按其全部捕获字段（块也完整）生成最多 8192 逻辑槽的计划。仅 ManagedStateAccess / 精确 SemanticTagBlock 显式许可；未知访问器/块、配置禁用或规模超限时全图 Restore。不能从有限日志消息决定写入集合，不硬编码字段名、不重建字典或裁剪数组；保留普通标量 -> 块标量 -> 普通引用 -> 块引用顺序和真实存储写入。无差异不写业务字段。计划一次性、同回调立即应用，中间图扫描/写入或新计划使其失效；不支持跨帧/并发使用。局部写回后的完整最终校验若完成但有差异，最多一次全图 Restore + 全视觉/几何/最终变换 + 再次完整校验；读取/写回/视觉异常不重试。再次不一致沿原失败流程重载，清理视图必须在成功之后。
+- `Snapshot.OwnerReconcile=true` 仅改变同步原生刷新后的第二次写回：PrepareReconciliation 完整扫描并独立计数不同槽位，最多记录 128 个变化 owner，按其全部捕获字段（块也完整）生成最多 8192 逻辑槽的计划。仅 ManagedStateAccess / 精确 SemanticTagBlock / SnapshotIntArrayBlock 显式许可；未知访问器/块、配置禁用或规模超限时全图 Restore。不能从有限日志消息决定写入集合，不硬编码字段名、不重建字典或裁剪数组；保留普通标量 -> 块标量 -> 普通引用 -> 块引用顺序和真实存储写入。无差异不写业务字段。计划一次性、同回调立即应用，中间图扫描/写入或新计划使其失效；不支持跨帧/并发使用。局部写回后的完整最终校验若完成但有差异，最多一次全图 Restore + 全视觉/几何/最终变换 + 再次完整校验；读取/写回/视觉异常不重试。再次不一致沿原失败流程重载，清理视图必须在成功之后。
 - `Storage`、`StateGraph.Entry` 是只读值类型；普通字段索引为 `-1`，不能依赖结构体默认值 `0`。
 - `Snapshot.SemanticTagShadow=true` 默认启用标签语义只读对照：每次上下文清空或文件重载后最多尝试捕获一个节点，随节点释放。保留所有禁用/零值标签、共享对象与浮点位模式；字段结构不匹配、超预算或读取异常只记录失败，主图 StateGraph 仍为权威。原版库存等也是 TagSystem 子类，允许其**标签基类字段投影**，子类额外字段仍仅由旧字段路径覆盖；日志明确 `scope=tag-base-fields extraFields=legacy-only` 并给出子类数量及前六种类型。第三方继承链仍拒绝，错误包含实际类型/程序集与主图来源，不能因原版子类误拒整个样本。**Shadow/SemanticTagSnapshot 自身仍没有 Restore/Write API，只增加诊断工作，不是提速来源。**
 - `Snapshot.SemanticTagBlocks=true` 默认启用首轮真实混合载荷：只处理精确原生 `TagState`（包含不在字典中的独立标签），严格匹配九字段名称/类型及主图描述；子类、筛选根、不匹配结构捕获时走旧路径。每对象一个强类型字段块替代九条 Entry 与六次值令牌读/登记；仍保留全部对象/字符串身份、引用发现顺序、来源路径、逻辑槽位/字节预算以及字典 capacity/entries/buckets/version/free-list/视图/枚举器。禁止 Clear/Add 集合重建。`VisitCapturedSlots` 同时展开块内保存的九个槽，不读 live 字段。Census 仍完整走原字段普查，不创建块。
 - 字段块实际参与 Restore 与 Differences：全部普通标量和块标量先写，再写全部普通引用和块引用；三个字符串恢复真实存储字段（GC 屏障），不能用会将 null 归一化为空串的 `valueString` setter。保持浮点位和字符串引用身份。每块九字段始终完整校验，日志达到上限也继续读取；写入失败直接沿用原失败流程，不自动重试旧路径。开关只决定新节点载荷，保留节点始终由其捕获时后端解释。此轮须经实机验证后才能继续扩大范围；视觉/几何恢复顺序不变，不调用原版保存。
+- `Snapshot.IntArrayBlocks=true` 仅在 Mono 业务捕获中为精确 `GetType() == typeof(int[])` 的非空向量保存独立完整 Clone，RestoreValues 用 Array.Copy 写回原数组。不能用 `is int[]` 代替精确类型判断（CLR 对 uint[] 等存在特殊数组兼容）；空数组、其他元素类型、筛选根走普通路径。描述与全容量预算检查先于 Clone，仍按每元素一个槽 / 8 字节计逻辑字节；没有减少覆盖或修改对象发现顺序。Differences 完整逐元素计数且保留原索引名称，VisitCapturedSlots 仍展开全部捕获槽。Census 不创建块、仍读所有字段；不承诺普查提速。整数组是一个 owner，修复槽上限仍按全长度判断。关闭开关后重启让新节点走旧逐元素路径，保留节点不受后续工厂变化影响；实机验收前不扩到引用数组、结构体数组或集合重建。
 - 语义标签字符串（Text / Identifier / DisplayName）和字典键均按捕获时的引用身份比较，不再只比较内容；同文字新字符串也算差异。此范围内与旧图的引用校验一致，但 MATCH 仍不覆盖字典底层版本、capacity、free-list、迭代器、比较器内部状态或子类额外字段。离线反例已证实“Clear + 按原键值重建”可语义匹配但旧图有差异、枚举器失效；不得据 MATCH 直接启用集合重建。
 
 ---

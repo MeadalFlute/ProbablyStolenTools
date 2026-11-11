@@ -49,12 +49,24 @@ namespace ProbablyStolenTools
         private static readonly object NullValue = new();
         internal Func<object, IReadOnlyList<StateSlot>, IStateBlock> BlockCapture;
         internal string BlockMode = "legacy";
+        internal int IntArrayBlockCount { get; private set; }
+        internal int IntArraySlotCount { get; private set; }
 
         IStateBlock IStateBlockAccess.CaptureBlock(IntPtr id, IReadOnlyList<StateSlot> slots)
         {
             // Selected roots must retain exactly their requested surface.
-            if (BlockCapture == null || _roots.TryGetValue(id, out var fields) && fields != null) return null;
-            return BlockCapture(_retained[id], slots);
+            if (!_intArrayBlocks && BlockCapture == null) return null;
+            if (_roots.TryGetValue(id, out var fields) && fields != null) return null;
+            var target = _retained[id];
+            if (_intArrayBlocks && target.GetType() == typeof(int[])
+                && ((int[])target).Length != 0 && slots.Count == ((int[])target).Length)
+            {
+                IntArrayBlockCount++;
+                IntArraySlotCount += slots.Count;
+                return new SnapshotIntArrayBlock((int[])target, slots);
+            }
+            if (BlockCapture == null) return null;
+            return BlockCapture(target, slots);
         }
 
         // 纯运行时锁/转场计数：只由游戏自己维护，快照既不该保存也不该恢复。
@@ -76,6 +88,7 @@ namespace ProbablyStolenTools
         private readonly bool _fastReads;
         private readonly bool _reuseArraySchemas;
         private readonly bool _directWrites;
+        private readonly bool _intArrayBlocks;
         internal string ArraySchemaSummary => $"arraySchemas(cached={_arraySchemas.Count}," +
             $"hits={_arraySchemaHits},slotsReused={_arraySlotsReused})";
 
@@ -124,12 +137,17 @@ namespace ProbablyStolenTools
 
         internal ManagedStateAccess(Type unityObject, string gameAssembly, bool fastReads, bool reuseArraySchemas,
             bool directWrites)
+            : this(unityObject, gameAssembly, fastReads, reuseArraySchemas, directWrites, false) { }
+
+        internal ManagedStateAccess(Type unityObject, string gameAssembly, bool fastReads, bool reuseArraySchemas,
+            bool directWrites, bool intArrayBlocks)
         {
             _unityObject = unityObject;
             _gameAssembly = gameAssembly;
             _fastReads = fastReads;
             _reuseArraySchemas = reuseArraySchemas;
             _directWrites = directWrites;
+            _intArrayBlocks = intArrayBlocks;
         }
 
         internal void AddRoot(IntPtr id, params string[] fields)
@@ -494,6 +512,8 @@ namespace ProbablyStolenTools
             _arraySchemas.Clear();
             _arraySchemaSlots = 0; _arraySchemaHits = 0; _arraySlotsReused = 0;
             BlockCapture = null;
+            IntArrayBlockCount = 0;
+            IntArraySlotCount = 0;
         }
     }
 }
