@@ -32,7 +32,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 诊断可读性已在 17:28 会话通过：6 次捕获、7 次恢复最终零差异。六次仅 cassettePlayer.modifiedState.dict 的 `_buckets/_entries/_count/_version` 变化，另一次手动节点还变了 BargainUIManager.trackedClient；样本全部显示。该会话仍完整二次写回，需 206-240 ms。记录见同一诊断文档。
 
-已实施独立的 owner 二次修复阶段：第一次全图写回不变，刷新后完整扫描并恢复变化对象的全部捕获字段；有界计划、后端显式许可、未知/超限全图回退、完整最终校验和一次完成差异后的全图回退均已离线/原生夹具验证。配置 `Snapshot.OwnerReconcile=true`，首次 Unity 实机验收尚待用户操作。不得硬编码字典四字段白名单、裁剪集合或继续扩大范围。详见 `research/2026-11-11-owner-reconciliation.md`。
+已实施独立的 owner 二次修复阶段：第一次全图写回不变，刷新后完整扫描并恢复变化对象的全部捕获字段；有界计划、后端显式许可、未知/超限全图回退、完整最终校验和一次完成差异后的全图回退均已离线/原生夹具验证。配置 `Snapshot.OwnerReconcile=true`，17:50 会话首次实机日志已检查：5 次捕获、9 次恢复（含手动及重复往返）最终零差异，全部 owners/eligible，无最终回退；二次写回 14-16 ms（上一会话 206-240 ms），整次恢复中位数 773 ms（上一会话 980 ms），非严格 A/B。日志不证明画面正确，非默认议价及实机全图回退未覆盖；第三方 opaque 状态仍不恢复。当前主要成本转为首次全图写回、普查及完整读取，不能据此删除校验或放宽集合重建。详见 `research/2026-11-11-owner-reconciliation.md`。
 
 ### 版本与发布
 

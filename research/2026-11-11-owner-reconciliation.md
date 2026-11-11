@@ -89,4 +89,46 @@ dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.
 - 已部署 DLL SHA256：`842F1DB537C5BF6B4C15A27B4166CF635BB514ED985C9517EBF95745DB749B8D`，与构建产物一致。
 - 78 个原有存档目录文件逐一哈希验证未变；游戏程序集与其他 Mod 原有文件验证未变。
 - SettingsImported=False，未预改玩家设置；GameStarted=False，未启动游戏。
-- 保持独立提交便于回滚，不推送、不改版本号。首次 Unity 活体验收待用户操作。
+- 保持独立提交便于回滚，不推送、不改版本号。部署时首次 Unity 活体验收待用户操作；后续日志复核见下节。
+
+## 首轮实机日志复核
+
+用户完成测试后，检查 2026-11-11 17:50:09.806 启动的 PSTools 会话及 `GameLog_2026-11-11_17-50-18.txt`、Player.log。部署代码为独立提交 `611be0f`，Session 明确 ownerReconcile=True。对照为 17:28:15.347 会话，仍使用旧完整二次写回。
+
+- 本次 5 次捕获（4 个顾客节点、1 个手动节点），9 次恢复，目标顺序为 1 -> 4 -> 5 -> 2 -> 3 -> 4 -> 1 -> 2 -> 5，包含重复往返、手动节点、买卖及新增/弃置视图。
+- 全部恢复为 `diff=0 releaseOk=True`，全部 `mode=owners,reason=eligible,finalFallback=False`。没有 CAPTURE/RESTORE FAILED、语义 MISMATCH 或 REPAIR FULL FALLBACK。
+- 本样本每次 changedSlots=4、trackedOwners=1、plannedSlots=10，来自 cassettePlayer.modifiedState 标签字典的四项变化，但写回的是整个 owner 的 10 个捕获槽，不是四字段白名单。
+- 首节点语义捕获 MATCH，两次恢复该节点均独立 MATCH。仍只覆盖标签基类字段；不改变第三方对象 opaque 策略。
+
+### 实际耗时
+
+下表为各会话全部成功恢复的中位数，单位 ms。旧会话 7 次，新会话 9 次；目标图规模、操作顺序和运行抖动不完全相同，不是严格 A/B，也不能把阶段中位数相加作为整次中位数。
+
+| 阶段 | 旧完整二次写回 | 新 owner 二次写回 |
+| --- | ---: | ---: |
+| 普查 census | 132 | 127 |
+| 预检 preflight | 88 | 91 |
+| 首次全图 write | 213 | 222 |
+| 原生 refresh | 79 | 76 |
+| 二次修复完整 reconcile | 359 | 157 |
+| 其中完整 scan / 计划 | 63 | 70 |
+| 其中第二次 write | 233 | 15 |
+| 其中 views | 41 | 41 |
+| 其中 geometry | 5 | 4 |
+| 其中 transforms | 25 | 25 |
+| 最终完整 finalVerify | 64 | 63 |
+| 整次 total | 980 | 773 |
+
+第二次写回旧范围 206-240 ms，新范围 14-16 ms，中位数下降约 94%；二次修复整体下降约 56%；整次恢复中位数下降约 21%，新范围 711-861 ms。完整扫描有额外计划成本，符合设计预期。首次完整写回未变快，不能将二次写回收益泛化到所有阶段。
+
+捕获未改策略：本次 captureMs 为 854 / 339 / 415 / 438 / 298；首节点含读取器预热和只读 Shadow，后续 298-438 ms。不是本轮优化成果。后续捕获 walk 为 209-320 ms，仍是捕获主要成本。
+
+### 限制与既有告警
+
+- 本次所有 BARGAIN CAPTURE/BEFORE/AFTER 均为默认 False/0，不能视为非默认议价状态已验收。实机没有触发规模超限或最终差异回退，这些分支仍只有离线/原生夹具覆盖。
+- 日志仅能确认捕获图、语义对照和几何收尾执行成功，不能单独证明贴图、朝向、碰撞、画面文字或图外第三方状态正确。
+- GameLog 中 NotoSans-Medium SDF 中文缺字警告 278 条、TabletUI 隐藏父级测量警告 46 条；旧会话已有 187 / 31 条。当前仓库未检索到 TabletUI、Group_Discount、BargainPanelLeft 等相关实现。发生于恢复时的议价 UI 刷新，但不能仅凭日志断言具体所有者或与回溯完全无关；不是本轮首次出现，不在本次快照优化内修改全局字体或其他 Mod。
+- 17:50:20 的 watchdog 在首次捕获 17:50:36 之前，记录场景加载后 8.6 s 恢复；17:52:47 ModLoader destroyed 在恢复结束且多个 Mod Disabled 之后。不能将二者计为此次局部写回卡顿或异常。
+- Player.log 仍有其他 Mod 的 TryEquipItem 补丁参数不匹配与启动 trust-list 网络失败，旧会话也存在；不改动其他 Mod、加载器或信任配置。
+
+此轮可记录为首轮实机日志检查通过，而非全面稳定性验收。下一轮应围绕首次全图写回、完整普查及捕获 walk 分别测量并独立改动；不删除预检/最终校验，不仅凭单对象差异样本重建集合，也不把本次日志当作扩大语义后端范围的充分证据。本次复核仅更新文档，不改变已部署 DLL，无需重复部署。
