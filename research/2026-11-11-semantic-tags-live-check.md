@@ -78,7 +78,7 @@ systemTypes=[...] stateTypes=[...]
 
 ## 部署
 
-已通过标准脚本部署至 `E:\SteamLibrary\steamapps\common\Probably Stolen\Mods\ProbablyStolenTools`。
+已通过标准脚本部署至 `<GAME_DIR>\Mods\ProbablyStolenTools`。
 
 - 备份：`out/full-release-deploy-20261111-154616`。
 - DLL SHA256：`F2CB052FF9F9D9CF0D5FAE75F1446CF2E246858CD0719436CC8F5C09DFA1774B`，构建与部署一致。

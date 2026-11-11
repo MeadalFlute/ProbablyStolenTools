@@ -74,7 +74,7 @@ dotnet run -c Release --project tests/CheckpointTests/CheckpointTests.csproj -- 
 
 ## 部署
 
-已通过标准脚本部署至 `E:\SteamLibrary\steamapps\common\Probably Stolen\Mods\ProbablyStolenTools`。
+已通过标准脚本部署至 `<GAME_DIR>\Mods\ProbablyStolenTools`。
 
 - 备份：`out/full-release-deploy-20261111-151738`。
 - DLL SHA256：`7EFC6ABF8D13A4186FA0AA3E1A6F51A009ADFA7A356BBCD11C6ED37B0172BDA8`，构建与部署一致。

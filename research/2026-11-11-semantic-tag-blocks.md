@@ -44,7 +44,7 @@ StateGraph 提供可选的 IStateBlockAccess/IStateBlock，ManagedStateAccess �
 
 ```powershell
 dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.csproj -- `
-  "E:\SteamLibrary\steamapps\common\Probably Stolen" `
+  "<GAME_DIR>" `
   src/ProbablyStolenTools/bin/Release/Mono/ProbablyStolenTools.dll release/manifest.xml --benchmark-tags
 ```
 

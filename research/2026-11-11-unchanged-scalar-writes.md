@@ -33,7 +33,7 @@ Session 追加 `skipUnchangedScalars`；RESTORE OK 追加 `ordinaryScalarWrites(
 ```powershell
 $env:DOTNET_TieredCompilation = '0'
 dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.csproj -- `
-  "E:\SteamLibrary\steamapps\common\Probably Stolen" `
+  "<GAME_DIR>" `
   src/ProbablyStolenTools/bin/Release/Mono/ProbablyStolenTools.dll release/manifest.xml `
   --benchmark-scalar-writes
 ```

@@ -38,7 +38,7 @@
 
 ## 部署记录
 
-2026-11-11 18:41，通过 `Deploy-FullRelease.ps1` 部署至 `E:\SteamLibrary\steamapps\common\Probably Stolen`。
+2026-11-11 18:41，通过 `Deploy-FullRelease.ps1` 部署至 `<GAME_DIR>`。
 
 - 备份：`out/full-release-deploy-20261111-184109`，含 SaveData / Mods / deployment.json。
 - DLL SHA256：`28EF77A3F6AD2B75AEE0EB0DD9FEE294EF333CCF07D33AC90D6BAB36574CE042`，构建与部署一致。

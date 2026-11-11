@@ -1033,6 +1033,9 @@ namespace ProbablyStolenTools
 #endif
             Restoring = true;
             float scale = Time.timeScale;
+            // Shadow payloads are only produced while development checks are on; their pilot
+            // writers must never take over after the user turns the flag back off mid-session.
+            bool developmentChecks = Plugin.CfgSemanticDevelopmentChecks?.Value == true;
             try
             {
                 // Preflight before any mutation, including current objects created since the checkpoint.
@@ -1107,13 +1110,13 @@ namespace ProbablyStolenTools
                 // Never call InterruptDialog: it can execute endAction on the abandoned timeline.
                 int countersBefore = EventLog.Verbose ? CounterCount() : -1;
 #if MONO
-                runtimePilot = Plugin.CfgSemanticRuntimeRestore?.Value == true && target.SemanticEntities != null
+                runtimePilot = developmentChecks && Plugin.CfgSemanticRuntimeRestore?.Value == true && target.SemanticEntities != null
                     && target.SemanticEntities.TryRestoreRuntime(target.Graph,
                         Plugin.CfgSemanticShapeRestore?.Value == true, Plugin.CfgSemanticWindowRestore?.Value == true,
                         Plugin.CfgSemanticItemRestore?.Value == true, Plugin.CfgSemanticInventoryRestore?.Value == true);
-                if (runtimePilot || (target.SemanticEntities != null && target.SemanticEntities.TryRestoreEntities(target.Graph,
+                if (developmentChecks && (runtimePilot || (target.SemanticEntities != null && target.SemanticEntities.TryRestoreEntities(target.Graph,
                     Plugin.CfgSemanticShapeRestore?.Value == true, Plugin.CfgSemanticWindowRestore?.Value == true,
-                    Plugin.CfgSemanticItemRestore?.Value == true, Plugin.CfgSemanticInventoryRestore?.Value == true)))
+                    Plugin.CfgSemanticItemRestore?.Value == true, Plugin.CfgSemanticInventoryRestore?.Value == true))))
                 {
                     if (runtimePilot)
                     {

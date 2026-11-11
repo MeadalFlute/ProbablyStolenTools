@@ -45,7 +45,7 @@ tagBlocks 扣除 int 数组块，仍仅计精确标签载荷；intArraySlots 是
 ```powershell
 $env:DOTNET_TieredCompilation = '0'
 dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.csproj -- `
-  "E:\SteamLibrary\steamapps\common\Probably Stolen" `
+  "<GAME_DIR>" `
   src/ProbablyStolenTools/bin/Release/Mono/ProbablyStolenTools.dll release/manifest.xml --benchmark-int-arrays
 ```
 
