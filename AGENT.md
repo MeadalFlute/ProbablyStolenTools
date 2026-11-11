@@ -46,6 +46,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ### 版本与发布
 
+21:10 会话已验证普通标量免写：5 次恢复全部 diff=0/releaseOk=True，两次语义 RESTORE MATCH；普通标量免写率 99.831%-99.967%（非全图占比）。首次写回中位数 140 ms（上次 207 ms，非 A/B），整次恢复中位数 704 ms（上次 697 ms），不宣称整体提速。恢复后两次四件群拖正常结束。仍未覆盖非默认议价及实机全图回退；详情见免写文档。当前仍为实际负责恢复的混合后端，不是完整实体/集合语义化；统一进度见 `research/2026-11-11-semantic-backend-progress.md`。
+
 - **唯一真源**：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
 - 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**（0.8.13 → 0.8.14）。
 - README / AGENT 等纯文档更新**不推进版本号**。

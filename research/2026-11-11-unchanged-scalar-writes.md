@@ -66,3 +66,18 @@ dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.
 DLL SHA256：`180BAFC3B025AE91688CE7DFB36D7B4A4AD849A64AEC0CC69D3CE4F51FC97247`。
 
 78 个存档文件校验未变，SettingsImported=False，GameStarted=False。等待用户实机验证；本轮到此停止扩大运行时改动。
+
+## 21:10 会话实机检查
+
+检查本机 PSTools.log 的 2026-11-11 21:10:06 Session 及同次 Player.log，用户反馈已完成操作。
+
+- Session.skipUnchangedScalars=True；共 5 次捕获。中途场景重载清空一次历史，两个上下文首节点分别 1092/1186 ms，后续普通/手动节点 362/445/364 ms。本轮未改捕获，不能将这些波动归因于免写。
+- 5 次内存恢复，目标 id=2/4/5/3/2，含手动与过去/未来；全部 diff=0、releaseOk=True，无最终全图回退。采样节点两次 RESTORE MATCH。
+- 每次普通标量检查 172407-189151 次，免写比例 99.831%-99.967%；不包括标签/int[] 块或引用，也不代表全图 99.8% 无变化。
+- 首次写回 140/144/144/137/131 ms，中位数 140 ms。上次 19:27 会话中位数 207 ms，下降约 32.4%，但不是严格同节点开关 A/B。
+- 整次恢复 737/702/709/704/660 ms，中位数 704 ms（上次 697 ms）；不能宣称整次恢复提速。Census 中位数 138 ms、预检 94 ms、reconcile 156 ms、finalVerify 58 ms，其他阶段波动抵消了写回改善。
+- 二次修复均 owners/eligible，四个差异槽集中于 cassettePlayer.modifiedState.dict，一个 owner、十个计划槽；未覆盖非默认议价或实机全图回退。
+- 8 对群组拖拽 START/END，最后两对发生在恢复之后（各 4 件），全部正常结束。没有本 Mod 捕获/恢复失败、异常几何诊断；日志不独立证明所有贴图、碰撞、数量和金钱正确。实际恢复五次，未达到计划六次。
+- Player.log 的两次 StallWatchdog 位于 InventoryScene 加载阶段（7.8/6.7 s），没有本轮内存恢复期间的五秒卡顿。仍有其他 Mod 的 TryEquipItem 参数补丁失败及信任列表 TLS 请求失败；未见上次 AudioSource 空 source 异常，但本次也没有同样的“开业前”文件回溯记录，不能宣称该问题已修复。
+
+结论：免写路径实际工作，样本中首次写回下降，整次恢复未证明加速；现有完整校验及恢复后群拖日志通过。保持当前部署，不继续扩大改动。
