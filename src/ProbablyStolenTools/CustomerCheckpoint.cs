@@ -430,6 +430,7 @@ namespace ProbablyStolenTools
                 Plugin.CfgIntArrayBlocks?.Value == true);
             access.SkipUnchangedScalars = Plugin.CfgSkipUnchangedScalars?.Value == true;
             access.TypedScalarComparisons = Plugin.CfgTypedScalarComparisons?.Value == true;
+            access.DirectReferenceComparisons = Plugin.CfgDirectReferenceComparisons?.Value == true;
             if (Plugin.CfgSemanticTagBlocks?.Value == true) SemanticTagBlock.Enable(access);
 #else
             var access = new NativeStateAccess();
@@ -711,6 +712,7 @@ namespace ProbablyStolenTools
                     $"intArrayBlocks={access.IntArrayBlockCount} intArraySlots={access.IntArraySlotCount} " +
                     $"walkReaderCompileMs={walkReaderCompileMs} " +
                     $"typedComparisons={access.TypedComparisonCount} " +
+                    $"referenceComparisons={access.ReferenceComparisonCount} " +
                     $"verifyCompareCompileMs={SnapshotFieldReader.CompileMilliseconds(SnapshotFieldReader.CompareCompileTicks - captureCompareCompileBefore)} " +
                     SnapshotFieldReader.Summary + " " + access.ArraySchemaSummary +
                     (Plugin.CfgVerboseLog?.Value == true ? " " + access.WorkloadSummary() : "");
@@ -860,6 +862,7 @@ namespace ProbablyStolenTools
             string workload = "";
             var scalarWritesBefore = target.Graph.ScalarWrites;
             long typedComparisonsBefore = target.Graph.TypedComparisonCount;
+            long referenceComparisonsBefore = target.Graph.ReferenceComparisonCount;
 #if MONO
             long compareCompileBefore = SnapshotFieldReader.CompareCompileTicks;
 #endif
@@ -1084,6 +1087,7 @@ namespace ProbablyStolenTools
                     EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
                         $"releaseOk={releaseError == null} " +
                         $"typedComparisons={target.Graph.TypedComparisonCount - typedComparisonsBefore}{comparisonDiagnostic} " +
+                        $"referenceComparisons={target.Graph.ReferenceComparisonCount - referenceComparisonsBefore} " +
                         $"ordinaryScalarWrites(checked={target.Graph.ScalarWrites.Checked - scalarWritesBefore.Checked}," +
                         $"skipped={target.Graph.ScalarWrites.Skipped - scalarWritesBefore.Skipped}) " +
                         $"census(objects={censusObjects},slots={censusSlots},bytes={censusBytes},exactTagProbes={censusTagProbes}) " +

@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe, IStateScalarWriteDiagnostics, IStateComparisonDiagnostics
+    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateReferenceComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe, IStateScalarWriteDiagnostics, IStateComparisonDiagnostics
     {
         private readonly struct Storage
         {
@@ -100,7 +100,9 @@ namespace ProbablyStolenTools
         private readonly bool _intArrayBlocks;
         internal bool SkipUnchangedScalars { get; set; }
         internal bool TypedScalarComparisons { get; set; } = true;
+        internal bool DirectReferenceComparisons { get; set; } = true;
         public long TypedComparisonCount { get; private set; }
+        public long ReferenceComparisonCount { get; private set; }
         public (long Checked, long Skipped) ScalarWrites { get; private set; }
         internal string ArraySchemaSummary => $"arraySchemas(cached={_arraySchemas.Count}," +
             $"hits={_arraySchemaHits},slotsReused={_arraySlotsReused})";
@@ -526,6 +528,15 @@ namespace ProbablyStolenTools
         }
 
         public IntPtr ReadReference(IntPtr id, StateSlot slot) => ManagedObjects.Id(Read(id, slot));
+        public bool ReferenceMatches(IntPtr id, StateSlot slot, IntPtr captured)
+        {
+            if (!DirectReferenceComparisons) return ReadReference(id, slot) == captured;
+            object actual = Read(id, slot);
+            // A completed graph retains every captured non-null target, including opaque objects.
+            object expected = captured == IntPtr.Zero ? null : _retained[captured];
+            ReferenceComparisonCount++;
+            return ReferenceEquals(actual, expected);
+        }
         public void WriteValue(IntPtr id, StateSlot slot, byte[] bytes)
         {
             var value = _savedValues[BitConverter.ToInt64(bytes, 0)];
@@ -563,6 +574,7 @@ namespace ProbablyStolenTools
             IntArraySlotCount = 0;
             ScalarWrites = default;
             TypedComparisonCount = 0;
+            ReferenceComparisonCount = 0;
         }
     }
 }

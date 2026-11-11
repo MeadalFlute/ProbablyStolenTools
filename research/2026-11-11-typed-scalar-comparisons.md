@@ -72,3 +72,31 @@ dotnet run -c Release --project tests/ReleaseCompatibility/ReleaseCompatibility.
 DLL SHA256：`FBD9242BC9EE679C094D85543CEED7FEF8A132ED49A10AF0EFF6123305382D38`。
 
 78 个存档文件校验未变，SettingsImported=False，GameStarted=False。独立提交本轮代码与回归后停止，等待用户实机；不继续扩大到其他后端。
+
+## 21:39 实机检查
+
+运行时代码 3c6693e，Session 21:39:07，所有已部署优化开关开启。7 次捕获（含三个手动节点）、5 次内存恢复；全部最终 diff=0、releaseOk=True、owners/eligible、finalFallback=False。首节点 CAPTURE MATCH，恢复至该节点 RESTORE MATCH（独立语义日志 verifyMs=3）；五次二次差异均为 cassettePlayer.modifiedState.dict 的 buckets/entries/count/version 四槽，完整 owner 修复十槽。
+
+| 捕获节点 | captureMs | walk | verify | verifyCompareCompileMs | typedComparisons |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 手动 | 1006 | 660 | 99 | 36 | 161878 |
+| 2 waterStockpiler | 316 | 217 | 62 | 2 | 170041 |
+| 3 clinicNurse | 344 | 249 | 66 | 12 | 171523 |
+| 4 retired_farmer | 412 | 278 | 67 | 2 | 187856 |
+| 5 手动 | 311 | 220 | 62 | 2 | 188268 |
+| 6 retired_winemaker | 305 | 221 | 55 | 3 | 184926 |
+| 7 手动 | 305 | 219 | 58 | 7 | 185345 |
+
+首节点比较器编译实际 36 ms，明显高于隔离夹具的约 1 ms，已包含 verify=99，不另加到总耗时。至节点七累计 426 个比较器、编译总计 67 ms；不能宣称启动成本可忽略。
+
+| 恢复节点 | typedComparisons | compareCompileMs | Census | preflight | write | refresh | reconcile | finalVerify | total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 684660 | 4 | 132 | 85 | 138 | 65 | 148 | 54 | 634 |
+| 2 | 688476 | 0 | 169 | 75 | 169 | 92 | 161 | 49 | 721 |
+| 4 | 754461 | 4 | 122 | 82 | 144 | 85 | 147 | 55 | 638 |
+| 5 | 755592 | 0 | 131 | 80 | 199 | 71 | 173 | 55 | 713 |
+| 7 | 742480 | 0 | 128 | 108 | 144 | 71 | 144 | 51 | 651 |
+
+恢复中位数：Census=131、preflight=82、write=144、refresh=71、reconcile=148、finalVerify=54、total=651 ms。21:10 对应 total=704、preflight=94、finalVerify=58；这是不同图/节点的非 A/B 样本，仅说明实际命中且未见恢复差异，不把约 7.5% 的总耗时变化全归因于此开关。
+
+八对正常结束的原生群拖均发生在首次恢复前；本轮没有恢复后群拖日志。恢复仅五次，未达到原建议六次；非默认议价及实机全图回退仍未覆盖。PSTools 未见捕获/恢复失败；Player.log 中有既有信任列表 TLS、其他 Mod TryEquipItem 挂点报错，以及初始化 InventoryScene 的一次 watchdog（约 8.1 秒后恢复），不将其归为快照回调卡顿。本轮没有文件回溯，不据此关闭旧音频卸载异常记录。日志零差异不能替代实际贴图/碰撞检查。

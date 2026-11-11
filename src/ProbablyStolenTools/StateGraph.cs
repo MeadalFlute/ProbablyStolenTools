@@ -33,6 +33,13 @@ namespace ProbablyStolenTools
         bool ValueEquals(IntPtr id, StateSlot slot, byte[] captured);
     }
 
+    // Optional identity comparison only; never value equality or live graph discovery.
+    internal interface IStateReferenceComparer
+    {
+        bool ReferenceMatches(IntPtr id, StateSlot slot, IntPtr captured);
+        long ReferenceComparisonCount { get; }
+    }
+
     internal interface IStateValueProbe
     {
         int ProbeValue(IntPtr id, StateSlot slot);
@@ -111,6 +118,7 @@ namespace ProbablyStolenTools
         internal (long Checked, long Skipped) ScalarWrites
             => (_access as IStateScalarWriteDiagnostics)?.ScalarWrites ?? default;
         internal long TypedComparisonCount => (_access as IStateComparisonDiagnostics)?.TypedComparisonCount ?? 0;
+        internal long ReferenceComparisonCount => (_access as IStateReferenceComparer)?.ReferenceComparisonCount ?? 0;
         internal IEnumerable<IntPtr> Objects => _objects;
         internal bool Contains(IntPtr id) => _objects.Contains(id);
 
@@ -385,11 +393,14 @@ namespace ProbablyStolenTools
             _revision++;
             var result = new List<string>();
             var comparer = _access as IStateValueComparer;
+            var references = _access as IStateReferenceComparer;
             _access.Validate();
             foreach (var e in _entries)
             {
                 bool same;
-                if (e.Slot.IsReference) same = _access.ReadReference(e.Owner, e.Slot) == e.Reference;
+                if (e.Slot.IsReference) same = references != null
+                    ? references.ReferenceMatches(e.Owner, e.Slot, e.Reference)
+                    : _access.ReadReference(e.Owner, e.Slot) == e.Reference;
                 else if (comparer != null) same = comparer.ValueEquals(e.Owner, e.Slot, e.Bytes);
                 else
                 {
