@@ -46,6 +46,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ### 版本与发布
 
+最新实机为 2026-11-12 00:54:04.901 库存会话：5 捕获（含手动）/9 恢复最终 diff=0/releaseOk=True，无最终回退；首节点三次实际 inventoryPilotOwners=286（grid107/slot179），连同物品/窗口/形状完整覆盖 78095 Entity 槽，双载荷全部 MATCH。首节点 3084 ms（entityRecords2115，包含 runtime864），其他捕获 263-345 ms，恢复中位数 711 ms，非 A/B、不宣称提速。PSTools 无失败/不可用，Player.log 见启动 TLS/Curl 网络错误，未见快照异常；非默认议价仍未覆盖。用户明确未做回溯后群拖，日志十次群拖均在首次恢复前，不能认定交互全面验收。保持 `ae2ec9c` 部署，无运行时代码变更；先补首节点恢复后 2-4 件群拖、到后续节点再返回并重复，检查成员和贴图碰撞；此缺口补齐前不开放独立运行态写回/替换生产捕获。详见库存阶段 First Live Results。
+
 00:39:03.759 物品阶段已检查：6 捕获（含手动）/9 恢复最终 diff=0/releaseOk=True，无最终回退；首节点三次实际写回 953 物品/101 窗口/2966 形状，独立实体/运行态全部 MATCH，恢复后三件群拖完成。首节点 2681 ms，其中 entityRecords=1730/runtimeCaptureVerifyMs=1009（包含关系），其他捕获 287-422 ms；恢复中位数 698 ms，非 A/B，不宣称提速。PSTools 无失败/不可用，Player.log 仅原生 ModTrustList 启动 TLS 警告；非默认议价仍未覆盖。详见物品阶段记录。
 
 接续库存实体写回：`Snapshot.SemanticInventoryRestore=true`，采样节点精确 GameGridInventory/GameSlotInventory 及完整继承链 Entity 字段作为同组原子注册，恢复原成员/父级/形状/借用窗口引用和锁；回调、标签字典、缓存与集合物理存储继续旧图，不调用库存业务方法。四类开关最多 15 个非空预验证组合，缺失类型不参与，失败保留先前组合；完整旧图/校验/owner/full 修复/视觉顺序不变。323 项及原生 30 轮全部组合、完整字段、预算、原子失败、失效预检及仅格子/仅单槽/无库存通过。五种已准入精确类型的 Entity 写回覆盖至此补齐，但仅采样节点，独立运行态仍只读、生产捕获未替换，不是完整后端。待库存首次实机，详见 `research/2026-11-12-inventory-entity-writes.md`。

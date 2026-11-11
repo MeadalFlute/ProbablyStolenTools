@@ -87,3 +87,35 @@ Backup: out/full-release-deploy-20261112-005125.
 DLL SHA256: 82CC372580C54DBA8ACA1DEFB3FCD7C66F89B6C4C243F9D1AF41EC7D91DAAEC9.
 78 save files verified unchanged; no settings imported, no game started.
 Awaiting the first live inventory entity writer test.
+
+## First Live Results
+
+2026-11-12 00:54:04.901 session; user reports completed except group drag.
+Five captures including manual id5, nine restores. All final diff=0,
+releaseOk=True, finalFallback=False. Three sampled id1 restores actually used
+286 inventory writers (107 grid/179 slot), alongside953 item/101 window/2966
+shape writers. Inventory slots4148 plus the other pilots exactly cover78095
+Entity slots. Independent entity/runtime records all MATCH/runtimeDiffSamples=0.
+Other nodes report zero pilot owners.
+
+First capture3084 ms: access3, walk613, items103, semanticShadow148,
+entityAudit44, entityRecords2115, verify49, prepareHistory7.
+runtimeCaptureVerifyMs864 is included in entityRecords. Other captures
+278/345/307/263 ms. Restore totals724/618/672/772/711/623/723/687/739 ms,
+median711 ms. Non-A/B; no attributable overall speedup. Retain accepted
+migration diagnostics for now.
+
+Ordinary nodes and sampled id1 report four cassettePlayer.modifiedState
+dictionary-field changes (buckets/entries/count/version), repaired as one owner/
+ten slots. Manual id5 reports seven slots/three owners/45 planned slots.
+No FAILED/UNAVAILABLE in this session. Bargain flags remain default.
+Player.log error/exception matches include native startup ModTrustList TLS
+failure and Curl35 connection reset, not a demonstrated snapshot regression.
+
+Ten group drags completed before the first restore, ranging2-8 items.
+None occurred after the first restore at00:57:58.915. Do not count these as
+post-restore group-drag acceptance, consistent with the user's explicit caveat.
+Need a short follow-up using the same deployed build: restore the sampled
+first node, group-drag2-4 items, visit a later node and return, repeat the drag.
+Inspect membership and sprite/collision alignment. No new runtime deployment
+or independent-runtime writes until this interaction gap is checked.
