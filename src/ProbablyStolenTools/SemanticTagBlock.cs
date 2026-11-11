@@ -37,13 +37,32 @@ namespace ProbablyStolenTools
             if (Fields != null) access.BlockCapture = new Factory().Capture;
         }
 
+        internal static void EnableCensus(ManagedStateAccess access)
+        {
+            if (Fields != null) access.CensusValuesProbe = new Factory().Probe;
+        }
+
         private sealed class Factory
         {
             private IReadOnlyList<StateSlot> _checked;
             private bool _valid;
             internal IStateBlock Capture(object target, IReadOnlyList<StateSlot> slots)
+                => Valid(target, slots) ? new SemanticTagBlock((TagState)target) : null;
+
+            internal bool Probe(object target, IReadOnlyList<StateSlot> slots)
             {
-                if (target.GetType() != typeof(TagState)) return null;
+                if (!Valid(target, slots)) return false;
+                // Consume all nine exact native fields once; no snapshot values/blocks survive the call.
+                var tag = (TagState)target;
+                GC.KeepAlive(new SemanticTagValue(tag.valueEnabled, tag.valueString, tag.valueInt,
+                    BitConverter.SingleToInt32Bits(tag.valueFloat), tag.valueLong,
+                    BitConverter.DoubleToInt64Bits(tag.valueDouble), tag.valueBool, tag.identifier, tag.identifierName));
+                return true;
+            }
+
+            private bool Valid(object target, IReadOnlyList<StateSlot> slots)
+            {
+                if (target.GetType() != typeof(TagState)) return false;
                 // Each access owns its schema. Validate it once, not once per tag.
                 if (!ReferenceEquals(_checked, slots))
                 {
@@ -60,7 +79,7 @@ namespace ProbablyStolenTools
                         seen[index] = true;
                     }
                 }
-                return _valid ? new SemanticTagBlock((TagState)target) : null;
+                return _valid;
             }
         }
 

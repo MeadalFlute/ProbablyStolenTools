@@ -847,6 +847,7 @@ namespace ProbablyStolenTools
             StateGraph.Reconciliation reconciliation = null;
             bool finalRepairFallback = false;
             int censusObjects = 0, censusSlots = 0;
+            int censusTagProbes = 0;
             int finalDifferences = -1;
             long censusBytes = 0;
             string workload = "";
@@ -861,7 +862,13 @@ namespace ProbablyStolenTools
                 tValidate = timing.ElapsedMilliseconds;
                 phase = "census";
                 var access = Access(store, out var roots);
+#if MONO
+                if (Plugin.CfgSemanticTagCensus?.Value == true) SemanticTagBlock.EnableCensus(access);
+#endif
                 current = StateGraph.Census(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
+#if MONO
+                censusTagProbes = access.CensusValueObjectCount;
+#endif
                 tCensus = timing.ElapsedMilliseconds;
                 censusObjects = current.ObjectCount;
                 censusSlots = current.SlotCount;
@@ -1059,7 +1066,7 @@ namespace ProbablyStolenTools
                     long tFinish = timing.ElapsedMilliseconds;
                     EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
                         $"releaseOk={releaseError == null} " +
-                        $"census(objects={censusObjects},slots={censusSlots},bytes={censusBytes}) " +
+                        $"census(objects={censusObjects},slots={censusSlots},bytes={censusBytes},exactTagProbes={censusTagProbes}) " +
                         $"ms(validate={tValidate},census={tCensus - tValidate},preflight={tPreflight - tCensus}," +
                         $"write={tWrite - tPreflight},refresh={tRefresh - tWrite},reconcile={tReconcile - tRefresh}," +
                         $"finalVerify={tVerify - tReconcile},semanticVerify={tSemanticVerify - tVerify}," +

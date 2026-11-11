@@ -14,6 +14,7 @@ SnapshotArrayBudgetTests.Run(Test, Check);
 SnapshotArraySchemaTests.Run(Test, Check);
 SnapshotDiscoveryTests.Run(Test, Check);
 SnapshotCensusTests.Run(Test, Check);
+SnapshotCensusValueTests.Run(Test, Check);
 SemanticTagSnapshotTests.Run(Test, Check);
 SemanticTagOwnershipTests.Run(Test, Check);
 SnapshotBlockTests.Run(Test, Check);

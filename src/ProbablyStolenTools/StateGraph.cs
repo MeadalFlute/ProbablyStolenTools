@@ -38,6 +38,12 @@ namespace ProbablyStolenTools
         int ProbeValue(IntPtr id, StateSlot slot);
     }
 
+    // Opt-in eight-byte scalar tokens only: read every scalar without retaining values or replacing reference discovery.
+    internal interface IStateCensusValueProbe
+    {
+        bool TryProbeValues(IntPtr id, IReadOnlyList<StateSlot> slots);
+    }
+
     internal interface IStateObjectDescription
     {
         string ObjectTypeName(IntPtr id);
@@ -164,6 +170,7 @@ namespace ProbablyStolenTools
                 var pending = new Queue<IntPtr>();
                 var budgeted = access as IBudgetedStateDescription;
                 var probe = captureValues ? null : access as IStateValueProbe;
+                var censusValues = captureValues ? null : access as IStateCensusValueProbe;
                 var blockAccess = captureValues ? access as IStateBlockAccess : null;
                 void Discover(IntPtr id, IntPtr parent, string field)
                 {
@@ -198,6 +205,7 @@ namespace ProbablyStolenTools
                             graph._sources.Count);
                     }
                     var block = blockAccess?.CaptureBlock(id, description);
+                    bool valuesProbed = censusValues?.TryProbeValues(id, description) == true;
                     foreach (var slot in description)
                     {
                         if (graph.SlotCount >= maxSlots)
@@ -214,7 +222,7 @@ namespace ProbablyStolenTools
                         }
                         else
                         {
-                            if (block != null)
+                            if (block != null || valuesProbed)
                                 graph.ByteCount += sizeof(long);
                             else if (probe != null)
                                 graph.ByteCount += probe.ProbeValue(id, slot);

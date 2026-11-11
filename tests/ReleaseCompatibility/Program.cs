@@ -464,6 +464,58 @@ try
     if (nativeIntArrays == 0
         || (int)graphType.GetProperty("BlockCount", dataFlags).GetValue(tagGraph) - nativeIntArrays != 2)
         throw new Exception("Exact native TagState and standalone state must compress; ItemStateModifier must fall back.");
+    foreach (bool directCensus in new[] { false, true })
+    {
+        var censusAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+            .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+        if (directCensus) compactType.GetMethod("EnableCensus", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new[] { censusAccess });
+        accessType.GetMethod("AddRoot", dataFlags).Invoke(censusAccess,
+            new object[] { Identity(tagFixture), Array.Empty<string>() });
+        var censusGraph = graphType.GetMethod("Census", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { censusAccess, new[] { Identity(tagFixture) }, 50000, 1000000, 64L * 1024 * 1024 });
+        try
+        {
+            if ((int)accessType.GetProperty("CensusValueObjectCount", dataFlags).GetValue(censusAccess) != (directCensus ? 2 : 0))
+                throw new Exception("Native census probe must include standalone/exact tags but exclude ItemStateModifier.");
+            foreach (string metric in new[] { "ObjectCount", "SlotCount", "ByteCount" })
+                if (!Equals(graphType.GetProperty(metric, dataFlags).GetValue(censusGraph),
+                    graphType.GetProperty(metric, dataFlags).GetValue(legacyTagGraph)))
+                    throw new Exception("Native census probe changed coverage/budget: " + metric);
+            foreach (var id in (IEnumerable<IntPtr>)graphType.GetProperty("Objects", dataFlags).GetValue(legacyTagGraph))
+                if (!(bool)graphType.GetMethod("Contains", dataFlags).Invoke(censusGraph, new object[] { id })
+                    || !Equals(graphType.GetMethod("SourceOf", dataFlags).Invoke(censusGraph, new object[] { id }),
+                        graphType.GetMethod("SourceOf", dataFlags).Invoke(legacyTagGraph, new object[] { id })))
+                    throw new Exception("Native census probe changed identities or reference discovery order.");
+            if ((int)graphType.GetProperty("BlockCount", dataFlags).GetValue(censusGraph) != 0
+                || ((System.Collections.IDictionary)accessType.GetField("_savedValues", dataFlags).GetValue(censusAccess)).Count != 0
+                || ((System.Collections.IDictionary)accessType.GetField("_values", dataFlags).GetValue(censusAccess)).Count != 0)
+                throw new Exception("Native census probe retained block/scalar snapshot payloads.");
+        }
+        finally { ((IDisposable)censusGraph).Dispose(); }
+    }
+    var probeAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+        .Invoke(new object[] { null, "Assembly-CSharp" });
+    try
+    {
+        compactType.GetMethod("EnableCensus", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new[] { probeAccess });
+        var probe = (Delegate)accessType.GetField("CensusValuesProbe", dataFlags).GetValue(probeAccess);
+        var noSlots = Array.CreateInstance(mod.GetType("ProbablyStolenTools.StateSlot"), 0);
+        if ((bool)probe.DynamicInvoke(tagState, noSlots) || (bool)probe.DynamicInvoke(modifierState, noSlots))
+            throw new Exception("Native census probe accepted a mismatched description or subclass.");
+        accessType.GetMethod("AddRoot", dataFlags).Invoke(probeAccess, new object[] { Identity(tagState), new[] { "valueInt" } });
+        var selectedCensus = graphType.GetMethod("Census", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { probeAccess, new[] { Identity(tagState) }, 10, 10, 1000L });
+        try
+        {
+            if ((int)accessType.GetProperty("CensusValueObjectCount", dataFlags).GetValue(probeAccess) != 0
+                || (int)graphType.GetProperty("SlotCount", dataFlags).GetValue(selectedCensus) != 1)
+                throw new Exception("Native census probe expanded a selected root.");
+        }
+        finally { ((IDisposable)selectedCensus).Dispose(); }
+    }
+    finally { ((IDisposable)probeAccess).Dispose(); }
+    Console.WriteLine("PASS native exact tag census probe/ordinary parity: all identities, source paths, budgets, standalone tags, subtype/schema/selected-root fallback and no retained scalar payloads");
     foreach (string metric in new[] { "ObjectCount", "SlotCount", "ByteCount" })
         if (!Equals(graphType.GetProperty(metric, dataFlags).GetValue(tagGraph),
             graphType.GetProperty(metric, dataFlags).GetValue(legacyTagGraph)))
@@ -684,11 +736,12 @@ finally
 }
 
 if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || args.Contains("--benchmark-reconcile")
-    || args.Contains("--benchmark-int-arrays"))
+    || args.Contains("--benchmark-int-arrays") || args.Contains("--benchmark-census-tags"))
 {
     bool benchmarkWrites = args.Contains("--benchmark-writes");
     bool benchmarkReconcile = args.Contains("--benchmark-reconcile");
     bool benchmarkIntArrays = args.Contains("--benchmark-int-arrays");
+    bool benchmarkCensus = args.Contains("--benchmark-census-tags");
     // Isolated native business objects on .NET 6, not a Unity/Mono frame-time measurement.
     var fixture = Array.CreateInstance(systemType, 1024);
     for (int i = 0; i < fixture.Length; i++)
@@ -714,9 +767,9 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
     var sourceMethod = graphType.GetMethod("DifferencesWithSources", dataFlags);
     var censusMethod = graphType.GetMethod("Census", BindingFlags.Static | BindingFlags.NonPublic);
     var applyMethod = graphType.GetNestedType("Reconciliation", BindingFlags.NonPublic).GetMethod("Apply", dataFlags);
-    int repairedSlots = 0, intBlocks = 0, intSlots = 0;
-    int sampleCount = benchmarkIntArrays ? 9 : 5;
-    int warmups = benchmarkIntArrays ? 3 : 1;
+    int repairedSlots = 0, intBlocks = 0, intSlots = 0, probedTags = 0;
+    int sampleCount = benchmarkIntArrays || benchmarkCensus ? 9 : 5;
+    int warmups = benchmarkIntArrays || benchmarkCensus ? 3 : 1;
     for (int round = -warmups; round < sampleCount; round++)
         foreach (bool compact in round % 2 == 0 ? new[] { true, false } : new[] { false, true })
         {
@@ -725,7 +778,7 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
                 new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool) }, null)
                 .Invoke(new object[] { null, "Assembly-CSharp", true, true, !benchmarkWrites || compact,
                     benchmarkIntArrays && compact });
-            if (benchmarkReconcile || benchmarkWrites || benchmarkIntArrays || compact) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
+            if (benchmarkReconcile || benchmarkWrites || benchmarkIntArrays || benchmarkCensus || compact) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new[] { benchAccess });
             accessType.GetMethod("AddRoot", dataFlags).Invoke(benchAccess, new object[] { Identity(fixture), Array.Empty<string>() });
             long before = GC.GetAllocatedBytesForCurrentThread();
@@ -748,20 +801,23 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
                 if (differences != 0) throw new Exception("Native benchmark capture verification failed.");
                 double censusMs = 0;
                 long censusAllocated = 0;
-                if (benchmarkIntArrays)
+                if (benchmarkIntArrays || benchmarkCensus)
                 {
-                    if (compact)
+                    if (benchmarkIntArrays && compact)
                     {
                         intBlocks = (int)accessType.GetProperty("IntArrayBlockCount", dataFlags).GetValue(benchAccess);
                         intSlots = (int)accessType.GetProperty("IntArraySlotCount", dataFlags).GetValue(benchAccess);
                     }
-                    if (((int)accessType.GetProperty("IntArrayBlockCount", dataFlags).GetValue(benchAccess) > 0) != compact)
+                    if (benchmarkIntArrays && ((int)accessType.GetProperty("IntArrayBlockCount", dataFlags).GetValue(benchAccess) > 0) != compact)
                         throw new Exception("Native int array benchmark did not exercise the requested payload mode.");
                     var censusAccess = accessType.GetConstructor(dataFlags, null,
                         new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool) }, null)
                         .Invoke(new object[] { null, "Assembly-CSharp", true, true, true, compact });
                     accessType.GetMethod("AddRoot", dataFlags).Invoke(censusAccess,
                         new object[] { Identity(fixture), Array.Empty<string>() });
+                    if (benchmarkCensus && compact)
+                        compactType.GetMethod("EnableCensus", BindingFlags.Static | BindingFlags.NonPublic)
+                            .Invoke(null, new[] { censusAccess });
                     long beforeCensus = GC.GetAllocatedBytesForCurrentThread();
                     clock.Restart();
                     var censusGraph = censusMethod.Invoke(null, new object[] { censusAccess, new[] { Identity(fixture) },
@@ -770,6 +826,12 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
                     censusAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeCensus;
                     try
                     {
+                        if (benchmarkCensus)
+                        {
+                            int count = (int)accessType.GetProperty("CensusValueObjectCount", dataFlags).GetValue(censusAccess);
+                            if ((count > 0) != compact) throw new Exception("Census benchmark did not exercise the requested mode.");
+                            if (compact) probedTags = count;
+                        }
                         if (Convert.ToInt64(graphType.GetProperty("SlotCount", dataFlags).GetValue(censusGraph)) != slots
                             || Convert.ToInt64(graphType.GetProperty("ObjectCount", dataFlags).GetValue(censusGraph)) != objects
                             || (long)graphType.GetProperty("ByteCount", dataFlags).GetValue(censusGraph) != bytes)
@@ -825,7 +887,10 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
         string mode = benchmarkReconcile ? (compact ? "hybrid-owner-repair" : "hybrid-full-reconcile")
             : benchmarkWrites ? (compact ? "hybrid-direct-write" : "hybrid-recursive-write")
             : (compact ? "hybrid" : "legacy");
-        if (benchmarkIntArrays)
+        if (benchmarkCensus)
+            Console.WriteLine(FormattableString.Invariant(
+                $"CENSUS_TAG_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} direct={compact} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} exactTagProbes={(compact ? probedTags : 0)} censusMs={Median(values.Select(v => v.Census)):F2} censusAllocatedBytes={Median(values.Select(v => (double)v.CensusAllocated)):F0}"));
+        else if (benchmarkIntArrays)
             Console.WriteLine(FormattableString.Invariant(
                 $"INT_ARRAY_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} compact={compact} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} intArrayBlocks={(compact ? intBlocks : 0)} intArraySlots={(compact ? intSlots : 0)} captureMs={Median(values.Select(v => v.Capture)):F2} censusMs={Median(values.Select(v => v.Census)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} censusAllocatedBytes={Median(values.Select(v => (double)v.CensusAllocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
         else if (benchmarkReconcile)

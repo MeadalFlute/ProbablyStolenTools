@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess
+    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe
     {
         private readonly struct Storage
         {
@@ -48,6 +48,15 @@ namespace ProbablyStolenTools
         private long _nextValue;
         private static readonly object NullValue = new();
         internal Func<object, IReadOnlyList<StateSlot>, IStateBlock> BlockCapture;
+        internal Func<object, IReadOnlyList<StateSlot>, bool> CensusValuesProbe;
+        internal int CensusValueObjectCount { get; private set; }
+        bool IStateCensusValueProbe.TryProbeValues(IntPtr id, IReadOnlyList<StateSlot> slots)
+        {
+            if (CensusValuesProbe == null || (_roots.TryGetValue(id, out var selected) && selected != null)) return false;
+            bool probed = CensusValuesProbe(_retained[id], slots);
+            if (probed) CensusValueObjectCount++;
+            return probed;
+        }
         internal string BlockMode = "legacy";
         internal int IntArrayBlockCount { get; private set; }
         internal int IntArraySlotCount { get; private set; }
@@ -512,6 +521,8 @@ namespace ProbablyStolenTools
             _arraySchemas.Clear();
             _arraySchemaSlots = 0; _arraySchemaHits = 0; _arraySlotsReused = 0;
             BlockCapture = null;
+            CensusValuesProbe = null;
+            CensusValueObjectCount = 0;
             IntArrayBlockCount = 0;
             IntArraySlotCount = 0;
         }

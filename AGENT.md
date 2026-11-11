@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**213 项**离线测试；正式版 **57 个** Harmony 挂点、**74 个**快照/私有字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**219 项**离线测试；正式版 **57 个** Harmony 挂点、**74 个**快照/私有字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -37,6 +37,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 完整 `int[]` 载荷：只接受精确、非空、非筛选根的原生 int[]，保存整个数组副本并复制回原数组，不重建字典、不裁剪容量；所有元素仍完整比较，逻辑预算保持每槽 8 字节，Census 不变。配置 `Snapshot.IntArrayBlocks=true`，CAPTURE 新增 intArrayBlocks/intArraySlots，tagBlocks 仍只计标签块。18:31 会话 4 次捕获、6 次恢复最终零差异；int 块实际启用，两个节点覆盖 int 块 owner 修复，未最终回退。常规捕获 313-379 ms、首节点 865 ms；恢复中位数 732.5 ms（上一会话 773 ms），非严格 A/B、改善有限，不能推算隔离基准收益。用户同时报告批量拖拽失效，尚不能宣称 UI 全面通过。单对象查找缓存原型已撤除。详见 `research/2026-11-11-int-array-blocks.md`。
 
 框选/批量移动排查：原版 ItemMultiSelectHandler 自带此功能，本 Mod 不重写批量移动。已补单件拖拽、群组拖拽及按键未释放的框选/待拖拽统一门控（自动/闭店/手动捕获及恢复）；静态选区不阻塞建点，回溯通过预检后、业务写入前调用原版 Cancel 清除旧 selectedHomes/高亮，不调用 EndGroupDrag 提交操作。只在群组拖拽开始/结束记录计数和异常，不逐帧打印或吞掉原版异常。用户已确认恢复可用；18:43 会话回溯前后各 3 次完整群组拖拽，2/4 件均正常结束，无相关异常；一次回溯最终零差异。此次没有命中静态选区清理日志或忙态拒绝，不能据此证明原始触发根因或所有边界已覆盖。详见 `research/2026-11-11-multi-select-rewind.md`。
+
+已部署只读 Census 优化（19:10）：`Snapshot.SemanticTagCensus=true` 对精确 TagState、完整匹配的九字段描述，直接消费同九字段临时值，代替六次通用标量读；三个引用仍逐槽走原身份发现，子类/筛选根/描述或原生结构不匹配走旧路径。捕获载荷、第一次/第二次写回、预检、最终校验不变，无持久值/块进入普查。RESTORE 的 census 追加 exactTagProbes，Session 追加开关。219 项回归、原生覆盖/预算/身份/来源/回退对照通过；两次隔离基准 Census 约快 6-8%、少分配约 1.12 MiB，不推算 Unity 或整次回溯收益。引用数组载荷、值令牌索引表两个原型因收益不稳或捕获/写回退化已完全撤除，未部署。详见 `research/2026-11-11-exact-tag-census.md`，本轮待实机验收。
 
 ### 版本与发布
 
@@ -101,6 +103,7 @@ docs/workshop/                     创意工坊文本
 - `Snapshot.SemanticTagBlocks=true` 默认启用首轮真实混合载荷：只处理精确原生 `TagState`（包含不在字典中的独立标签），严格匹配九字段名称/类型及主图描述；子类、筛选根、不匹配结构捕获时走旧路径。每对象一个强类型字段块替代九条 Entry 与六次值令牌读/登记；仍保留全部对象/字符串身份、引用发现顺序、来源路径、逻辑槽位/字节预算以及字典 capacity/entries/buckets/version/free-list/视图/枚举器。禁止 Clear/Add 集合重建。`VisitCapturedSlots` 同时展开块内保存的九个槽，不读 live 字段。Census 仍完整走原字段普查，不创建块。
 - 字段块实际参与 Restore 与 Differences：全部普通标量和块标量先写，再写全部普通引用和块引用；三个字符串恢复真实存储字段（GC 屏障），不能用会将 null 归一化为空串的 `valueString` setter。保持浮点位和字符串引用身份。每块九字段始终完整校验，日志达到上限也继续读取；写入失败直接沿用原失败流程，不自动重试旧路径。开关只决定新节点载荷，保留节点始终由其捕获时后端解释。此轮须经实机验证后才能继续扩大范围；视觉/几何恢复顺序不变，不调用原版保存。
 - `Snapshot.IntArrayBlocks=true` 仅在 Mono 业务捕获中为精确 `GetType() == typeof(int[])` 的非空向量保存独立完整 Clone，RestoreValues 用 Array.Copy 写回原数组。不能用 `is int[]` 代替精确类型判断（CLR 对 uint[] 等存在特殊数组兼容）；空数组、其他元素类型、筛选根走普通路径。描述与全容量预算检查先于 Clone，仍按每元素一个槽 / 8 字节计逻辑字节；没有减少覆盖或修改对象发现顺序。Differences 完整逐元素计数且保留原索引名称，VisitCapturedSlots 仍展开全部捕获槽。Census 不创建块、仍读所有字段；不承诺普查提速。整数组是一个 owner，修复槽上限仍按全长度判断。关闭开关后重启让新节点走旧逐元素路径，保留节点不受后续工厂变化影响；实机验收前不扩到引用数组、结构体数组或集合重建。
+- `IStateCensusValueProbe` 只许可逻辑标量宽度为 8 字节的访问器，成功必须读取描述中的全部标量。仅 Census 使用，Capture 不调用；失败/未知描述按旧逐槽探测。ManagedStateAccess 拒绝筛选根，精确 TagState 由原九字段名称/类型及槽引用种类检查后启用；临时 SemanticTagValue 经 GC.KeepAlive 消费，不持久保留到普查对象中。引用仍原样逐槽读取、发现及计预算；不跳过任何数组/容器/子类字段，不产生恢复用块或值令牌。读异常沿原失败流程传播，不重试旧路径。`Snapshot.SemanticTagCensus=false` 回到旧普查读法，不影响已有节点载荷。
 - 语义标签字符串（Text / Identifier / DisplayName）和字典键均按捕获时的引用身份比较，不再只比较内容；同文字新字符串也算差异。此范围内与旧图的引用校验一致，但 MATCH 仍不覆盖字典底层版本、capacity、free-list、迭代器、比较器内部状态或子类额外字段。离线反例已证实“Clear + 按原键值重建”可语义匹配但旧图有差异、枚举器失效；不得据 MATCH 直接启用集合重建。
 
 ---
