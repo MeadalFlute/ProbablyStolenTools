@@ -175,6 +175,31 @@ internal static class SnapshotBlockTests
             Throws<InvalidOperationException>(() => graph.Differences(1), check);
             check(blocks.All(b => b.Writes == 0));
         });
+        test("compact source diagnostics attribute shared owners without rereading fields", () =>
+        {
+            var node = new Node { Number = 1 };
+            var blocks = new List<Block>();
+            using var graph = Capture(new[] { node, node }, blocks);
+            node.Number = 9; node.Flag = true; node.Link = node;
+            var detail = graph.DifferencesWithSources();
+            check(detail.Count == 3 && blocks.Count == 1 && blocks[0].Reads == 3 && blocks[0].Writes == 0);
+            check(detail.All(s => s.Contains($"owner=0x{ManagedObjects.Id(node).ToInt64():X} ")
+                && s.Contains("storage=block") && s.Contains("type=" + typeof(Node).FullName)
+                && s.EndsWith("source=root -> " + typeof(Node[]).FullName + "[0]")));
+            graph.Restore(); check(graph.DifferencesWithSources().Count == 0);
+        });
+        test("compact source diagnostics keep full scan and late errors after mixed cap", () =>
+        {
+            var nodes = Enumerable.Range(0, 20).Select(i => new Node()).ToArray();
+            var blocks = new List<Block>();
+            using var graph = Capture(nodes, blocks);
+            nodes[0] = new Node();
+            // A changed ordinary array reference fills the cap before compact blocks are read.
+            check(graph.DifferencesWithSources(1).Count == 1 && blocks.Sum(b => b.Reads) == 60);
+            blocks[^1].FailRead = true;
+            Throws<InvalidOperationException>(() => graph.DifferencesWithSources(1), check);
+            check(blocks.All(b => b.Writes == 0));
+        });
         test("compact payload remains owned by each checkpoint after factory is disabled", () =>
         {
             var a = new Node { Number = 1 };

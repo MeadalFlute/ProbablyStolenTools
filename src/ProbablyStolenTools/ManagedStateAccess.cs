@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess
+    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription
     {
         private readonly struct Storage
         {
@@ -142,6 +142,9 @@ namespace ProbablyStolenTools
         {
             if (!_retained.ContainsKey(id)) _retained[id] = ManagedObjects.Get(id);
         }
+
+        string IStateObjectDescription.ObjectTypeName(IntPtr id)
+            => _retained.TryGetValue(id, out var target) ? target.GetType().FullName : null;
 
         public IReadOnlyList<StateSlot> Describe(IntPtr id)
             => DescribeWithinBudget(id, int.MaxValue, long.MaxValue);

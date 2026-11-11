@@ -454,6 +454,13 @@ try
             tagFields[i].SetValue(state, changed[i]);
             if (Diff(semantic, semantic.GetType()) == 0 || Diff(tagGraph, graphType) == 0)
                 throw new Exception("Native semantic reader missed field: " + state.GetType().Name + "." + tagNames[i]);
+            var attributed = ((System.Collections.IEnumerable)graphType.GetMethod("DifferencesWithSources", dataFlags)
+                .Invoke(tagGraph, new object[] { 12 })).Cast<string>().ToArray();
+            if (attributed.Length != 1 || !attributed[0].Contains("type=" + state.GetType().FullName + " ")
+                || !attributed[0].Contains("field=TagState." + tagNames[i] + " ")
+                || !attributed[0].Contains("storage=" + (ReferenceEquals(state, tagState) ? "block" : "field"))
+                || !attributed[0].Contains("source=root -> "))
+                throw new Exception("Native difference source missed compact/fallback field: " + tagNames[i]);
             graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
             if (Diff(semantic, semantic.GetType()) != 0 || Diff(legacyTagGraph, graphType) != 0)
                 throw new Exception("Native semantic field did not restore: " + tagNames[i]);

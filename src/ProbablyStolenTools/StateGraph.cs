@@ -37,6 +37,11 @@ namespace ProbablyStolenTools
         int ProbeValue(IntPtr id, StateSlot slot);
     }
 
+    internal interface IStateObjectDescription
+    {
+        string ObjectTypeName(IntPtr id);
+    }
+
     internal interface IBudgetedStateDescription
     {
         IReadOnlyList<StateSlot> Describe(IntPtr id, int remainingSlots, long remainingBytes);
@@ -224,6 +229,12 @@ namespace ProbablyStolenTools
         }
 
         internal IReadOnlyList<string> Differences(int max = 12)
+            => ScanDifferences(max, false);
+
+        internal IReadOnlyList<string> DifferencesWithSources(int max = 12)
+            => ScanDifferences(max, true);
+
+        private IReadOnlyList<string> ScanDifferences(int max, bool sources)
         {
             RequireCheckpoint();
             var result = new List<string>();
@@ -239,10 +250,34 @@ namespace ProbablyStolenTools
                     var value = _access.ReadValue(e.Owner, e.Slot);
                     same = ReferenceEquals(value, e.Bytes) || value.SequenceEqual(e.Bytes);
                 }
-                if (!same && result.Count < max) result.Add(e.Slot.Name);
+                if (!same && result.Count < max)
+                    result.Add(sources ? DescribeDifference(e.Owner, e.Slot.Name, false) : e.Slot.Name);
             }
-            foreach (var block in _blocks) block.Payload.CollectDifferences(result, max);
+            foreach (var block in _blocks)
+            {
+                int start = result.Count;
+                block.Payload.CollectDifferences(result, max);
+                if (sources)
+                    for (int i = start; i < result.Count; i++)
+                        result[i] = DescribeDifference(block.Owner, result[i], true);
+            }
             return result;
+        }
+
+        private string DescribeDifference(IntPtr owner, string field, bool block)
+        {
+            // Metadata only: never call business getters/ToString or reread the changed field.
+            string type = (_access as IStateObjectDescription)?.ObjectTypeName(owner);
+            return $"owner=0x{owner.ToInt64():X} type={DiagnosticText(type, 128)} " +
+                $"storage={(block ? "block" : "field")} field={DiagnosticText(field, 128)} " +
+                $"source={DiagnosticText(SourceOf(owner), 240)}";
+        }
+
+        private static string DiagnosticText(string value, int max)
+        {
+            if (string.IsNullOrEmpty(value)) return "unknown";
+            if (value.Length > max) value = value.Substring(0, max - 3) + "...";
+            return value.Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
         }
 
         private void RequireCheckpoint()

@@ -839,6 +839,7 @@ namespace ProbablyStolenTools
             long tReconcileScan = 0, tReconcileWrite = 0, tReconcileViews = 0, tGeometry = 0;
             bool reconcileRewrite = false;
             int reconcileReportedDiff = 0;
+            string reconcileSources = "";
             int censusObjects = 0, censusSlots = 0;
             int finalDifferences = -1;
             long censusBytes = 0;
@@ -934,7 +935,8 @@ namespace ProbablyStolenTools
                 UnityRandomState.Restore(target.UnityRandom);
                 tRefresh = timing.ElapsedMilliseconds;
                 phase = "reconcile-scan";
-                var diff = target.Graph.Differences();
+                var diff = target.Graph.DifferencesWithSources();
+                if (diff.Count != 0) reconcileSources = string.Join(" | ", diff.Take(6));
                 tReconcileScan = timing.ElapsedMilliseconds;
                 reconcileReportedDiff = diff.Count;
                 if (diff.Count != 0)
@@ -1048,6 +1050,10 @@ namespace ProbablyStolenTools
                 if (releaseError != null)
                     EventLog.Write($"[Customer] CENSUS RELEASE FAILED restoreCompleted={completed} " +
                         $"id={target.Id} phase=release elapsedMs={timing.ElapsedMilliseconds}: " + releaseError);
+                if (reconcileSources.Length != 0)
+                    EventLog.Write($"[Customer] RECONCILE DIFF id={target.Id} restoreCompleted={completed} " +
+                        $"reportedDiff={reconcileReportedDiff} sampleLimit=6 scanLimit=12 " +
+                        $"scope=captured-graph-only values=omitted sample=[{reconcileSources}]");
             }
         }
 

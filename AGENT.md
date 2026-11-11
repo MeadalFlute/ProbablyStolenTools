@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**150 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**158 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -166,6 +166,7 @@ docs/workshop/                     创意工坊文本
 - `[QuickSL/Geom]` 只在物品视图异常（DESTROYED / MISSING / NOSPRITE / HIDDEN / MISPLACED）时输出，是排查贴图问题的第一入口。
 - CAPTURE 仍一行摘要：access/walk/items/verify 后补 prepareHistory/history/retain/finish，history 包含正常历史淘汰。RESTORE OK 仍一行：validate/census/preflight/write/refresh/reconcile/finalVerify/cleanup/release/total，包含当前普查释放，但不包含入口拒绝门控和摘要日志自身 I/O。失败输出 phase 与 elapsedMs。
 - CAPTURE 的 `walkReaderCompileMs` 是本次 walk 内读取委托编译时间，**已包含在 walk 中，不能再加一次**；readers 的 compileAttemptsTotal/compileMsTotal 是 ClearCache 以来的累计值，包含失败编译，只在实际编译时计时，不为每次字段读取打点，不改变读取 32 次后才编译的策略。RESTORE 同行追加 `reconcileDetail(rewrite=...,reportedDiff=...,scan=...,write=...,views=...,geometry=...,transforms=...)`；五项时间和为原 reconcile，reportedDiff 是最多 12 条诊断数而非实际差异总数，仍扫描全部字段。rewrite=False 不等于没有做最终视觉/几何处理。失败 phase 细分为 reconcile-scan/write/views/geometry/transforms。
+- 刷新后的同次差异扫描使用 DifferencesWithSources，恢复结束后追加一条 RECONCILE DIFF：最多收集 12 条、展示 6 条对象身份/类型/字段/捕获来源，字段块与普通字段均覆盖；不额外扫描或重读字段，不输出业务值，不调用业务 getter/ToString。类型/字段各限 128 字符、路径限 240 字符，保持单行；无需 Verbose。scanLimit 是诊断条数上限，绝不是扫描字段上限；仍检查全部字段并传播末尾异常。来源格式化计入 scan，日志 I/O 不计入恢复摘要；scope=captured-graph-only 不能作为集合所有权或选择性恢复的依据。
 - CAPTURE 追加 `backend=hybrid-exact-tag tagBlocks=N`（关闭时 `backend=legacy tagBlocks=0`；原生字段结构不符为 `legacy-tag-schema-mismatch`）。slots/bytes 仍是相同逻辑预算，不代表压缩后的真实内存，不能用计数不减判断没有生效。当前只减少精确 TagState 的逐字段工作，不能承诺整个捕获/恢复达到隔离 .NET 6 标签夹具的提速幅度。
 - 标签对照另记 `[SemanticTags] CAPTURE MATCH / RESTORE MATCH / ... FAILED`，按同一 `id` 对应节点。捕获摘要追加 `semanticShadow`，恢复摘要追加 `semanticVerify`，避免把实验开销混进旧后端阶段；`logicalSlots/Bytes` 只表示语义标签载荷，不是内存占用或全图替代规模。回溯采样节点才能得到 RESTORE MATCH；普通节点没有这条日志。关闭 `Snapshot.SemanticTagShadow` 可停止后续采样，已捕获样本仍随节点验证/释放。
 - 采样节点另记一条 `[SemanticTags] OWNERSHIP`，只扫描已保存的槽位/引用，不重读 live 字段、不创建字典视图。统计共享字典、外部引用、内部数组、Keys/Values 视图、独立可达标签、未知布局和相关旧图槽数；最多输出六条来源、每条路径最多 280 字符，达到日志上限仍完整计数。`scope=captured-graph-only pruningAllowed=false` 始终成立：静态、图外和不透明第三方对象的内部引用不可见，不能据此许可裁剪。`comparerState=unproven`：语义对照只保留公开比较器身份，旧访问器还会将类型名含 Comparer 的实例视为不透明，不能保证自定义比较器可变内部状态。子类额外字段仍仅旧图负责。captureVerifyMs/semanticShadow 包含本轮审计成本，OWNERSHIP 的 auditMs 单列其中耗时，不得当作语义载荷捕获本身。
@@ -249,5 +250,6 @@ docs/workshop/                     创意工坊文本
 - `research/2026-11-11-semantic-tags-boundary.md`：首次实机匹配、只读引用审计、集合替换风险与下一阶段门槛。
 - `research/2026-11-11-semantic-tag-blocks.md`：精确 TagState 混合字段载荷、离线/原生验证、隔离基准、部署与实机操作要求。
 - `research/2026-11-11-snapshot-write-fastpath.md`：普通字段写回减重、首节点编译计时、reconcile 子阶段计时、验证和部署。
+- `research/2026-11-11-reconcile-difference-sources.md`：刷新后差异归属诊断、完整扫描回归与下一轮实机要求。
 - `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
 - `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。
