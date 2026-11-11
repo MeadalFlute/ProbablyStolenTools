@@ -15,10 +15,16 @@ namespace ProbablyStolenTools
         private readonly long _runtimeCaptureMs;
         private SemanticShapeWriter _shapeWriter;
         private StateGraph.EntityRestorePlan _shapePlan;
+        private SemanticWindowWriter _windowWriter;
+        private StateGraph.EntityRestorePlan _windowPlan, _combinedPlan;
         internal int ShapePilotOwners => _shapeWriter?.Owners.Count ?? 0;
+        internal int WindowPilotOwners => _windowWriter?.Owners.Count ?? 0;
+        private long PilotSlots => ShapePilotOwners * 8L + (_windowWriter?.LogicalSlots ?? 0);
+        private long PilotBytes => ShapePilotOwners * (7 * 8L + IntPtr.Size) + (_windowWriter?.LogicalBytes ?? 0);
         internal void EnableShapeRestore(StateGraph graph, int maxObjects, int maxSlots, long maxBytes)
         {
-            if (_shapeWriter != null) throw new InvalidOperationException("Shape writer already prepared.");
+            if (_shapeWriter != null || _windowWriter != null)
+                throw new InvalidOperationException("Shape writer must be prepared once, before the window writer.");
             var writer = SemanticShapeWriter.Capture(graph, maxObjects,
                 maxSlots - _snapshot.LogicalSlots - _runtime.SlotCount,
                 maxBytes - _snapshot.LogicalBytes - _runtime.ByteCount);
@@ -34,6 +40,30 @@ namespace ProbablyStolenTools
         {
             if (_shapePlan == null) return false;
             _shapePlan.Apply(graph);
+            return true;
+        }
+        internal void EnableWindowRestore(StateGraph graph, int maxObjects, int maxSlots, long maxBytes)
+        {
+            if (_windowWriter != null) throw new InvalidOperationException("Window writer already prepared.");
+            var writer = SemanticWindowWriter.Capture(graph, maxObjects,
+                checked((int)(maxSlots - _snapshot.LogicalSlots - _runtime.SlotCount - PilotSlots)),
+                maxBytes - _snapshot.LogicalBytes - _runtime.ByteCount - PilotBytes);
+            try
+            {
+                if (writer.Owners.Count == 0) { writer.Dispose(); return; }
+                var plan = graph.PrepareEntityRestore(writer, maxObjects, maxSlots);
+                var combined = _shapeWriter == null ? plan : graph.PrepareEntityRestores(
+                    new IStateEntityWriter[] { _shapeWriter, writer }, maxObjects, maxSlots);
+                _windowWriter = writer; _windowPlan = plan; _combinedPlan = combined;
+            }
+            catch { writer.Dispose(); throw; }
+        }
+        internal bool TryRestoreEntities(StateGraph graph, bool shapes, bool windows)
+        {
+            var plan = shapes && windows && _combinedPlan != null ? _combinedPlan
+                : windows && _windowPlan != null ? _windowPlan : shapes ? _shapePlan : null;
+            if (plan == null) return false;
+            plan.Apply(graph);
             return true;
         }
         private readonly int _items, _grids, _slots, _shapes, _windows, _unsupported, _legacySlots, _projectedSlots;
@@ -142,8 +172,9 @@ namespace ProbablyStolenTools
             $"runtimeCaptureVerifyMs={_runtimeCaptureMs} combinedSlots={_snapshot.LogicalSlots + _runtime.SlotCount} " +
             $"combinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount} " +
             $"shapePilotOwners={ShapePilotOwners} shapePilotSlots={ShapePilotOwners * 8L} " +
-            $"pilotCombinedSlots={_snapshot.LogicalSlots + _runtime.SlotCount + ShapePilotOwners * 8L} " +
-            $"pilotCombinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount + ShapePilotOwners * (7 * 8L + IntPtr.Size)} " +
+            $"windowPilotOwners={WindowPilotOwners} windowPilotSlots={_windowWriter?.LogicalSlots ?? 0} " +
+            $"pilotCombinedSlots={_snapshot.LogicalSlots + _runtime.SlotCount + PilotSlots} " +
+            $"pilotCombinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount + PilotBytes} " +
             "collectionStorage=legacy-only callbacks=legacy-only tags=legacy-hybrid";
 
         internal void ObserveRestore(long id)
@@ -170,6 +201,7 @@ namespace ProbablyStolenTools
         public void Dispose()
         {
             _shapeWriter?.Dispose(); _shapeWriter = null; _shapePlan = null;
+            _windowWriter?.Dispose(); _windowWriter = null; _windowPlan = null; _combinedPlan = null;
             _runtime.Dispose(); _boundary.Dispose(); _snapshot.Dispose();
         }
     }

@@ -113,4 +113,22 @@ without treating this non-A/B run as proof of speed.
 Backup: out/full-release-deploy-20261112-000339.
 DLL SHA256: 72FC7D7F15DD1C049DF4C0E631C315A351697A95A7B4A6C26E929B6AD3BF8DA5.
 78 save files verified unchanged, SettingsImported=False, GameStarted=False.
-Pending the first actual shape entity-write Unity acceptance described above.
+Accepted by the following live session; next restricted type is documented in
+2026-11-12-window-entity-writes.md.
+
+## Live acceptance
+
+2026-11-12 00:05 session: five captures including manual id=5, six restores,
+all final diff=0 / releaseOk=True. Three restores of sampled id=1 actually used
+2966 shape owners, with independent entity/runtime MATCH each time and zero
+runtime difference samples. Other nodes reported shapePilotOwners=0.
+Post-restore four-item group drag completed. User reported testing complete.
+No capture/restore FAILED or pilot UNAVAILABLE lines in the session.
+
+First capture 2119 ms, entityRecords=1216 including runtimeCaptureVerifyMs=871;
+tag shadow=141 and boundary audit=42. The diagnostic phases account for 1399 ms,
+about 66% of first capture; this does not establish a disabled-mode A/B baseline.
+Later captures 324/362/303/254 ms. Restore totals 697/645/655/770/634/701 ms.
+The shape setup contribution is not independently timed; no isolated speedup
+is claimed. User explicitly accepts migration-test overhead until development
+completes; remove duplicate diagnostics then, not necessary restore protection.

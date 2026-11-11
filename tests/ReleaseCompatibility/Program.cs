@@ -463,6 +463,7 @@ windowType.GetField("linkedContainerStorage", dataFlags).SetValue(boundaryWindow
 windowType.GetField("<parentItems>k__BackingField", dataFlags).SetValue(boundaryWindow, windowParents);
 windowType.GetField("<childElement>k__BackingField", dataFlags).SetValue(boundaryWindow, boundaryGrid);
 windowType.GetField("<titleString>k__BackingField", dataFlags).SetValue(boundaryWindow, "fixture");
+windowType.GetField("<transparency>k__BackingField", dataFlags).SetValue(boundaryWindow, -0.0f);
 var inventoryType = game.GetType("GameInventory", true);
 inventoryType.GetField("<parent>k__BackingField", dataFlags).SetValue(boundaryGrid, boundaryWindow);
 inventoryType.GetField("overrideLockInsert", dataFlags).SetValue(boundaryGrid, true);
@@ -608,6 +609,53 @@ try
     }
     Console.WriteLine("PASS independent read-only native entity records: complete item base schema, grid/slot order and identities, full shared shape bytes, six retained-graph restore cycles");
     Console.WriteLine("PASS native shape entity writer: all eight fields, shared original data identity and every byte, six real entity-write cycles, old graph plus independent runtime and entity oracle agreement");
+    entityType.GetMethod("EnableWindowRestore", dataFlags).Invoke(entityRecords,
+        new object[] { boundaryGraph, 50000, 1000000, 64L * 1024 * 1024 });
+    if ((int)entityType.GetProperty("WindowPilotOwners", dataFlags).GetValue(entityRecords) != 1)
+        throw new Exception("Exact native window was not admitted to the entity writer pilot.");
+    bool RestoreWithEntities(bool shapes, bool windows) => (bool)entityType.GetMethod("TryRestoreEntities", dataFlags)
+        .Invoke(entityRecords, new object[] { boundaryGraph, shapes, windows });
+    var windowWriterType = mod.GetType("ProbablyStolenTools.SemanticWindowWriter", true);
+    var writtenWindowFields = (FieldInfo[])windowWriterType.GetField("EntityFields", BindingFlags.Static | BindingFlags.NonPublic)
+        .GetValue(null);
+    Action neverInvokeWindowCallback = () => throw new Exception("Window restore invoked a business callback.");
+    for (int iteration = 0; iteration < 6; iteration++)
+    {
+        foreach (var field in writtenWindowFields)
+        {
+            var type = field.FieldType;
+            object changed = type == typeof(bool) ? !(bool)field.GetValue(boundaryWindow)
+                : type == typeof(int) ? (int)field.GetValue(boundaryWindow) + 17
+                : type == typeof(float) ? BitConverter.Int32BitsToSingle(unchecked((int)0x7fc01234))
+                : type.IsEnum ? Enum.ToObject(type, 7)
+                : type == typeof(string) ? new string("fixture".ToCharArray())
+                : null;
+            field.SetValue(boundaryWindow, changed);
+        }
+        windowParents[1] = boundaryItems[0];
+        linkedStorage[0] = boundarySlot;
+        windowType.GetField("<openCallback>k__BackingField", dataFlags).SetValue(boundaryWindow, neverInvokeWindowCallback);
+        windowType.GetField("<closeCallback>k__BackingField", dataFlags).SetValue(boundaryWindow, neverInvokeWindowCallback);
+        windowType.GetField("<stateChangeActionFunc>k__BackingField", dataFlags).SetValue(boundaryWindow, neverInvokeWindowCallback);
+        windowType.GetField("<focusStamp>k__BackingField", dataFlags).SetValue(boundaryWindow, 71L);
+        boundaryShape.GetType().GetProperty("orientation").SetValue(boundaryShape, iteration % 4);
+        if (EntityDifferences(entityRecords) == 0 || RuntimeDifferences(entityRecords) == 0)
+            throw new Exception("Window writer fixture failed to mutate both business and runtime partitions.");
+        // Exercise combined, window-only and shape-only plans against the same complete oracle.
+        if (!RestoreWithEntities(iteration % 3 != 1, iteration % 3 != 2)
+            || EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0
+            || !ReferenceEquals(windowType.GetField("<openCallback>k__BackingField", dataFlags).GetValue(boundaryWindow), originalWindowCallback)
+            || !ReferenceEquals(windowType.GetField("<parentItems>k__BackingField", dataFlags).GetValue(boundaryWindow), windowParents)
+            || !ReferenceEquals(windowType.GetField("linkedContainerStorage", dataFlags).GetValue(boundaryWindow), linkedStorage)
+            || BitConverter.SingleToInt32Bits((float)windowType.GetField("<transparency>k__BackingField", dataFlags)
+                .GetValue(boundaryWindow)) != unchecked((int)0x80000000)
+            || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
+            throw new Exception("Native window partition writer lost business fields, runtime callbacks, float bits or original collections.");
+    }
+    if (RestoreWithEntities(false, false))
+        throw new Exception("Disabled entity writers unexpectedly performed writes.");
+    Console.WriteLine("PASS native window entity writer: every business field, original list aliases and contents, signed-zero transparency, runtime callbacks never invoked, six combined/independent writer cycles");
     Console.WriteLine("PASS native entity boundary audit: distinct zero-uniqueId items, grid/slot membership, native closure aliases, captured-only topology and unchanged legacy restoration");
     if (!((string)entityType.GetProperty("Summary", dataFlags).GetValue(entityRecords)).Contains("windows=1"))
         throw new Exception("Native inventory/window links were not independently recorded.");
@@ -723,6 +771,28 @@ try
         throw new Exception("Native shape writer accepted incomplete record budget.");
     }
     catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    try
+    {
+        using var unexpected = (IDisposable)windowWriterType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { boundaryGraph, 50000, writtenWindowFields.Length - 1, 64L * 1024 * 1024 });
+        throw new Exception("Native window writer accepted incomplete record budget.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    var windowWriter = (IDisposable)entityType.GetField("_windowWriter", dataFlags).GetValue(entityRecords);
+    windowWriter.Dispose();
+    boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, 81);
+    boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 77);
+    try
+    {
+        RestoreWithEntities(true, true);
+        throw new Exception("Disposed native window writer remained writable in a combined plan.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is ObjectDisposedException) { }
+    if ((int)boundaryShape.GetType().GetProperty("minX").GetValue(boundaryShape) != 81
+        || (int)boundaryItems[0].GetType().GetProperty("unitCount").GetValue(boundaryItems[0]) != 77)
+        throw new Exception("Window writer validation ran after shape or legacy business writes.");
+    graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
+    Console.WriteLine("PASS native window budgets and combined-writer preflight reject before any shape or legacy write");
     var shapeWriter = (IDisposable)entityType.GetField("_shapeWriter", dataFlags).GetValue(entityRecords);
     shapeWriter.Dispose();
     boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 77);

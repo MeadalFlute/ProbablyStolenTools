@@ -716,6 +716,19 @@ namespace ProbablyStolenTools
                                     "legacyAuthoritative=true: " + e);
                             }
                         }
+                        if (Plugin.CfgSemanticWindowRestore?.Value == true)
+                        {
+                            try
+                            {
+                                candidate.SemanticEntities.EnableWindowRestore(candidate.Graph,
+                                    MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
+                            }
+                            catch (Exception e)
+                            {
+                                EventLog.Write($"[SemanticEntities] WINDOW PILOT UNAVAILABLE id={candidate.Id} " +
+                                    "legacyAuthoritative=true: " + e);
+                            }
+                        }
                     }
                     catch (Exception e)
                     {
@@ -922,6 +935,7 @@ namespace ProbablyStolenTools
             int censusTagProbes = 0;
             int finalDifferences = -1;
             int shapePilotOwners = 0;
+            int windowPilotOwners = 0;
             long censusBytes = 0;
             string workload = "";
             var scalarWritesBefore = target.Graph.ScalarWrites;
@@ -1001,9 +1015,14 @@ namespace ProbablyStolenTools
                 // Never call InterruptDialog: it can execute endAction on the abandoned timeline.
                 int countersBefore = CounterCount();
 #if MONO
-                if (Plugin.CfgSemanticShapeRestore?.Value == true && target.SemanticEntities != null
-                    && target.SemanticEntities.TryRestoreShapes(target.Graph))
-                    shapePilotOwners = target.SemanticEntities.ShapePilotOwners;
+                if (target.SemanticEntities != null && target.SemanticEntities.TryRestoreEntities(target.Graph,
+                    Plugin.CfgSemanticShapeRestore?.Value == true, Plugin.CfgSemanticWindowRestore?.Value == true))
+                {
+                    if (Plugin.CfgSemanticShapeRestore?.Value == true)
+                        shapePilotOwners = target.SemanticEntities.ShapePilotOwners;
+                    if (Plugin.CfgSemanticWindowRestore?.Value == true)
+                        windowPilotOwners = target.SemanticEntities.WindowPilotOwners;
+                }
                 else
 #endif
                     target.Graph.Restore();
@@ -1157,7 +1176,7 @@ namespace ProbablyStolenTools
 #endif
                     EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
                         $"releaseOk={releaseError == null} " +
-                        $"shapePilotOwners={shapePilotOwners} " +
+                        $"shapePilotOwners={shapePilotOwners} windowPilotOwners={windowPilotOwners} " +
                         $"typedComparisons={target.Graph.TypedComparisonCount - typedComparisonsBefore}{comparisonDiagnostic} " +
                         $"referenceComparisons={target.Graph.ReferenceComparisonCount - referenceComparisonsBefore} " +
                         $"ordinaryScalarWrites(checked={target.Graph.ScalarWrites.Checked - scalarWritesBefore.Checked}," +

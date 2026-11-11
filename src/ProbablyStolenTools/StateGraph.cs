@@ -86,6 +86,12 @@ namespace ProbablyStolenTools
         void RestoreReferences();
     }
 
+    // Exhaustive owner partition: these fields stay on the original graph writer.
+    internal interface IStateEntityPartitionWriter
+    {
+        IReadOnlyList<StateEntityField> LegacyFields { get; }
+    }
+
     internal interface IBudgetedStateDescription
     {
         IReadOnlyList<StateSlot> Describe(IntPtr id, int remainingSlots, long remainingBytes);
@@ -200,10 +206,13 @@ namespace ProbablyStolenTools
         internal sealed class EntityRestorePlan
         {
             private readonly StateGraph _graph;
-            internal readonly IStateEntityWriter Writer;
-            internal readonly HashSet<IntPtr> Owners;
-            internal EntityRestorePlan(StateGraph graph, IStateEntityWriter writer, HashSet<IntPtr> owners)
-            { _graph = graph; Writer = writer; Owners = owners; }
+            internal readonly IStateEntityWriter[] Writers;
+            private readonly Dictionary<IntPtr, HashSet<string>> _fields;
+            internal EntityRestorePlan(StateGraph graph, IStateEntityWriter[] writers, Dictionary<IntPtr, HashSet<string>> fields)
+            { _graph = graph; Writers = writers; _fields = fields; }
+            internal bool Replaces(IntPtr owner, StateSlot slot)
+                => _fields.TryGetValue(owner, out var fields) && fields.Contains(slot.Name);
+            internal bool ReplacesBlock(IntPtr owner) => _fields.ContainsKey(owner);
             internal void Apply(StateGraph graph)
             {
                 if (!ReferenceEquals(graph, _graph))
@@ -213,41 +222,62 @@ namespace ProbablyStolenTools
         }
 
         internal EntityRestorePlan PrepareEntityRestore(IStateEntityWriter writer, int maxOwners, int maxSlots)
+            => PrepareEntityRestores(new[] { writer }, maxOwners, maxSlots);
+
+        internal EntityRestorePlan PrepareEntityRestores(IEnumerable<IStateEntityWriter> writers, int maxOwners, int maxSlots)
         {
             RequireCheckpoint();
             if (_access is not IStateOwnerRepairAccess)
                 throw new InvalidOperationException("Snapshot backend does not permit entity owner writes.");
-            if (writer == null || writer.Owners.Count == 0 || writer.Fields.Count == 0
-                || writer.Owners.Count > maxOwners || (long)writer.Owners.Count * writer.Fields.Count > maxSlots)
-                throw new InvalidOperationException("Entity writer metadata is empty or exceeds budget.");
-            var fields = new Dictionary<string, bool>(StringComparer.Ordinal);
-            foreach (var field in writer.Fields)
-            {
-                if (field.Name == null || fields.ContainsKey(field.Name))
-                    throw new InvalidOperationException("Duplicate/invalid entity writer field.");
-                fields.Add(field.Name, field.IsReference);
-            }
-            var owners = new HashSet<IntPtr>();
+            var frozen = writers?.ToArray();
+            if (frozen == null || frozen.Length == 0)
+                throw new InvalidOperationException("Entity writer group is empty.");
+            var replaced = new Dictionary<IntPtr, HashSet<string>>();
+            var expected = new Dictionary<IntPtr, Dictionary<string, bool>>();
             var coverage = new Dictionary<IntPtr, HashSet<string>>();
-            foreach (var id in writer.Owners)
+            long slots = 0;
+            foreach (var writer in frozen)
             {
-                if (!Contains(id) || id == IntPtr.Zero || !owners.Add(id))
-                    throw new InvalidOperationException("Entity writer owner is missing or duplicated.");
-                coverage.Add(id, new HashSet<string>(StringComparer.Ordinal));
+                if (writer == null || writer.Owners.Count == 0 || writer.Fields.Count == 0)
+                    throw new InvalidOperationException("Entity writer metadata is empty.");
+                var fields = new Dictionary<string, bool>(StringComparer.Ordinal);
+                void Add(StateEntityField field)
+                {
+                    if (field.Name == null || fields.ContainsKey(field.Name))
+                        throw new InvalidOperationException("Duplicate/invalid entity writer partition field.");
+                    fields.Add(field.Name, field.IsReference);
+                }
+                foreach (var field in writer.Fields) Add(field);
+                var selected = new HashSet<string>(fields.Keys, StringComparer.Ordinal);
+                if (writer is IStateEntityPartitionWriter partition)
+                    foreach (var field in partition.LegacyFields) Add(field);
+                slots += (long)writer.Owners.Count * fields.Count;
+                if (slots > maxSlots || (long)replaced.Count + writer.Owners.Count > maxOwners)
+                    throw new InvalidOperationException("Entity writer metadata exceeds combined budget.");
+                foreach (var id in writer.Owners)
+                {
+                    if (!Contains(id) || id == IntPtr.Zero || replaced.ContainsKey(id))
+                        throw new InvalidOperationException("Entity writer owner is missing or duplicated.");
+                    replaced.Add(id, selected);
+                    expected.Add(id, fields);
+                    coverage.Add(id, new HashSet<string>(StringComparer.Ordinal));
+                }
             }
             VisitCapturedSlots((owner, slot, reference) =>
             {
                 if (!coverage.TryGetValue(owner, out var seen)) return;
-                if (!fields.TryGetValue(slot.Name, out bool referenceKind) || referenceKind != slot.IsReference
+                if (!expected[owner].TryGetValue(slot.Name, out bool referenceKind) || referenceKind != slot.IsReference
                     || !seen.Add(slot.Name))
                     throw new InvalidOperationException("Entity writer coverage/kind differs: " + slot.Name);
             });
-            if (coverage.Values.Any(seen => seen.Count != fields.Count))
+            if (coverage.Any(pair => pair.Value.Count != expected[pair.Key].Count))
                 throw new InvalidOperationException("Entity writer does not cover complete captured owners.");
-            if (_blocks.Any(block => owners.Contains(block.Owner) && block.Payload is not IStateOwnerRepairBlock))
-                throw new InvalidOperationException("Unknown owner block cannot be replaced by an entity writer.");
-            writer.Validate();
-            return new EntityRestorePlan(this, writer, owners);
+            foreach (var block in _blocks)
+                if (replaced.TryGetValue(block.Owner, out var selected)
+                    && (block.Payload is not IStateOwnerRepairBlock || block.Slots.Any(slot => !selected.Contains(slot.Name))))
+                    throw new InvalidOperationException("Unknown/partial owner block cannot be replaced by an entity writer.");
+            foreach (var writer in frozen) writer.Validate();
+            return new EntityRestorePlan(this, frozen, replaced);
         }
 
         internal static StateGraph Capture(IStateAccess access, IEnumerable<IntPtr> roots,
@@ -367,20 +397,23 @@ namespace ProbablyStolenTools
             RequireCheckpoint();
             _revision++;
             _access.Validate();
-            entities?.Writer.Validate();
+            if (entities != null)
+                foreach (var writer in entities.Writers) writer.Validate();
             // All original objects/arrays are retained. Restore their contents first and links second.
             foreach (var e in _entries)
-                if (!e.Slot.IsReference && (entities == null || !entities.Owners.Contains(e.Owner)))
+                if (!e.Slot.IsReference && (entities == null || !entities.Replaces(e.Owner, e.Slot)))
                     _access.WriteValue(e.Owner, e.Slot, e.Bytes);
             foreach (var block in _blocks)
-                if (entities == null || !entities.Owners.Contains(block.Owner)) block.Payload.RestoreValues();
-            entities?.Writer.RestoreValues();
+                if (entities == null || !entities.ReplacesBlock(block.Owner)) block.Payload.RestoreValues();
+            if (entities != null)
+                foreach (var writer in entities.Writers) writer.RestoreValues();
             foreach (var e in _entries)
-                if (e.Slot.IsReference && (entities == null || !entities.Owners.Contains(e.Owner)))
+                if (e.Slot.IsReference && (entities == null || !entities.Replaces(e.Owner, e.Slot)))
                     _access.WriteReference(e.Owner, e.Slot, e.Reference);
             foreach (var block in _blocks)
-                if (entities == null || !entities.Owners.Contains(block.Owner)) block.Payload.RestoreReferences();
-            entities?.Writer.RestoreReferences();
+                if (entities == null || !entities.ReplacesBlock(block.Owner)) block.Payload.RestoreReferences();
+            if (entities != null)
+                foreach (var writer in entities.Writers) writer.RestoreReferences();
         }
 
         internal IReadOnlyList<string> Differences(int max = 12)
