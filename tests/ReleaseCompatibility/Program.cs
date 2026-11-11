@@ -858,6 +858,91 @@ try
         }
     entityType.GetMethod("EnableRuntimeRestore", dataFlags).Invoke(entityRecords,
         new object[] { boundaryGraph, 50000, 1000000 });
+    if (args.Contains("--benchmark-entity-plans"))
+    {
+        // Reuse real captured entity writers; add native runtime-only state to expose redundant full scans.
+        var runtimeStates = Array.CreateInstance(game.GetType("TagState", true), 32768);
+        for (int i = 0; i < runtimeStates.Length; i++)
+        {
+            var state = Data("TagState");
+            boundaryTagType.GetField("valueInt", dataFlags).SetValue(state, i);
+            runtimeStates.SetValue(state, i);
+        }
+        var planRoots = boundaryRoots.Concat(new object[] { runtimeStates }).ToArray();
+        var planAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+            .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+        foreach (var root in planRoots)
+            accessType.GetMethod("AddRoot", dataFlags).Invoke(planAccess, new object[] { Identity(root), Array.Empty<string>() });
+        using var planGraph = (IDisposable)graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { planAccess, planRoots.Select(Identity).ToArray(), 50000, 1000000, 64L * 1024 * 1024 });
+        var writerContract = mod.GetType("ProbablyStolenTools.IStateEntityWriter", true);
+        var planContract = graphType.GetNestedType("EntityRestorePlan", BindingFlags.NonPublic);
+        var writerGroups = new[]
+        {
+            new[] { entityType.GetField("_shapeWriter", dataFlags).GetValue(entityRecords) },
+            new[] { entityType.GetField("_windowWriter", dataFlags).GetValue(entityRecords) },
+            new[] { entityType.GetField("_itemWriter", dataFlags).GetValue(entityRecords) },
+            new object[] { gridWriter, slotWriter }
+        };
+        Array PlanArray(Type type, IEnumerable<object> values)
+        {
+            var source = values.ToArray();
+            var array = Array.CreateInstance(type, source.Length);
+            for (int i = 0; i < source.Length; i++) array.SetValue(source[i], i);
+            return array;
+        }
+        object PrepareWriters(IEnumerable<object> writers) => graphType.GetMethod("PrepareEntityRestores", dataFlags)
+            .Invoke(planGraph, new object[] { PlanArray(writerContract, writers), 50000, 1000000 });
+        object ComposePlans(IEnumerable<object> plans) => graphType.GetMethod("ComposeEntityRestores", dataFlags)
+            .Invoke(planGraph, new object[] { PlanArray(planContract, plans), 50000, 1000000 });
+        var samples = new Dictionary<bool, List<(double Ms, long Bytes)>> { [false] = new(), [true] = new() };
+        for (int round = -2; round < 7; round++)
+            foreach (bool composed in round % 2 == 0 ? new[] { true, false } : new[] { false, true })
+            {
+                GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var groups = new Dictionary<int, object>();
+                var plans = new Dictionary<int, object>();
+                for (int i = 0; i < writerGroups.Length; i++)
+                {
+                    int bit = 1 << i;
+                    var pending = new Dictionary<int, object>();
+                    if (composed)
+                    {
+                        var single = PrepareWriters(writerGroups[i]);
+                        pending.Add(bit, single);
+                        foreach (int mask in plans.Keys)
+                            pending.Add(mask | bit, ComposePlans(groups.OrderBy(pair => pair.Key)
+                                .Where(pair => (mask & pair.Key) != 0).Select(pair => pair.Value).Concat(new[] { single })));
+                        groups.Add(bit, single);
+                    }
+                    else
+                    {
+                        foreach (int mask in plans.Keys.Concat(new[] { 0 }))
+                            pending.Add(mask | bit, PrepareWriters(Enumerable.Range(0, i)
+                                .Where(index => (mask & (1 << index)) != 0)
+                                .SelectMany(index => writerGroups[index]).Concat(writerGroups[i])));
+                    }
+                    foreach (var pair in pending) plans.Add(pair.Key, pair.Value);
+                }
+                clock.Stop();
+                long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+                if (plans.Count != 15
+                    || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                        .Invoke(planGraph, new object[] { 12 })).Count != 0)
+                    throw new Exception("Entity plan benchmark modified business state or lost combinations.");
+                if (round >= 0) samples[composed].Add((clock.Elapsed.TotalMilliseconds, allocated));
+            }
+        foreach (bool composed in new[] { false, true })
+        {
+            var measured = samples[composed];
+            Console.WriteLine($"ENTITY_PLAN_BENCH mode={(composed ? "validated-composition" : "full-revalidation")} " +
+                $"slots={graphType.GetProperty("SlotCount", dataFlags).GetValue(planGraph)} combinations=15 " +
+                $"coveragePasses={(composed ? 4 : 15)} medianMs={measured.Select(s => s.Ms).OrderBy(v => v).ElementAt(3):F3} " +
+                $"medianAllocated={measured.Select(s => s.Bytes).OrderBy(v => v).ElementAt(3)} samples=7 runtime=net6-not-Unity");
+        }
+    }
     bool RestoreWithRuntime(int mask) => (bool)entityType.GetMethod("TryRestoreRuntime", dataFlags).Invoke(entityRecords,
         new object[] { boundaryGraph, (mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, (mask & 8) != 0 });
     if ((int)entityType.GetProperty("RuntimePilotSlots", dataFlags).GetValue(entityRecords)
@@ -931,6 +1016,29 @@ try
         foreach (string enable in new[] { "EnableShapeRestore", "EnableWindowRestore", "EnableItemRestore", "EnableInventoryRestore" })
             entityType.GetMethod(enable, dataFlags).Invoke(futureRecords,
                 new object[] { futureGraph, 50000, 1000000, 64L * 1024 * 1024 });
+        if ((int)entityType.GetField("_writerCoveragePasses", dataFlags).GetValue(futureRecords) != 4
+            || (int)entityType.GetField("_writerCompositions", dataFlags).GetValue(futureRecords) != 11
+            || ((System.Collections.IDictionary)entityType.GetField("_restorePlans", dataFlags).GetValue(futureRecords)).Count != 15)
+            throw new Exception("Native writer groups did not use four complete proofs and eleven disjoint compositions.");
+        var nativeGroups = (System.Collections.IDictionary)entityType.GetField("_writers", dataFlags).GetValue(futureRecords);
+        var nativePlans = (System.Collections.IDictionary)entityType.GetField("_restorePlans", dataFlags).GetValue(futureRecords);
+        var nativePlanType = graphType.GetNestedType("EntityRestorePlan", BindingFlags.NonPublic);
+        var writerField = nativePlanType.GetField("Writers", dataFlags);
+        var metadataField = nativePlanType.GetField("MetadataSlots", dataFlags);
+        for (int mask = 1; mask < 16; mask++)
+        {
+            var writers = Enumerable.Range(0, 4).Where(index => (mask & (1 << index)) != 0)
+                .SelectMany(index => ((System.Collections.IEnumerable)writerField.GetValue(nativeGroups[1 << index])).Cast<object>())
+                .ToArray();
+            var typed = Array.CreateInstance(mod.GetType("ProbablyStolenTools.IStateEntityWriter", true), writers.Length);
+            for (int i = 0; i < writers.Length; i++) typed.SetValue(writers[i], i);
+            var fresh = graphType.GetMethod("PrepareEntityRestores", dataFlags)
+                .Invoke(futureGraph, new object[] { typed, 50000, 1000000 });
+            if (!Equals(metadataField.GetValue(nativePlans[mask]), metadataField.GetValue(fresh))
+                || !((System.Collections.IEnumerable)writerField.GetValue(nativePlans[mask])).Cast<object>().SequenceEqual(writers))
+                throw new Exception("Native composed metadata or writer order differs from full validation, mask=" + mask);
+        }
+        Console.WriteLine("PASS native entity plan composition: four full coverage proofs, eleven disjoint compositions, all fifteen masks match original full validation budgets and ordering");
         entityType.GetMethod("EnableRuntimeRestore", dataFlags).Invoke(futureRecords,
             new object[] { futureGraph, 50000, 1000000 });
         try

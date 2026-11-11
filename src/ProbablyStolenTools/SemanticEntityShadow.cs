@@ -17,8 +17,10 @@ namespace ProbablyStolenTools
         private SemanticWindowWriter _windowWriter;
         private SemanticItemWriter _itemWriter;
         private SemanticInventoryWriter _gridWriter, _slotWriter;
-        private readonly Dictionary<int, IStateEntityWriter[]> _writers = new();
+        private readonly Dictionary<int, StateGraph.EntityRestorePlan> _writers = new();
         private readonly Dictionary<int, StateGraph.EntityRestorePlan> _restorePlans = new();
+        private long _writerCoverageTicks, _writerCompositionTicks, _runtimePlanTicks;
+        private int _writerCoveragePasses, _writerCompositions;
         private StateGraph.PartitionRestorePlan _runtimeRestorePlan;
         private int _runtimeMask;
         internal int RuntimePilotSlots => _runtimeRestorePlan == null ? 0 : _runtime.SlotCount;
@@ -40,15 +42,30 @@ namespace ProbablyStolenTools
             if (_writers.ContainsKey(bit)) throw new InvalidOperationException("Entity writer already prepared.");
             var admitted = writers.Where(writer => writer.Owners.Count != 0).ToArray();
             if (admitted.Length == 0) return false;
-            var pending = new Dictionary<int, StateGraph.EntityRestorePlan>();
-            foreach (int mask in _restorePlans.Keys.Concat(new[] { 0 }))
+            StateGraph.EntityRestorePlan admittedPlan;
+            var clock = Stopwatch.StartNew();
+            try
             {
-                var group = _writers.OrderBy(pair => pair.Key).Where(pair => (pair.Key & mask) != 0)
-                    .SelectMany(pair => pair.Value).Concat(admitted);
-                pending.Add(mask | bit, graph.PrepareEntityRestores(group, maxObjects, maxSlots));
+                admittedPlan = graph.PrepareEntityRestores(admitted, maxObjects, maxSlots);
+                _writerCoveragePasses++;
             }
+            finally { _writerCoverageTicks += clock.ElapsedTicks; }
+            var pending = new Dictionary<int, StateGraph.EntityRestorePlan>();
+            clock.Restart();
+            try
+            {
+                pending.Add(bit, admittedPlan);
+                foreach (int mask in _restorePlans.Keys)
+                {
+                    var group = _writers.OrderBy(pair => pair.Key).Where(pair => (pair.Key & mask) != 0)
+                        .Select(pair => pair.Value).Concat(new[] { admittedPlan });
+                    pending.Add(mask | bit, graph.ComposeEntityRestores(group, maxObjects, maxSlots));
+                    _writerCompositions++;
+                }
+            }
+            finally { _writerCompositionTicks += clock.ElapsedTicks; }
             // Publish only after every combination passes; a failed candidate cannot damage existing plans.
-            _writers.Add(bit, admitted);
+            _writers.Add(bit, admittedPlan);
             foreach (var pair in pending) _restorePlans.Add(pair.Key, pair.Value);
             return true;
         }
@@ -131,7 +148,10 @@ namespace ProbablyStolenTools
             int mask = _writers.Keys.Aggregate(0, (current, bit) => current | bit);
             if (!_restorePlans.TryGetValue(mask, out var entities))
                 throw new InvalidOperationException("Complete entity writer group is unavailable.");
-            var plan = _runtime.PrepareRestore(graph, entities, maxObjects, maxSlots);
+            StateGraph.PartitionRestorePlan plan;
+            var clock = Stopwatch.StartNew();
+            try { plan = _runtime.PrepareRestore(graph, entities, maxObjects, maxSlots); }
+            finally { _runtimePlanTicks += clock.ElapsedTicks; }
             _runtimeMask = mask;
             _runtimeRestorePlan = plan;
         }
@@ -254,6 +274,10 @@ namespace ProbablyStolenTools
             $"runtimePilotSlots={RuntimePilotSlots} " +
             $"pilotCombinedSlots={_snapshot.LogicalSlots + _runtime.SlotCount + PilotSlots} " +
             $"pilotCombinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount + PilotBytes} " +
+            $"writerPlans(coveragePasses={_writerCoveragePasses},compositions={_writerCompositions}," +
+            $"prepared={_restorePlans.Count},coverageMs={_writerCoverageTicks * 1000 / Stopwatch.Frequency}," +
+            $"composeMs={_writerCompositionTicks * 1000 / Stopwatch.Frequency}," +
+            $"runtimePlanMs={_runtimePlanTicks * 1000 / Stopwatch.Frequency}) " +
             "collectionStorage=original-physical callbacks=original-reference tags=hybrid-blocks";
 
         internal void ObserveRestore(long id)

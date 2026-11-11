@@ -99,3 +99,15 @@ Backup: `out/full-release-deploy-20261112-013759`.
 DLL SHA256: `7EB544D0BE3F41E36B037398FCD6DF8B6F6D50F9C49A6C27FAC4643F48FF1B52`.
 Game was closed, all 78 existing save-area files verified unchanged, settings
 not imported, game not started. Live rendering acceptance remains pending.
+
+## Live follow-up
+
+The user now confirms the sprite is restored and clarifies that the historical
+failure was visual-only: trading and dismissal were not affected; later state
+updates could reload the image. The 01:39 session has six successful business
+restores and expected visible/hidden renderer states immediately and at frame+2.
+The right-leave parent moves offscreen; the previous visual snapshot did not
+restore its pose. This is consistent with the report, not isolated proof of
+every historical trigger. Continue bounded semantic work with this repair kept.
+Full session results and remaining coverage gaps:
+`research/2026-11-12-semantic-plan-composition.md`.

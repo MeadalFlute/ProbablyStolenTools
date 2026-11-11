@@ -77,3 +77,18 @@ Backup: out/full-release-deploy-20261112-012544.
 DLL SHA256: EF588489BBDDF266F1C120B2EF0E4B0FEF3FC2566DF1B4A79F0381569CE05F54.
 78 save files verified unchanged; no settings imported, no game started.
 Awaiting the first two-independent-sampled-nodes live test above.
+
+## Live Follow-up
+
+01:27 session: both independent samples MATCH, five successful restores; user
+reported a customer visual defect also seen historically. Visual repair deployed
+separately rather than treating business diff=0 as rendering acceptance.
+
+01:39 session: four captures/six successful restores, primary restored twice,
+manual probe once (correctly hidden customer after right-side departure), both
+independent MATCH, ordinary nodes legacy. User confirms customer sprite recovery
+and clarifies the old defect was visual only, not broken trading/dismissal.
+Not three complete two-node round trips, and no group drags in the newest
+session. Sampling stays at two attempts; old production capture stays intact.
+Proceed only with validated-plan preparation deduplication, retaining all
+oracles and repairs. Details: `2026-11-12-semantic-plan-composition.md`.

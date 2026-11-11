@@ -214,11 +214,21 @@ namespace ProbablyStolenTools
             private readonly StateGraph _graph;
             internal readonly IStateEntityWriter[] Writers;
             private readonly Dictionary<IntPtr, HashSet<string>> _fields;
-            internal EntityRestorePlan(StateGraph graph, IStateEntityWriter[] writers, Dictionary<IntPtr, HashSet<string>> fields)
-            { _graph = graph; Writers = writers; _fields = fields; }
+            internal readonly long MetadataSlots;
+            internal EntityRestorePlan(StateGraph graph, IStateEntityWriter[] writers,
+                Dictionary<IntPtr, HashSet<string>> fields, long metadataSlots)
+            { _graph = graph; Writers = writers; _fields = fields; MetadataSlots = metadataSlots; }
             internal bool Replaces(IntPtr owner, StateSlot slot)
                 => _fields.TryGetValue(owner, out var fields) && fields.Contains(slot.Name);
             internal bool ReplacesBlock(IntPtr owner) => _fields.ContainsKey(owner);
+            internal void AppendMetadata(Dictionary<IntPtr, HashSet<string>> destination, int maxOwners)
+            {
+                if ((long)destination.Count + _fields.Count > maxOwners)
+                    throw new InvalidOperationException("Entity writer metadata exceeds combined budget.");
+                foreach (var pair in _fields)
+                    if (!destination.TryAdd(pair.Key, pair.Value))
+                        throw new InvalidOperationException("Composed entity writer owner is duplicated.");
+            }
             internal void RequireGraph(StateGraph graph)
             {
                 if (!ReferenceEquals(graph, _graph))
@@ -347,7 +357,32 @@ namespace ProbablyStolenTools
                     && (block.Payload is not IStateOwnerRepairBlock || block.Slots.Any(slot => !selected.Contains(slot.Name))))
                     throw new InvalidOperationException("Unknown/partial owner block cannot be replaced by an entity writer.");
             foreach (var writer in frozen) writer.Validate();
-            return new EntityRestorePlan(this, frozen, replaced);
+            return new EntityRestorePlan(this, frozen, replaced, slots);
+        }
+
+        internal EntityRestorePlan ComposeEntityRestores(IEnumerable<EntityRestorePlan> plans, int maxOwners, int maxSlots)
+        {
+            RequireCheckpoint();
+            var frozen = plans?.ToArray();
+            if (frozen == null || frozen.Length == 0)
+                throw new InvalidOperationException("Validated entity plan group is empty.");
+            var replaced = new Dictionary<IntPtr, HashSet<string>>();
+            var writers = new List<IStateEntityWriter>();
+            long slots = 0;
+            foreach (var plan in frozen)
+            {
+                if (plan == null) throw new InvalidOperationException("Validated entity plan is missing.");
+                plan.RequireGraph(this);
+                slots += plan.MetadataSlots;
+                if (slots > maxSlots)
+                    throw new InvalidOperationException("Entity writer metadata exceeds combined budget.");
+                // Each immutable plan already checked every owner field/kind and block against this graph.
+                // Disjoint owners let us union those proofs without revisiting the full captured topology.
+                plan.AppendMetadata(replaced, maxOwners);
+                writers.AddRange(plan.Writers);
+            }
+            foreach (var writer in writers) writer.Validate();
+            return new EntityRestorePlan(this, writers.ToArray(), replaced, slots);
         }
 
         internal static StateGraph Capture(IStateAccess access, IEnumerable<IntPtr> roots,
