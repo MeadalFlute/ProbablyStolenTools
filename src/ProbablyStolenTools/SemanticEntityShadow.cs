@@ -14,33 +14,48 @@ namespace ProbablyStolenTools
         private readonly SemanticRuntimeSnapshot _runtime;
         private readonly long _runtimeCaptureMs;
         private SemanticShapeWriter _shapeWriter;
-        private StateGraph.EntityRestorePlan _shapePlan;
         private SemanticWindowWriter _windowWriter;
-        private StateGraph.EntityRestorePlan _windowPlan, _combinedPlan;
+        private SemanticItemWriter _itemWriter;
+        private readonly Dictionary<int, IStateEntityWriter> _writers = new();
+        private readonly Dictionary<int, StateGraph.EntityRestorePlan> _restorePlans = new();
         internal int ShapePilotOwners => _shapeWriter?.Owners.Count ?? 0;
         internal int WindowPilotOwners => _windowWriter?.Owners.Count ?? 0;
-        private long PilotSlots => ShapePilotOwners * 8L + (_windowWriter?.LogicalSlots ?? 0);
-        private long PilotBytes => ShapePilotOwners * (7 * 8L + IntPtr.Size) + (_windowWriter?.LogicalBytes ?? 0);
+        internal int ItemPilotOwners => _itemWriter?.Owners.Count ?? 0;
+        private long PilotSlots => ShapePilotOwners * 8L + (_windowWriter?.LogicalSlots ?? 0) + (_itemWriter?.LogicalSlots ?? 0);
+        private long PilotBytes => ShapePilotOwners * (7 * 8L + IntPtr.Size)
+            + (_windowWriter?.LogicalBytes ?? 0) + (_itemWriter?.LogicalBytes ?? 0);
+        private bool RegisterWriter(StateGraph graph, int bit, IStateEntityWriter writer, int maxObjects, int maxSlots)
+        {
+            if (_writers.ContainsKey(bit)) throw new InvalidOperationException("Entity writer already prepared.");
+            if (writer.Owners.Count == 0) return false;
+            var pending = new Dictionary<int, StateGraph.EntityRestorePlan>();
+            foreach (int mask in _restorePlans.Keys.Concat(new[] { 0 }))
+            {
+                var group = _writers.OrderBy(pair => pair.Key).Where(pair => (pair.Key & mask) != 0)
+                    .Select(pair => pair.Value).Append(writer);
+                pending.Add(mask | bit, graph.PrepareEntityRestores(group, maxObjects, maxSlots));
+            }
+            // Publish only after every combination passes; a failed candidate cannot damage existing plans.
+            _writers.Add(bit, writer);
+            foreach (var pair in pending) _restorePlans.Add(pair.Key, pair.Value);
+            return true;
+        }
         internal void EnableShapeRestore(StateGraph graph, int maxObjects, int maxSlots, long maxBytes)
         {
-            if (_shapeWriter != null || _windowWriter != null)
-                throw new InvalidOperationException("Shape writer must be prepared once, before the window writer.");
+            if (_shapeWriter != null) throw new InvalidOperationException("Shape writer already prepared.");
             var writer = SemanticShapeWriter.Capture(graph, maxObjects,
-                maxSlots - _snapshot.LogicalSlots - _runtime.SlotCount,
-                maxBytes - _snapshot.LogicalBytes - _runtime.ByteCount);
+                checked((int)(maxSlots - _snapshot.LogicalSlots - _runtime.SlotCount - PilotSlots)),
+                maxBytes - _snapshot.LogicalBytes - _runtime.ByteCount - PilotBytes);
             try
             {
-                var plan = graph.PrepareEntityRestore(writer, maxObjects, maxSlots);
+                if (!RegisterWriter(graph, 1, writer, maxObjects, maxSlots)) { writer.Dispose(); return; }
                 _shapeWriter = writer;
-                _shapePlan = plan;
             }
             catch { writer.Dispose(); throw; }
         }
         internal bool TryRestoreShapes(StateGraph graph)
         {
-            if (_shapePlan == null) return false;
-            _shapePlan.Apply(graph);
-            return true;
+            return TryRestoreEntities(graph, true, false, false);
         }
         internal void EnableWindowRestore(StateGraph graph, int maxObjects, int maxSlots, long maxBytes)
         {
@@ -50,19 +65,29 @@ namespace ProbablyStolenTools
                 maxBytes - _snapshot.LogicalBytes - _runtime.ByteCount - PilotBytes);
             try
             {
-                if (writer.Owners.Count == 0) { writer.Dispose(); return; }
-                var plan = graph.PrepareEntityRestore(writer, maxObjects, maxSlots);
-                var combined = _shapeWriter == null ? plan : graph.PrepareEntityRestores(
-                    new IStateEntityWriter[] { _shapeWriter, writer }, maxObjects, maxSlots);
-                _windowWriter = writer; _windowPlan = plan; _combinedPlan = combined;
+                if (!RegisterWriter(graph, 2, writer, maxObjects, maxSlots)) { writer.Dispose(); return; }
+                _windowWriter = writer;
             }
             catch { writer.Dispose(); throw; }
         }
-        internal bool TryRestoreEntities(StateGraph graph, bool shapes, bool windows)
+        internal void EnableItemRestore(StateGraph graph, int maxObjects, int maxSlots, long maxBytes)
         {
-            var plan = shapes && windows && _combinedPlan != null ? _combinedPlan
-                : windows && _windowPlan != null ? _windowPlan : shapes ? _shapePlan : null;
-            if (plan == null) return false;
+            if (_itemWriter != null) throw new InvalidOperationException("Item writer already prepared.");
+            var writer = SemanticItemWriter.Capture(graph, maxObjects,
+                checked((int)(maxSlots - _snapshot.LogicalSlots - _runtime.SlotCount - PilotSlots)),
+                maxBytes - _snapshot.LogicalBytes - _runtime.ByteCount - PilotBytes);
+            try
+            {
+                if (!RegisterWriter(graph, 4, writer, maxObjects, maxSlots)) { writer.Dispose(); return; }
+                _itemWriter = writer;
+            }
+            catch { writer.Dispose(); throw; }
+        }
+        internal bool TryRestoreEntities(StateGraph graph, bool shapes, bool windows, bool items)
+        {
+            int mask = (shapes && _shapeWriter != null ? 1 : 0) | (windows && _windowWriter != null ? 2 : 0)
+                | (items && _itemWriter != null ? 4 : 0);
+            if (!_restorePlans.TryGetValue(mask, out var plan)) return false;
             plan.Apply(graph);
             return true;
         }
@@ -173,6 +198,7 @@ namespace ProbablyStolenTools
             $"combinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount} " +
             $"shapePilotOwners={ShapePilotOwners} shapePilotSlots={ShapePilotOwners * 8L} " +
             $"windowPilotOwners={WindowPilotOwners} windowPilotSlots={_windowWriter?.LogicalSlots ?? 0} " +
+            $"itemPilotOwners={ItemPilotOwners} itemPilotSlots={_itemWriter?.LogicalSlots ?? 0} " +
             $"pilotCombinedSlots={_snapshot.LogicalSlots + _runtime.SlotCount + PilotSlots} " +
             $"pilotCombinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount + PilotBytes} " +
             "collectionStorage=legacy-only callbacks=legacy-only tags=legacy-hybrid";
@@ -200,8 +226,10 @@ namespace ProbablyStolenTools
         }
         public void Dispose()
         {
-            _shapeWriter?.Dispose(); _shapeWriter = null; _shapePlan = null;
-            _windowWriter?.Dispose(); _windowWriter = null; _windowPlan = null; _combinedPlan = null;
+            _restorePlans.Clear(); _writers.Clear();
+            _shapeWriter?.Dispose(); _shapeWriter = null;
+            _windowWriter?.Dispose(); _windowWriter = null;
+            _itemWriter?.Dispose(); _itemWriter = null;
             _runtime.Dispose(); _boundary.Dispose(); _snapshot.Dispose();
         }
     }

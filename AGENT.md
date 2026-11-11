@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**312 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**323 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -46,11 +46,15 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ### 版本与发布
 
+00:23:52 会话窗口阶段已检查：6 捕获（含手动）/7 恢复最终 diff=0/releaseOk=True，无最终回退；首节点三次 windowPilotOwners=101/shapePilotOwners=2966 和双载荷 MATCH，恢复后四件群拖正常，用户确认完成。首节点 2156 ms，其中 entityRecords=1207/runtimeCaptureVerifyMs=794，其他捕获 287-369 ms；恢复中位数 699 ms，非 A/B，不宣称提速。PSTools 无失败/不可用，Player.log 仅见原生 ModTrustList 启动网络异常，不归因于快照；非默认议价仍未覆盖。
+
+接续第 4 步精确 GameItemElement 完整继承链 Entity 字段写回：`Snapshot.SemanticItemRestore=true`，仅采样节点，恢复原对象的归属/数量/价值/形状/状态/特征与类型列表引用/描述与窗口关系；全部物品回调和集合物理存储继续旧图，六个几何缓存继续排除。窗口和物品共享严格字段写回器，支持字段位级比较、保活/原身份、合并预算，不调用 getter/setter/交易/库存方法或构造替代实体。三类写回器预先准备最多 7 种非空组合，注册失败不改变旧组合；完整旧图、校验、owner/full 修复、视觉顺序及诊断保留。323 项和原生 14 轮全部开关组合/全物品业务字段/共享列表/失效预检通过；待首次物品写回实机。库存实体、独立运行态仍未写回，生产捕获未替换，不能称完整后端。详见 `research/2026-11-12-item-entity-writes.md`。
+
 00:05 会话形状写回已检查：5 捕获/6 恢复最终 diff=0/releaseOk=True，首节点三次实际 shapePilotOwners=2966，三次实体/运行态 MATCH，恢复后四件群拖正常；用户确认完成。首节点 2119 ms，其中 entityRecords=1216 / runtimeCaptureVerifyMs=871，后续 254-362 ms，仍是过渡诊断开销。用户明确接受开发期成本，待后端完成后移除重复诊断，不删除必要恢复保护。
 
 接续第 4 步窗口实体写回：`Snapshot.SemanticWindowRestore=true`，仅采样节点，对精确 PixelWindow 的完整 Entity 字段独立记录并直接恢复真实字段；Runtime 回调、focusStamp、headerButtons 继续旧图，Visual 不入业务图。写回协议新增完整 Entity/Legacy 字段分区与多写回器组合，必须与旧 owner 全槽精确一致，禁止部分块替换；所有写回器先预检，全部标量先于全部引用。保留完整旧捕获、校验、owner/full 修复和视觉顺序，不重建列表、不触发开关窗回调。312 项及原生全部业务字段/负零/集合别名/组合与单独开关/释放前拒绝通过；待本轮实机。物品/库存实体及独立运行态尚未正式写回，不是完整后端。详见 `research/2026-11-12-window-entity-writes.md`。
 
-最新部署：2026-11-12 00:22，运行时提交 `69f20cd`，备份 `out/full-release-deploy-20261112-002237`，DLL SHA256 `02BE83621A1A89AB0CF9B858C2C7BEF35216D38BE841ECD85FB4C860A3171C5D`。78 存档文件校验未变，未导入设置/启动游戏，版本 0.8.14，未推送。停止等待窗口写回首轮实机：首节点前打开容器窗口，建点后移动/缩放/关闭重开，穿插物品旋转/翻转/移动/售出，至少三次回溯首节点，并访问普通/手动节点与恢复后群拖；首节点 windowPilotOwners/shapePilotOwners>0、普通节点为 0，最终 diff=0/双载荷 MATCH，人工检查贴图/碰撞与窗口。通过前不扩到物品/库存或运行态写回。
+窗口阶段部署：2026-11-12 00:22，运行时提交 `69f20cd`，备份 `out/full-release-deploy-20261112-002237`，DLL SHA256 `02BE83621A1A89AB0CF9B858C2C7BEF35216D38BE841ECD85FB4C860A3171C5D`。78 存档文件校验未变，未导入设置/启动游戏，版本 0.8.14，未推送。已完成上述 00:23:52 实机，接续物品实体写回阶段。
 
 23:52 会话独立运行态已通过：6 捕获（含手动）/8 恢复最终零差异，三次实体/运行态 MATCH、runtime 校验 33/33/36 ms，恢复后群拖正常。首节点总捕获 2241 ms，entityRecords=1264 / runtimeCaptureVerifyMs=893，明确增加诊断成本。接续第 4 步仅开放精确 GridShapeBuilder 形状实体写回试点：`Snapshot.SemanticShapeRestore=true`，只为每上下文采样节点准备独立七标量+原 data 引用记录，首次写回跳过对应旧槽，其余仍旧图；完整旧捕获/校验、owner/full 二次修复和视觉顺序保留。准备失败可用旧路径，实际写错不隐藏重试。302 项及原生八字段/六轮实际实体写回、共享字节数组、释放后预检拒绝通过；待实机。运行态仍禁止写回，未替换生产捕获。详见 `research/2026-11-12-shape-entity-writes.md`。
 

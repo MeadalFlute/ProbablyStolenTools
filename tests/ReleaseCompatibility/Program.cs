@@ -431,6 +431,9 @@ finally { ((IDisposable)graph).Dispose(); }
 
 // Two distinct items deliberately share uniqueId=0; entity boundaries use graph identities, not uniqueId.
 var boundaryItems = new[] { Data("GameItemElement"), Data("GameItemElement") };
+var sharedItemTypes = new List<string> { "fixture-type-a", "fixture-type-b" };
+foreach (var boundaryItem in boundaryItems)
+    game.GetType("GameItem", true).GetField("itemTypes", dataFlags).SetValue(boundaryItem, sharedItemTypes);
 var boundaryGrid = Data("GameGridInventory");
 var boundarySlot = Data("GameSlotInventory");
 var boundaryClosure = Data("MiscItemDirectory+<>c__DisplayClass51_0");
@@ -614,7 +617,7 @@ try
     if ((int)entityType.GetProperty("WindowPilotOwners", dataFlags).GetValue(entityRecords) != 1)
         throw new Exception("Exact native window was not admitted to the entity writer pilot.");
     bool RestoreWithEntities(bool shapes, bool windows) => (bool)entityType.GetMethod("TryRestoreEntities", dataFlags)
-        .Invoke(entityRecords, new object[] { boundaryGraph, shapes, windows });
+        .Invoke(entityRecords, new object[] { boundaryGraph, shapes, windows, false });
     var windowWriterType = mod.GetType("ProbablyStolenTools.SemanticWindowWriter", true);
     var writtenWindowFields = (FieldInfo[])windowWriterType.GetField("EntityFields", BindingFlags.Static | BindingFlags.NonPublic)
         .GetValue(null);
@@ -656,6 +659,103 @@ try
     if (RestoreWithEntities(false, false))
         throw new Exception("Disabled entity writers unexpectedly performed writes.");
     Console.WriteLine("PASS native window entity writer: every business field, original list aliases and contents, signed-zero transparency, runtime callbacks never invoked, six combined/independent writer cycles");
+    try
+    {
+        // Two items fit the candidate budget, but combined shape/item owners do not.
+        entityType.GetMethod("EnableItemRestore", dataFlags).Invoke(entityRecords,
+            new object[] { boundaryGraph, 2, 1000000, 64L * 1024 * 1024 });
+        throw new Exception("Native item writer ignored combined owner-plan budget.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    if ((int)entityType.GetProperty("ItemPilotOwners", dataFlags).GetValue(entityRecords) != 0
+        || !RestoreWithEntities(true, true) || EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0)
+        throw new Exception("Failed item plan registration damaged existing shape/window plans.");
+    entityType.GetMethod("EnableItemRestore", dataFlags).Invoke(entityRecords,
+        new object[] { boundaryGraph, 50000, 1000000, 64L * 1024 * 1024 });
+    if ((int)entityType.GetProperty("ItemPilotOwners", dataFlags).GetValue(entityRecords) != 2)
+        throw new Exception("Native item writer lost distinct objects sharing uniqueId=0.");
+    bool RestoreWithAllEntities(int mask) => (bool)entityType.GetMethod("TryRestoreEntities", dataFlags)
+        .Invoke(entityRecords, new object[] { boundaryGraph, (mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0 });
+    var itemWriter = (IDisposable)entityType.GetField("_itemWriter", dataFlags).GetValue(entityRecords);
+    var fieldWriterType = mod.GetType("ProbablyStolenTools.SemanticFieldEntityWriter", true);
+    var writtenItemFields = (FieldInfo[])fieldWriterType.GetField("_entityFields", dataFlags).GetValue(itemWriter);
+    var nativeItemCallbackField = game.GetType("GameItemFunc", true).GetField("<onLoaded>k__BackingField", dataFlags);
+    var nativeItemActionType = typeof(Action<>).MakeGenericType(game.GetType("GameItem", true));
+    var nativeItemThrowMethod = typeof(NativeEntityCallbackFixture).GetMethod("Throw", BindingFlags.Static | BindingFlags.Public)
+        .MakeGenericMethod(game.GetType("GameItem", true));
+    var neverInvokeItemCallback = Delegate.CreateDelegate(nativeItemActionType, nativeItemThrowMethod);
+    for (int iteration = 0; iteration < 14; iteration++)
+    {
+        foreach (var boundaryItem in boundaryItems)
+        {
+            foreach (var field in writtenItemFields)
+            {
+                var type = field.FieldType;
+                object changed = type == typeof(bool) ? !(bool)field.GetValue(boundaryItem)
+                    : type == typeof(int) ? 71 + iteration
+                    : type == typeof(long) ? long.MinValue + iteration
+                    : type == typeof(string) ? new string("item-mutated".ToCharArray())
+                    : field.GetValue(boundaryItem) != null ? null
+                    : type == game.GetType("GameInventory") ? boundarySlot
+                    : type == game.GetType("GridShape") ? boundaryShape
+                    : type == game.GetType("TagSystem") ? boundaryTagSystem
+                    : type == game.GetType("PixelWindow") ? boundaryWindow
+                    : type.IsGenericType ? Activator.CreateInstance(type)
+                    : type.IsAbstract ? System.Runtime.Serialization.FormatterServices.GetUninitializedObject(
+                        game.GetTypes().First(candidate => type.IsAssignableFrom(candidate) && !candidate.IsAbstract && !candidate.ContainsGenericParameters))
+                    : System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
+                field.SetValue(boundaryItem, changed);
+            }
+            nativeItemCallbackField.SetValue(boundaryItem, neverInvokeItemCallback);
+        }
+        sharedItemTypes.Clear(); sharedItemTypes.Add("changed-type");
+        boundaryList[0] = boundaryItems[1];
+        boundaryShape.GetType().GetProperty("orientation").SetValue(boundaryShape, iteration % 4);
+        windowType.GetField("<titleString>k__BackingField", dataFlags).SetValue(boundaryWindow, "changed-window");
+        int mask = iteration % 7 + 1;
+        if (!RestoreWithAllEntities(mask) || EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0
+            || nativeItemCallbackField.GetValue(boundaryItems[0]) != null
+            || !ReferenceEquals(game.GetType("GameItem").GetField("itemTypes", dataFlags).GetValue(boundaryItems[0]), sharedItemTypes)
+            || !ReferenceEquals(game.GetType("GameItem").GetField("itemTypes", dataFlags).GetValue(boundaryItems[1]), sharedItemTypes)
+            || sharedItemTypes.Count != 2 || sharedItemTypes[1] != "fixture-type-b"
+            || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
+            throw new Exception("Native item writer lost inherited fields, callbacks, list storage or combined-writer coverage, mask=" + mask);
+    }
+    if (RestoreWithAllEntities(0))
+        throw new Exception("All disabled entity writers unexpectedly performed writes.");
+    Console.WriteLine("PASS native full item entity writer: all inherited business fields, two zero-uniqueId identities, shared original type-list storage, callbacks never invoked and fourteen cycles covering every nonempty writer combination");
+    var itemWriterType = mod.GetType("ProbablyStolenTools.SemanticItemWriter", true);
+    foreach (var limits in new[] { (Objects: 1, Slots: 1000000, Bytes: 64L * 1024 * 1024),
+        (Objects: 50000, Slots: writtenItemFields.Length * 2 - 1, Bytes: 64L * 1024 * 1024),
+        (Objects: 50000, Slots: 1000000, Bytes: (long)writtenItemFields.Length * 2 * 8 - 1) })
+    {
+        try
+        {
+            using var unexpected = (IDisposable)itemWriterType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { boundaryGraph, limits.Objects, limits.Slots, limits.Bytes });
+            throw new Exception("Native item writer accepted an incomplete object/slot/byte budget.");
+        }
+        catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    }
+    itemWriter.Dispose();
+    boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, 81);
+    windowType.GetField("isLocked", dataFlags).SetValue(boundaryWindow, true);
+    boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 77);
+    try
+    {
+        RestoreWithAllEntities(7);
+        throw new Exception("Disposed native item writer remained writable.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is ObjectDisposedException) { }
+    if ((int)boundaryShape.GetType().GetProperty("minX").GetValue(boundaryShape) != 81
+        || !(bool)windowType.GetField("isLocked", dataFlags).GetValue(boundaryWindow)
+        || (int)boundaryItems[0].GetType().GetProperty("unitCount").GetValue(boundaryItems[0]) != 77)
+        throw new Exception("Item preflight ran after shape, window or legacy writes.");
+    // Disabling an invalid writer must still leave previously prepared combinations usable.
+    if (!RestoreWithAllEntities(3) || EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0)
+        throw new Exception("Disabling disposed item writer damaged shape/window-only restoration.");
+    Console.WriteLine("PASS native item budgets, atomic plan registration failure and all-writer preflight preserve earlier writer combinations");
     Console.WriteLine("PASS native entity boundary audit: distinct zero-uniqueId items, grid/slot membership, native closure aliases, captured-only topology and unchanged legacy restoration");
     if (!((string)entityType.GetProperty("Summary", dataFlags).GetValue(entityRecords)).Contains("windows=1"))
         throw new Exception("Native inventory/window links were not independently recorded.");

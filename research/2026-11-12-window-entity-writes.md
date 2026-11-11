@@ -89,4 +89,23 @@ Stop here before item/inventory entity writes or runtime-payload restoration.
 Backup: out/full-release-deploy-20261112-002237.
 DLL SHA256: 02BE83621A1A89AB0CF9B858C2C7BEF35216D38BE841ECD85FB4C860A3171C5D.
 78 save files verified unchanged; settings not imported, game not started.
-Awaiting the first live window writer validation above.
+Accepted by the following session; next restricted type is documented in
+2026-11-12-item-entity-writes.md.
+
+## Live Acceptance
+
+2026-11-12 00:23:52 session: six captures including manual id=6, seven restores,
+all final diff=0 / releaseOk=True, no final full fallback. Sampled id=1 restored
+three times with windowPilotOwners=101 and shapePilotOwners=2966, each followed
+by independent entity/runtime MATCH and zero runtime difference samples.
+Post-restore four-item group drag completed. User reported testing complete.
+
+First capture 2156 ms, entityRecords=1207 including runtimeCaptureVerifyMs=794.
+Other captures 290/369/322/303/287 ms. Restore totals 732/737/681/699/719/684/576 ms,
+median 699 ms; sampled first writes 184/148/154 ms. These are not A/B results and
+do not establish speedup. Development duplicate diagnostics remain enabled.
+
+PSTools session contains no FAILED/UNAVAILABLE entries. Player.log shows a native
+ModTrustList startup SecureChannelFailure, not a snapshot failure; no snapshot
+exception was found in the exception search. All bargain flags remained default.
+Rendering acceptance also relies on the user's inspection, not diff=0 alone.
