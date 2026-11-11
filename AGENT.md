@@ -1,6 +1,6 @@
 ﻿# Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.8.14**（2026-11-12，含待发布的修复与单次遍历实体后端候选，最新捕获路径尚待实机）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，不再维护。本机旧 Demo 依赖下的非 Mono 编译目前失败，不能宣称兼容通过，详见标签混合载荷记录。
+> 适用源码：正式版 **0.8.14**（2026-11-12，单次遍历实体后端已完成开发对照实机，已关闭额外对照并降噪，待发布模式最终短测）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，不再维护。本机旧 Demo 依赖下的非 Mono 编译目前失败，不能宣称兼容通过，详见标签混合载荷记录。
 > 旧版本文档（0.2.1–0.6.0、Demo、性能优化过程）已归档到 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
 本文只写当前仍然成立的事实。历史细节看 `research/`，实现细节以源码为准。
@@ -45,6 +45,12 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 已部署普通标量免写（19:40）：`Snapshot.SkipUnchangedScalars=true` 仍逐槽读取，只有 null/框架 primitive/enum/decimal 与捕获值精确相同时才省去真实写入，浮点按位比较；自定义 nullable 结构体无条件写入，不新增其 Equals 调用。不同值仍递归复制写回，块、引用、捕获、普查、预检/最终完整校验及 owner/full 回退保持。Session 追加开关，RESTORE 追加本次 ordinaryScalarWrites(checked/skipped)，仅计普通标量调用、不含块/引用。两次原生隔离开关对照写回约快 30-32%，少分配约 1.04 MiB；大量变化样本快约 15.6%但多分配约 1.21 MiB，不代表 Unity 或整次恢复收益。226 项回归及原生兼容通过，待实机，详见 `research/2026-11-11-unchanged-scalar-writes.md`。局部递归改静态递归候选无收益，已撤除。
 
 ### 版本与发布
+
+最新收尾：用户确认单次遍历候选看起来正常，要求关闭包括旧阶段在内的冗余测试和日志。02:24:26.305 会话有8次成功捕获/8次恢复，全部最终diff=0、releaseOk=True、owners/eligible，无最终回退/schema失败；首及手动2次捕获/4次恢复独立旧图对照MATCH，所有节点实体块实际启用，29对群拖完成。普通捕获281-378ms、首1652ms（oracle938）、手动1015ms（oracle756），恢复中位636.5ms，非A/B。另一次手动建点在顾客路径未停稳时安全失败（id8，265ms），非零失败会话，不隐藏此记录；非默认议价仍未验收。Player.log含启动TLS网络错误及InventoryScene watchdog，不能归因于快照。
+
+已部署收尾提交 `8b44b02`：默认详细日志关闭；等待状态探测、额外物品几何诊断遍历、顾客frame+2观察、议价字段转储、正常群拖/几何/计数/读者统计转为verbose按需开启。保留主CAPTURE/RESTORE计时/规模/后端、节点清除、拒绝/失败/异常、真实full回退及其差异来源；成功owner修复不再重复输出长来源。旧鉴定/酿酒/自动快进/+5s/+20s观察也降噪，业务历史文件和轮转保留，不默认重复广播事务摘要。完整预检/校验/Census/预算/修复及实际几何/顾客恢复未关闭，离线测试未删。373项回归及原生兼容/新增日志开关独立性夹具通过，57挂点/76字段、扫描HardFlags/Error为空。
+
+最新部署：2026-11-12 02:40:27，备份 `out/full-release-deploy-20261112-024027`，DLL SHA256 `907804B9EF758E3FFBAF03D654AD7AF5778146BF54CD6738205668BF3C19D391`。关闭游戏后部署，部署时78文件未变；随后仅将本机 `Snapshot.SemanticDevelopmentChecks=False`，保留 `SemanticEntityBlocks=True`、`Logging.Verbose=False` 及Debug开关False。旧各pilot/shadow选项True不绕过开发总门控，无重复捕获或旧试点执行。未启动游戏/推送，版本0.8.14。现在等用户重启后短测：首/普通/手动节点往返、恢复后群拖及顾客贴图/成交/送客；应见实体块启用、developmentChecks=False、blockOracle=False/0，无SINGLEPASS对照行，最终diff=0/releaseOk=True。下方为历史阶段。
 
 最新：用户已完成上一轮并休息，要求自主推进到高完成度、不实际推送。01:50:26.494 会话3捕获/8恢复最终diff=0、releaseOk=True、无最终回退；7次独立Entity/Runtime写回和MATCH，首/手动三轮往返、普通节点和回溯后四件群拖通过，顾客即时/frame+2视觉正确。首/手动3129/2103ms、普通299ms，恢复中位710.5ms，非A/B。接续完成单次遍历实体捕获候选：五种已准入精确类型的全部Entity及Runtime字段在主图遍历中保存一次，集合/闭包/其他运行态仍完整物理存储；所有节点启用，不再生成重复实体/独立Runtime载荷和15种计划。未知类型/schema回退旧字段，预算/完整校验/预检/Census/owner与最终full修复/视觉顺序保留。`Snapshot.SemanticEntityBlocks=true`；新增开发总开关`Snapshot.SemanticDevelopmentChecks`，发布默认false，统一门控全部额外shadow/audit/records/pilot。开启时首/后续手动各保留一份独立旧图，核对逐槽拓扑并在真实候选写回后检查；旧oracle从不写入或掩盖错误。本机为待测显式开启，不代表实机已通过。373项及原生全字段、双节点、owner/full修复夹具通过。隔离基准捕获分配少约60%、读取/写回更快，但非Unity，不能宣称整次快照同比例提速。详见 `research/2026-11-12-single-pass-entity-candidate.md`。下方为历史记录。
 

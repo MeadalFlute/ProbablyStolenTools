@@ -123,5 +123,26 @@ Core exact-entity capture and writes are now integrated and offline-verified. Li
 - Backup `out/full-release-deploy-20261112-021312`; DLL SHA256 `8A72D8428C72277E3048651237BFD23D70A81465E12FFB9FC153E4A58821F466`.
 - Deployment itself preserved all 78 save-area files and did not import old settings.
 - Afterwards only the local Mod configuration gained two True entries: Snapshot.SemanticEntityBlocks and Snapshot.SemanticDevelopmentChecks. Parsed XML verified both unique entries; all other 77 files match deployment backup hashes. The old configuration is in that backup. No native game save was edited.
-- Current local build is in diagnostic candidate mode; the compiled release default for development checks remains FALSE.
-- No new live session has been generated for this candidate. The 01:50 live acceptance belongs to the PREVIOUS runtime only.
+- At that deployment the local build was in diagnostic candidate mode; the compiled release default for development checks remained FALSE.
+- At that deployment no new live session had been generated. Subsequent acceptance and the release-mode deployment are recorded below.
+
+## Diagnostic Live Acceptance and Quiet Release Mode
+
+The user reported no apparent problems and requested removal of redundant runtime tests and old/new noisy logs before one final run. Inspected the NEW session starting 2026-11-12 02:24:26.305:
+
+- Eight successful captures (primary, ordinary and manual) and eight restores, all final diff=0/releaseOk=True, owners/eligible, no final full fallback or schema failure. Entity blocks are active on every successful node.
+- Primary/manual independent old-graph comparisons: two capture MATCH and four restore MATCH lines; ordinary nodes have no oracle, as designed.
+- Twenty-nine group-drag START/END pairs. User visual acceptance is separate from state comparison.
+- Capture ms: 1652, 289, 342, 319, 378, 332, 281, 1015. Primary includes 938 ms oracle; manual includes 756 ms oracle. Ordinary captures 281-378 ms; restore median 636.5 ms. Uncontrolled session, not an A/B speedup claim.
+- One additional manual capture (id8) FAILED safely at items after 265 ms: Customer path is not settled. No partial checkpoint accepted. The following manual id9 succeeded after departure; hidden customer visual is correct for that checkpoint. Do not report this session as failure-free or remove its safety check.
+- Player.log contains startup TLS/Curl errors and an InventoryScene watchdog stall (5.2 s warning, resumed after 9.0 s); no evidence ties that stall to these checkpoint timings. Nondefault bargaining remains unverified.
+
+Runtime cleanup commit `8b44b02` keeps the actual backend and all mandatory validation/repair. Detailed logging is opt-in through Logging.Verbose: settle probes, item geometry diagnostic scans, customer visual dumps/deferred frame+2 probe, bargain dumps, normal group-drag/geometry/counter messages, reader statistics and ordinary successful owner-repair sources. Real restore/capture failures, limits/refusals, full fallback sources, release failures and native group-drag exceptions remain logged normally. Core CAPTURE/RESTORE timings, graph size, backend and repair summary remain. Old appraisal/wine/dialogue/post-load observation diagnostics are also gated. History records and size rotation remain; transaction summaries are no longer duplicated to Player.log by default. Existing logs were not erased.
+
+The dormant independent oracle, shadows/audits and legacy writer fixtures remain available for explicit diagnosis, not executed by default. Offline regressions and native fixtures were not removed. Logging.Verbose cannot enable duplicate captures: the independent SemanticDevelopmentChecks gate still controls all old and new development payloads.
+
+Verification: Release build zero warnings/errors, 373 regressions, 57 native hooks/76 private fields, all existing installed-type fixtures plus null/false/true verbosity against both development-switch values. Official scanner HardFlags/Error empty.
+
+Deployment 2026-11-12 02:40:27 while game closed, backup `out/full-release-deploy-20261112-024027`, DLL SHA256 `907804B9EF758E3FFBAF03D654AD7AF5778146BF54CD6738205668BF3C19D391`. Deployment preserved 78 save-area files, did not import settings or launch game. Afterwards only local PSTools.settings.xml changed: SemanticDevelopmentChecks True -> False. SemanticEntityBlocks remains True, Logging.Verbose and Debug automation remain False. Old individual pilot/shadow True values cannot bypass the master gate. Version stays 0.8.14; no push.
+
+Pending ONLY the requested production-mode live smoke for this cleanup: restart, capture first/ordinary/manual nodes, rewind between them, group-drag afterwards, check item geometry/customer sprites and normal trade/departure. Expect entityBlocks>0, developmentChecks=False/blockOracleMs=0, blockOracle=False and no SINGLEPASS MATCH lines; final diff=0/releaseOk=True. Reduced logging does not constitute this final live acceptance, nor proof of complete game-wide semantic coverage.
