@@ -10,10 +10,9 @@
   </GameVersions>
   <Assemblies>
     <Assembly>ProbablyStolenTools.dll</Assembly>
+    <Assembly>ProbablyStolenTools.StaticLayouts.dll</Assembly>
   </Assemblies>
   <Capabilities>
     <Capability>files</Capability>
-    <Capability>reflection-external</Capability>
-    <Capability>dynamic-code</Capability>
   </Capabilities>
 </Mod>

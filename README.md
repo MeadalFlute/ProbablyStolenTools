@@ -104,7 +104,7 @@
 2. 在游戏「模组」菜单启用 **Probably Stolen Tools**，按提示重启。
 3. 读档进店后按 `F8` 打开面板。
 
-需要 `files`、`reflection-external`、`dynamic-code` 能力，无网络访问。
+当前迁移候选仅需 `files` 能力，无网络访问。尚未发布的本轮迁移需同时安装 `ProbablyStolenTools.dll` 与 `ProbablyStolenTools.StaticLayouts.dll`，不能只替换主 DLL；旧发布构建仍可能显示退役能力警告。
 
 ---
 
@@ -113,7 +113,7 @@
 - 适用于**正式版**（Mono）；Demo / MelonLoader 路径不再维护。
 - 与不修改同一界面、不新增数据结构到游戏内的 Mod 一般可共存。
 - 快照会遍历游戏业务对象图，**向游戏内新增大量对象或自定义数据结构的 Mod** 可能导致建节点失败（面板会显示「损坏」及原因）。
-- **前向兼容提示**：官方已公告 2026-12-10 起拒绝 `dynamic-code` / `reflection-external` 能力；0.9.0 只保证**当前游戏版本**可用，迁移完成前不宣称兼容下一版加载器。详见仓库 `research/2026-11-12-loader-capability-migration.md`。
+- **兼容迁移候选**：当前源码用构建时静态字段表替代计算类型枚举及运行时表达式编译，两个发布 DLL 合并扫描仅剩 `files`。字段表严格绑定目标游戏/Mono 程序集 MVID；游戏更新后需重新构建和验证，未知布局拒绝建点而不漏存。当前尚待 Unity 实机验收，也不将现有扫描器通过冒充未来游戏版本已验收。
 
 ---
 
@@ -147,7 +147,7 @@ AGENT.md                         交接文档：架构、约束、验收顺序
 
 ## 构建与测试
 
-游戏路径不写进仓库。首次构建前把 `src\ProbablyStolenTools\local.props.example` 复制为 `local.props` 并填入游戏目录（已加入 `.gitignore`）：
+需要 .NET 8 SDK。游戏路径不写进仓库。首次构建前把 `src\ProbablyStolenTools\local.props.example` 复制为 `local.props` 并填入游戏目录（已加入 `.gitignore`）：
 
 ```xml
 <Project>
@@ -169,6 +169,14 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 当前源码基线：编译 0 警告 / 0 错误；`CheckpointTests` **373 项**通过；正式版 **57 个** Harmony 入口、**76 个**字段与官方 Mod 扫描器通过。单次遍历实体后端已随 0.9.0 发布，离线测试不能代替游戏内验收。
 
 开发期重复快照对照由 `Snapshot.SemanticDevelopmentChecks` 统一控制，发布默认关闭；开启会增加首节点及额外手动采样的耗时和内存。关闭后完整预检、状态校验、修复及必要诊断仍保留。新后端的开关为 `Snapshot.SemanticEntityBlocks`，修改后需重启游戏。
+
+构建会生成目标 Mono 字段表，以及隔离在 `out/static-layouts-net8` 的测试宿主字段表。后者、Cecil 构建工具、探针与原生离线测试宿主均不得随 Mod 发货。完整迁移回归可运行：
+
+```powershell
+.\scripts\Test-StaticLayouts.ps1 -GameDir "<游戏目录>"
+```
+
+该脚本包含游戏自带 Mono 下的字段表全量对照、完整图往返及版本拒绝测试，不会启动游戏或访问存档；仍不能代替 UI/视觉/实际游玩性能验收。
 
 ---
 

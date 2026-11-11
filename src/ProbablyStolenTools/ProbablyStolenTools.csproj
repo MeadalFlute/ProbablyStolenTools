@@ -19,7 +19,7 @@
     <GameDir Condition="'$(GameDir)' == ''">$(PROBABLY_STOLEN_DEMO_DIR)</GameDir>
     <MelonDir>$(MSBuildThisFileDirectory)..\..\out\melonloader-0.7.3\package\MelonLoader\net6</MelonDir>
     <Interop>$(GameDir)\MelonLoader\Il2CppAssemblies</Interop>
-    <DefineConstants Condition="'$(GameRuntime)' == 'Mono'">$(DefineConstants);MONO</DefineConstants>
+    <DefineConstants Condition="'$(GameRuntime)' == 'Mono'">$(DefineConstants);MONO;STATIC_SNAPSHOT_LAYOUTS</DefineConstants>
     <OutputPath Condition="'$(GameRuntime)' == 'Mono'">bin\$(Configuration)\Mono\</OutputPath>
   </PropertyGroup>
 
@@ -99,4 +99,14 @@
     </Reference>
   </ItemGroup>
 
+  <Target Name="GenerateStaticSnapshotLayouts" BeforeTargets="ResolveAssemblyReferences" Condition="'$(GameRuntime)' == 'Mono'">
+    <Exec Command="dotnet run -c Release --project &quot;$(MSBuildThisFileDirectory)..\..\tools\StaticSnapshotLayouts\StaticSnapshotLayouts.csproj&quot; -- &quot;$(GameDir)&quot; &quot;$(MSBuildThisFileDirectory)$(OutputPath)ProbablyStolenTools.StaticLayouts.dll&quot;" />
+    <Exec Command="dotnet run -c Release --project &quot;$(MSBuildThisFileDirectory)..\..\tools\StaticSnapshotLayouts\StaticSnapshotLayouts.csproj&quot; -- &quot;$(GameDir)&quot; &quot;$(MSBuildThisFileDirectory)..\..\out\static-layouts-net8\ProbablyStolenTools.StaticLayouts.dll&quot; --host" />
+    <ItemGroup>
+      <Reference Include="ProbablyStolenTools.StaticLayouts">
+        <HintPath>$(MSBuildThisFileDirectory)$(OutputPath)ProbablyStolenTools.StaticLayouts.dll</HintPath>
+        <Private>false</Private>
+      </Reference>
+    </ItemGroup>
+  </Target>
 </Project>

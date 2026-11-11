@@ -385,7 +385,13 @@ namespace ProbablyStolenTools
             }
 
             TooltipHooks.Enable();
+#if STATIC_SNAPSHOT_LAYOUTS
+            const string layoutBackend = "static-token-v1";
+#else
+            const string layoutBackend = "runtime-reflection";
+#endif
             EventLog.Write($"[Session] version={Version} game={Application.version} locale=deferred " +
+                $"layoutBackend={layoutBackend} " +
                 $"snapshotLimits(objects={CfgMaxObjects.Value},slots={CfgMaxSlots.Value},MiB={CfgMaxBytesMb.Value}) " +
                 $"verbose={CfgVerboseLog.Value} semanticTagShadow={CfgSemanticTagShadow.Value} semanticTagBlocks={CfgSemanticTagBlocks.Value} ownerReconcile={CfgOwnerReconcile.Value} intArrayBlocks={CfgIntArrayBlocks.Value} semanticTagCensus={CfgSemanticTagCensus.Value} skipUnchangedScalars={CfgSkipUnchangedScalars.Value} typedScalarComparisons={CfgTypedScalarComparisons.Value} directReferenceComparisons={CfgDirectReferenceComparisons.Value} semanticEntityAudit={CfgSemanticEntityAudit.Value} semanticEntityRecords={CfgSemanticEntityRecords.Value} semanticShapeRestore={CfgSemanticShapeRestore.Value}; " +
                 $"semanticWindowRestore={CfgSemanticWindowRestore.Value} semanticItemRestore={CfgSemanticItemRestore.Value} semanticInventoryRestore={CfgSemanticInventoryRestore.Value} semanticRuntimeRestore={CfgSemanticRuntimeRestore.Value} semanticManualSample={CfgSemanticManualSample.Value} semanticEntityBlocks={CfgSemanticEntityBlocks.Value} semanticDevelopmentChecks={CfgSemanticDevelopmentChecks.Value}; arrivalWaitSeconds is not capture duration; use captureMs");

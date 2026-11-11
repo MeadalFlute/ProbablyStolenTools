@@ -34,14 +34,24 @@ namespace ProbablyStolenTools
 
         internal static FieldInfo[] Schema(Type type, bool complete, params (string Name, Type Type)[] fields)
         {
+#if STATIC_SNAPSHOT_LAYOUTS
+            var declared = SnapshotStaticLayouts.Fields(type);
+            if (complete && declared.Length != fields.Length)
+#else
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
             if (complete && type.GetFields(flags).Length != fields.Length)
+#endif
                 throw new InvalidOperationException("Entity schema field count changed: " + type.FullName);
             var result = new FieldInfo[fields.Length];
             var names = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < fields.Length; i++)
             {
+#if STATIC_SNAPSHOT_LAYOUTS
+                string name = fields[i].Name;
+                var field = Array.Find(declared, candidate => candidate.Name == name);
+#else
                 var field = type.GetField(fields[i].Name, flags);
+#endif
                 if (field == null || field.FieldType != fields[i].Type || !names.Add(field.Name))
                     throw new InvalidOperationException("Entity schema changed: " + type.FullName + "." + fields[i].Name);
                 result[i] = field;

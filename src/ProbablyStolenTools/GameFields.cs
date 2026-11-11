@@ -8,6 +8,10 @@ namespace ProbablyStolenTools
     // IL2CPP proxies expose private fields; Mono requires explicit field access.
     internal static class GameFields
     {
+#if STATIC_SNAPSHOT_LAYOUTS
+        internal static T Get<T>(object owner, string name) => ModReflect.Get<T>(owner, name);
+        internal static void Set<T>(object owner, string name, T value) => ModReflect.Set(owner, name, value);
+#else
         private static readonly Dictionary<(Type, string), MemberInfo> Fields = new();
         private static MemberInfo Field(object owner, string name)
         {
@@ -31,6 +35,7 @@ namespace ProbablyStolenTools
             if (member is FieldInfo field) field.SetValue(owner, value);
             else ((PropertyInfo)member).SetValue(owner, value);
         }
+#endif
         internal static bool PhoneBusy(PhoneUIManager phone) => phone != null
             && (Get<bool>(phone, "isCalling") || Get<bool>(phone, "isTalking"));
     }

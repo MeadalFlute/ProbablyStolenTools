@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**373 项**离线测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**373 项**离线参考测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态迁移候选另有游戏 Mono 下 2807 类型/8027 字段精确对照、完整图六轮往返及版本拒绝测试。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -50,7 +50,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 | `GridShapeBuilder` | 完整形状标量及原 `data` 数组引用 |
 
 - 集合底层数组、字典容量/版本、闭包等仍由完整图保存；不重建列表/字典。
-- 字段清单是**精确 schema**：逐 DeclaredOnly 类型字段数必须完全相等；增删字段、类型变化、未知子类都会回退 legacy，不静默漏存。
+- 字段清单是**精确 schema**：逐 DeclaredOnly 类型字段数必须完全相等；不匹配时实体块回退普通字段图，不静默漏存。Mono 迁移候选的普通字段图同样使用静态表，未知布局或模块版本变化会拒绝建点，不回退动态枚举。
 - 块与 legacy 槽位通过 `slots.Count == Fields.Length`、槽名唯一、`IsReference`、`Size==8` 对齐；不匹配即回退。
 - 写回直接写原字段，不调用游戏业务 setter、库存移动、买卖或到店回调；引用按原身份。
 - 预算仍按对象/槽/字节逐槽计数，不因块压缩而放宽。
@@ -123,13 +123,14 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ---
 
-## 6. 加载器能力弃用（前向兼容阻断项）
+## 6. 加载器兼容迁移候选
 
-- 后续进展：`research/2026-11-12-static-type-token-proof.md` 已证明构建时固定 ldtoken 可表达私有泛型 Entry/Slot：生成 DLL 官方扫描零能力，游戏自带 Mono 离线字段读写通过。普通 C# 查找链的旧限制仍存在，但不再阻断静态字段表开发。工具/原生离线宿主绝不随 Mod 发布；没有生产替换或实机验收。
+**当前源码已接入静态图迁移候选**，详见 `research/2026-11-12-static-runtime-graph-migration.md`。构建时生成目标 Mono 字段表，包含私有 Entry/Slot 固定类型令牌；版本严格 MVID 门控，未知布局不动态回退。Mono 编译排除旧表达式生成路径，GameFields 用官方 ModReflect；恢复字段/集合物理存储与安全检查不减。两个发布 DLL 均列入 manifest，仅声明/检测 files；ReleaseCompatibility 的退役能力门槛已加入，net8 宿主表隔离于 out。`scripts/Test-StaticLayouts.ps1` 全套通过，暂无 Unity 活体/实际性能验收，用户离开期间不启动游戏测试。下方旧阻断记录为历史，不再代表生产源码当前仍含命中。
+
+- 技术依据：`research/2026-11-12-static-type-token-proof.md` 证明构建时固定 ldtoken 可表达私有泛型 Entry/Slot。窄探针之后已完成生产源码替换及离线完整图测试，尚无本轮实机验收；工具/原生离线宿主绝不随 Mod 发布。
 - 官方公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.9.0 只保证**当前游戏版本**可用，发行说明不得写“已兼容下一版”。
-- 当前源码仍依赖 `Expression.Compile` 与运行时 `GetFields/GetMethod`；只删 manifest 声明或关闭 DevelopmentChecks **不是修复**，扫描器按编译进 DLL 的方法判断。
-- 迁移四阶段与探针结果见 `research/2026-11-12-loader-capability-migration.md`；在完成迁移并把退役能力门槛加入 `ReleaseCompatibility` 之前，不得宣称前向兼容。
-- 深层可行性复核见 `research/2026-11-12-runtime-graph-migration-feasibility.md` 与 `tests/CapabilityMigrationProbe/README.md`：固定游戏闭包/RNG/集合顶层字段通过，但 Dictionary.Entry/HashSet.Slot 后续字段访问仍触发 reflection-external；完整静态图尚有集合阻断。ModReflect.Set 拒绝 readonly，不能统一替换全部 FieldInfo 写回。三组扫描断言和373项回归通过，未改生产代码或部署。先解决完整集合访问/引用发现/逐槽校验，不用 Clear/Add 偷换原存储语义；探针/扫描宿主不随 Mod 发布。
+- 迁移前源码依赖 `Expression.Compile` 与计算类型 `GetFields/GetMethod`；只删 manifest 声明或关闭 DevelopmentChecks **不是修复**，扫描器按编译进 DLL 的方法判断。现已从 Mono 发布编译排除此类路径，离线参考源码仍保留。
+- 历史方案与普通 C# 查找链阻断见 `research/2026-11-12-loader-capability-migration.md`、`research/2026-11-12-runtime-graph-migration-feasibility.md` 与 `tests/CapabilityMigrationProbe/README.md`。其中集合阻断已由构建时令牌解决；ModReflect.Set 拒绝 readonly 的限制仍在，图写回继续使用固定 FieldInfo，不用 Clear/Add 偷换原存储语义。
 
 ---
 
@@ -139,7 +140,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 - 顾客节点纯内存恢复；文件回溯只加载不写回。
 - 部署脚本备份存档/Mods、校验存档/游戏程序集/其他 Mod 不变、按完整路径关闭游戏、不自动启动。
 - 不 `Process.Start` / `Application.OpenURL`；不修改加载器、信任记录、Steam 类型；不打包 `0Harmony`。
-- 能力声明保持 `files`、`reflection-external`、`dynamic-code`，直到迁移完成再同步清理。
+- 当前 Mono 迁移候选只声明 `files`；主 DLL 与 `ProbablyStolenTools.StaticLayouts.dll` 必须同时发货/扫描。Cecil、生成器、net8 宿主字段表、负例与原生离线宿主不得随 Mod 发布。
 
 ---
 

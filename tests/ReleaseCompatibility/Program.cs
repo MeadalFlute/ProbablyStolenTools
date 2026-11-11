@@ -28,8 +28,13 @@ if (args.Length > 0 && args[0] == "--import-settings")
 string gameDir = args[0];
 string dll = Path.GetFullPath(args[1]);
 string managed = Path.Combine(gameDir, "Probably Stolen_Data", "Managed");
+string hostLayouts = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+    "..", "..", "..", "..", "..", "out", "static-layouts-net8", "ProbablyStolenTools.StaticLayouts.dll"));
 AssemblyLoadContext.Default.Resolving += (_, name) =>
 {
+    // The host's private BCL types differ from Mono. Never scan/package this test-only table.
+    if (name.Name == "ProbablyStolenTools.StaticLayouts")
+        return AssemblyLoadContext.Default.LoadFromAssemblyPath(hostLayouts);
     string path = Path.Combine(managed, name.Name + ".dll");
     return File.Exists(path) ? AssemblyLoadContext.Default.LoadFromAssemblyPath(path) : null;
 };
@@ -178,7 +183,16 @@ var loadedNames = System.IO.Directory.GetFiles(managed, "*.dll")
 game.GetType("ModLoader").GetField("gameAssemblyNames", BindingFlags.Static | BindingFlags.NonPublic)
     .SetValue(null, loadedNames);
 var scanner = game.GetType("ModScanner");
-var result = scanner.GetMethod("Scan").Invoke(null, new object[] { new[] { dll }, null, null, false });
+var manifest = XDocument.Load(args[2]).Root;
+var shippedDlls = manifest.Element("Assemblies").Elements("Assembly").Select(element =>
+{
+    if (Path.GetFileName(element.Value) != element.Value || Path.GetExtension(element.Value) != ".dll")
+        throw new Exception("Unexpected assembly filename in manifest.");
+    string path = Path.Combine(Path.GetDirectoryName(dll), element.Value);
+    if (!File.Exists(path)) throw new Exception("Missing shipped assembly: " + path);
+    return path;
+}).ToArray();
+var result = scanner.GetMethod("Scan").Invoke(null, new object[] { shippedDlls, null, null, false });
 var resultType = result.GetType();
 foreach (var field in resultType.GetFields(BindingFlags.Public | BindingFlags.Instance))
 {
@@ -189,9 +203,14 @@ foreach (var field in resultType.GetFields(BindingFlags.Public | BindingFlags.In
 }
 if ((bool)resultType.GetProperty("Refused").GetValue(result))
     throw new Exception("Official scanner refused the mod.");
-var manifest = XDocument.Load(args[2]).Root;
 var declared = manifest.Element("Capabilities").Elements("Capability").Select(e => e.Value).ToHashSet();
-var detected = ((System.Collections.IEnumerable)resultType.GetField("Capabilities").GetValue(result)).Cast<string>();
+var detected = ((System.Collections.IEnumerable)resultType.GetField("Capabilities").GetValue(result)).Cast<string>().ToHashSet();
+var scanPending = ((System.Collections.IEnumerable)resultType.GetField("Pending").GetValue(result))
+    .Cast<object>().Select(finding => finding.ToString()).ToArray();
+foreach (string retiring in new[] { "reflection-external", "dynamic-code", "native", "threads" })
+    if (declared.Contains(retiring) || detected.Contains(retiring)
+        || scanPending.Any(finding => finding.StartsWith(retiring + ":", StringComparison.OrdinalIgnoreCase)))
+        throw new Exception("Retiring loader capability remains: " + retiring);
 foreach (string capability in detected)
     if (!declared.Contains(capability)) throw new Exception("Undeclared capability: " + capability);
 Console.WriteLine("PASS official mod scanner and manifest capabilities");
@@ -257,7 +276,7 @@ finally
 
 // Allocate only plain data objects without constructors, Unity callbacks or save APIs.
 var dataFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-object Data(string name) => System.Runtime.Serialization.FormatterServices.GetUninitializedObject(game.GetType(name, true));
+object Data(string name) => System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(game.GetType(name, true));
 var player = Data("PlayerStore");
 var station = Data("StoreStation");
 var item = Data("GameItemElement");
@@ -319,7 +338,7 @@ try
         if (cacheFields.Any(field => name == "GameItemElement." + field.Name))
             throw new Exception("Native layout cache leaked into business snapshot: " + name);
     }
-    // Repeated verification also exercises lazily compiled readers for actual game/private fields.
+    // Repeated verification exercises metadata readers without runtime compilation.
     for (int i = 0; i < 40; i++)
     {
         var unchanged = (System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
@@ -330,7 +349,9 @@ try
         .GetField("Cache", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
     int compiledReaders = readers.Values.Cast<object>().Count(reader =>
         (bool)reader.GetType().GetProperty("Compiled", dataFlags).GetValue(reader));
-    if (compiledReaders == 0) throw new Exception("Actual game field readers were not exercised.");
+    bool staticReaders = mod.GetType("ProbablyStolenTools.SnapshotStaticLayouts") != null;
+    if (readers.Count == 0 || (staticReaders ? compiledReaders != 0 : compiledReaders == 0))
+        throw new Exception("Actual game field reader mode was not exercised correctly.");
     var censusAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
         .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
     foreach (var root in new[] { player, station, itemArray })
@@ -752,9 +773,9 @@ try
                     : type == game.GetType("TagSystem") ? boundaryTagSystem
                     : type == game.GetType("PixelWindow") ? boundaryWindow
                     : type.IsGenericType ? Activator.CreateInstance(type)
-                    : type.IsAbstract ? System.Runtime.Serialization.FormatterServices.GetUninitializedObject(
+                    : type.IsAbstract ? System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(
                         game.GetTypes().First(candidate => type.IsAssignableFrom(candidate) && !candidate.IsAbstract && !candidate.ContainsGenericParameters))
-                    : System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
+                    : System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(type);
                 field.SetValue(boundaryItem, changed);
             }
             nativeItemCallbackField.SetValue(boundaryItem, neverInvokeItemCallback);
@@ -967,7 +988,7 @@ try
             Console.WriteLine($"ENTITY_PLAN_BENCH mode={(composed ? "validated-composition" : "full-revalidation")} " +
                 $"slots={graphType.GetProperty("SlotCount", dataFlags).GetValue(planGraph)} combinations=15 " +
                 $"coveragePasses={(composed ? 4 : 15)} medianMs={measured.Select(s => s.Ms).OrderBy(v => v).ElementAt(3):F3} " +
-                $"medianAllocated={measured.Select(s => s.Bytes).OrderBy(v => v).ElementAt(3)} samples=7 runtime=net6-not-Unity");
+                $"medianAllocated={measured.Select(s => s.Bytes).OrderBy(v => v).ElementAt(3)} samples=7 runtime=net8-static-host-not-Unity");
         }
     }
     bool RestoreWithRuntime(int mask) => (bool)entityType.GetMethod("TryRestoreRuntime", dataFlags).Invoke(entityRecords,
@@ -1535,7 +1556,7 @@ if (args.Contains("--benchmark-entity-blocks"))
     {
         var s = samples[enabled];
         Console.WriteLine(FormattableString.Invariant(
-            $"ENTITY_BLOCK_BENCH runtime=net6-not-Unity blocks={enabled} samples={s.Count} entityOwners=7000 captureMs={BlockMedian(s.Select(x => x.Capture)):F2} verifyMs={BlockMedian(s.Select(x => x.Verify)):F2} restoreMs={BlockMedian(s.Select(x => x.Restore)):F2} captureAllocatedBytes={BlockMedian(s.Select(x => (double)x.CaptureBytes)):F0} verifyAllocatedBytes={BlockMedian(s.Select(x => (double)x.VerifyBytes)):F0} restoreAllocatedBytes={BlockMedian(s.Select(x => (double)x.RestoreBytes)):F0}"));
+            $"ENTITY_BLOCK_BENCH runtime=net8-static-host-not-Unity blocks={enabled} samples={s.Count} entityOwners=7000 captureMs={BlockMedian(s.Select(x => x.Capture)):F2} verifyMs={BlockMedian(s.Select(x => x.Verify)):F2} restoreMs={BlockMedian(s.Select(x => x.Restore)):F2} captureAllocatedBytes={BlockMedian(s.Select(x => (double)x.CaptureBytes)):F0} verifyAllocatedBytes={BlockMedian(s.Select(x => (double)x.VerifyBytes)):F0} restoreAllocatedBytes={BlockMedian(s.Select(x => (double)x.RestoreBytes)):F0}"));
     }
 }
 
@@ -2074,25 +2095,25 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
             : (compact ? "hybrid" : "legacy");
         if (benchmarkReferences)
             Console.WriteLine(FormattableString.Invariant(
-                $"REFERENCE_COMPARE_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} direct={compact} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} referenceComparisons={typedCounts[compact]} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} verifyAllocatedBytes={Median(values.Select(v => (double)v.VerifyAllocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+                $"REFERENCE_COMPARE_BENCH runtime=net8-static-host-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} direct={compact} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} referenceComparisons={typedCounts[compact]} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} verifyAllocatedBytes={Median(values.Select(v => (double)v.VerifyAllocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
         else if (benchmarkComparisons)
             Console.WriteLine(FormattableString.Invariant(
-                $"TYPED_COMPARE_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} typed={compact} cold={coldComparisons} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} typedComparisons={typedCounts[compact]} lastVerifyCompileMs={comparisonCompileTimes[compact]:F2} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} verifyAllocatedBytes={Median(values.Select(v => (double)v.VerifyAllocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+                $"TYPED_COMPARE_BENCH runtime=net8-static-host-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} typed={compact} cold={coldComparisons} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} typedComparisons={typedCounts[compact]} lastVerifyCompileMs={comparisonCompileTimes[compact]:F2} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} verifyAllocatedBytes={Median(values.Select(v => (double)v.VerifyAllocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
         else if (benchmarkScalars)
             Console.WriteLine(FormattableString.Invariant(
-                $"SCALAR_WRITE_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} guard={compact} dense={denseScalars} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} checked={scalarCounts[compact].Checked} skipped={scalarCounts[compact].Skipped} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+                $"SCALAR_WRITE_BENCH runtime=net8-static-host-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} guard={compact} dense={denseScalars} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} checked={scalarCounts[compact].Checked} skipped={scalarCounts[compact].Skipped} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
         else if (benchmarkCensus)
             Console.WriteLine(FormattableString.Invariant(
-                $"CENSUS_TAG_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} direct={compact} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} exactTagProbes={(compact ? probedTags : 0)} censusMs={Median(values.Select(v => v.Census)):F2} censusAllocatedBytes={Median(values.Select(v => (double)v.CensusAllocated)):F0}"));
+                $"CENSUS_TAG_BENCH runtime=net8-static-host-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} direct={compact} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} exactTagProbes={(compact ? probedTags : 0)} censusMs={Median(values.Select(v => v.Census)):F2} censusAllocatedBytes={Median(values.Select(v => (double)v.CensusAllocated)):F0}"));
         else if (benchmarkIntArrays)
             Console.WriteLine(FormattableString.Invariant(
-                $"INT_ARRAY_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} compact={compact} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} intArrayBlocks={(compact ? intBlocks : 0)} intArraySlots={(compact ? intSlots : 0)} captureMs={Median(values.Select(v => v.Capture)):F2} censusMs={Median(values.Select(v => v.Census)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} censusAllocatedBytes={Median(values.Select(v => (double)v.CensusAllocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+                $"INT_ARRAY_BENCH runtime=net8-static-host-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} compact={compact} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} intArrayBlocks={(compact ? intBlocks : 0)} intArraySlots={(compact ? intSlots : 0)} captureMs={Median(values.Select(v => v.Capture)):F2} censusMs={Median(values.Select(v => v.Census)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} censusAllocatedBytes={Median(values.Select(v => (double)v.CensusAllocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
         else if (benchmarkReconcile)
             Console.WriteLine(FormattableString.Invariant(
-                $"RECONCILE_BENCH runtime=net6-not-Unity mode={mode} samples=5 objects={expectedObjects} slots={expectedSlots} plannedSlots={(compact ? repairedSlots : expectedSlots)} scanMs={Median(values.Select(v => v.Scan)):F2} writeMs={Median(values.Select(v => v.Restore)):F2} scanWriteMs={Median(values.Select(v => v.Scan + v.Restore)):F2} scanWriteAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+                $"RECONCILE_BENCH runtime=net8-static-host-not-Unity mode={mode} samples=5 objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} plannedSlots={(compact ? repairedSlots : expectedSlots)} scanMs={Median(values.Select(v => v.Scan)):F2} writeMs={Median(values.Select(v => v.Restore)):F2} scanWriteMs={Median(values.Select(v => v.Scan + v.Restore)):F2} scanWriteAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
         else
             Console.WriteLine(FormattableString.Invariant(
-                $"TAG_BLOCK_BENCH runtime=net6-not-Unity mode={mode} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+                $"TAG_BLOCK_BENCH runtime=net8-static-host-not-Unity mode={mode} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
     }
 }
 

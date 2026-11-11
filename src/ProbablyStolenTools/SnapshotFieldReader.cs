@@ -6,6 +6,67 @@ using System.Security;
 using System.Diagnostics;
 using System.Threading;
 
+#if STATIC_SNAPSHOT_LAYOUTS
+namespace ProbablyStolenTools
+{
+    // Static field descriptors only; no runtime compilation, code loading or business getters.
+    internal sealed class SnapshotFieldReader
+    {
+        private const int CacheLimit = 4096;
+        private static readonly Dictionary<(Type Owner, string Name), SnapshotFieldReader> Cache = new();
+        private readonly FieldInfo[] _path;
+        private readonly bool _element;
+        private readonly Type _scalar;
+        private SnapshotFieldReader(Type owner, FieldInfo[] path, bool element)
+        {
+            _path = path;
+            _element = element;
+            var scalar = path.Length == 0 ? (element ? owner.GetElementType() : owner) : path[path.Length - 1].FieldType;
+            _scalar = Nullable.GetUnderlyingType(scalar) ?? scalar;
+        }
+        internal static SnapshotFieldReader Get(Type ownerType, string name, FieldInfo[] path, bool element)
+        {
+            lock (Cache)
+            {
+                var key = (ownerType, name);
+                if (Cache.TryGetValue(key, out var cached)) return cached;
+                if (Cache.Count >= CacheLimit) return null;
+                var result = new SnapshotFieldReader(ownerType, path, element);
+                Cache.Add(key, result);
+                return result;
+            }
+        }
+        internal bool TryRead(object owner, int index, out object value)
+        {
+            value = _element ? ((Array)owner).GetValue(index) : owner;
+            foreach (var field in _path) value = field.GetValue(value);
+            return true;
+        }
+        internal bool TryEquals(object owner, int index, object expected, out bool same)
+        {
+            same = false;
+            if ((!_scalar.IsPrimitive && !_scalar.IsEnum && _scalar != typeof(decimal))
+                || _scalar == typeof(IntPtr) || _scalar == typeof(UIntPtr)) return false;
+            TryRead(owner, index, out var actual);
+            if (actual is float single)
+                same = expected is float other && BitConverter.SingleToInt32Bits(single) == BitConverter.SingleToInt32Bits(other);
+            else if (actual is double number)
+                same = expected is double other && BitConverter.DoubleToInt64Bits(number) == BitConverter.DoubleToInt64Bits(other);
+            else same = Equals(actual, expected);
+            return true;
+        }
+        internal bool Compiled => false;
+        internal bool ComparerCompiled => false;
+        internal static long CompileTicks => 0;
+        internal static int CompileAttempts => 0;
+        internal static long CompareCompileTicks => 0;
+        internal static int CompareCompileAttempts => 0;
+        internal static long CompileMilliseconds(long ticks) => 0;
+        internal static void ClearCache() { lock (Cache) Cache.Clear(); }
+        internal static string Summary => $"readers(mode=static-fields,cached={Cache.Count},compiled=0,compileAttemptsTotal=0,compileMsTotal=0)";
+    }
+}
+#else
 namespace ProbablyStolenTools
 {
     // Cache code and field metadata only. Never bind a reader to a business object or snapshot.
@@ -191,3 +252,4 @@ namespace ProbablyStolenTools
         }
     }
 }
+#endif

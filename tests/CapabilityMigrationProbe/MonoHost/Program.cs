@@ -1,7 +1,8 @@
 using System.Runtime.InteropServices;
 
 // Offline subprocess only. This native bootstrap must never be part of a mod.
-if (args.Length != 3) throw new ArgumentException("Usage: MonoHost <GAME_DIR> <fixture.dll> <tokens.dll>");
+if (args.Length < 3 || args.Length > 4 || args.Length == 4 && args[3] != "--expect-version-rejection")
+    throw new ArgumentException("Usage: MonoHost <GAME_DIR> <fixture.dll> <target.dll> [--expect-version-rejection]");
 string game = Path.GetFullPath(args[0]);
 string managed = Path.Combine(game, "Probably Stolen_Data", "Managed");
 IntPtr library = NativeLibrary.Load(Path.Combine(game, "MonoBleedingEdge", "EmbedRuntime", "mono-2.0-bdwgc.dll"));
@@ -13,7 +14,7 @@ if (domain == IntPtr.Zero) throw new Exception("Mono initialization failed.");
 IntPtr assembly = Mono.mono_domain_assembly_open(domain, Path.GetFullPath(args[1]));
 if (assembly == IntPtr.Zero) throw new Exception("Fixture load failed.");
 IntPtr klass = Mono.mono_class_from_name(Mono.mono_assembly_get_image(assembly), "", "OfflineMonoFixture");
-IntPtr method = Mono.mono_class_get_method_from_name(klass, "Run", 1);
+IntPtr method = Mono.mono_class_get_method_from_name(klass, args.Length == 4 ? "RunVersionMismatch" : "Run", 1);
 if (method == IntPtr.Zero) throw new Exception("Fixture entry missing.");
 IntPtr arguments = Marshal.AllocHGlobal(IntPtr.Size);
 try

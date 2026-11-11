@@ -42,7 +42,11 @@ namespace ProbablyStolenTools
 
         private static void CheckSchema(Type type, params string[] names)
         {
+#if STATIC_SNAPSHOT_LAYOUTS
+            var fields = SnapshotStaticLayouts.Fields(type);
+#else
             var fields = type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+#endif
             if (!fields.Select(field => field.Name).OrderBy(name => name, StringComparer.Ordinal)
                 .SequenceEqual(names.OrderBy(name => name, StringComparer.Ordinal)))
                 throw new InvalidOperationException("Semantic tag schema changed: " + type.FullName);

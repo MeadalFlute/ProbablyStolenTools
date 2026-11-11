@@ -314,7 +314,7 @@ namespace ProbablyStolenTools
             var slots = new List<StateSlot>();
             var stores = new List<Storage>();
             for (var current = type; current != null && !IsUnity(current); current = current.BaseType)
-                foreach (var field in current.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                foreach (var field in DeclaredFields(current))
                 {
                     if (selected != null && !selected.Contains(field.Name)) continue;
                     if (TransientLocks.Contains(current.FullName + "." + field.Name)) continue;
@@ -408,7 +408,7 @@ namespace ProbablyStolenTools
                 Add(type, path.ToArray(), index, name, slots, stores);
                 return;
             }
-            foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            foreach (var field in DeclaredFields(type))
             {
                 if (Visual(field.FieldType)) continue;
                 path.Add(field);
@@ -419,8 +419,17 @@ namespace ProbablyStolenTools
 
         private static bool HasReferences(Type type)
             => !type.IsValueType || !type.IsPrimitive && !type.IsEnum
-                && type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                && DeclaredFields(type)
                     .Any(field => HasReferences(field.FieldType));
+
+        private static FieldInfo[] DeclaredFields(Type type)
+        {
+#if STATIC_SNAPSHOT_LAYOUTS
+            return SnapshotStaticLayouts.Fields(type);
+#else
+            return type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+#endif
+        }
 
         private static void Add(Type type, FieldInfo[] path, int index, string name,
             List<StateSlot> slots, List<Storage> stores)

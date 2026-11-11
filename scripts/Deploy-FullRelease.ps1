@@ -10,6 +10,7 @@ if (!(Test-Path -LiteralPath $managedPath) -or (Test-Path -LiteralPath (Join-Pat
     throw 'This deployment is only for the Mono full release.'
 }
 $sourceDll = Join-Path $workspace 'src\ProbablyStolenTools\bin\Release\Mono\ProbablyStolenTools.dll'
+$sourceLayouts = Join-Path (Split-Path -Parent $sourceDll) 'ProbablyStolenTools.StaticLayouts.dll'
 $manifest = Join-Path $workspace 'release\manifest.xml'
 $saveDir = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'AppData\LocalLow\Questing Goose Studio\Probably Stolen'
 $settingsPath = Join-Path $saveDir 'PSTools.settings.xml'
@@ -17,6 +18,7 @@ $modsDir = Join-Path $GameDir 'Mods'
 $targetDir = Join-Path $modsDir 'ProbablyStolenTools'
 $backup = Join-Path $workspace ('out\full-release-deploy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 if (!(Test-Path -LiteralPath $sourceDll)) { throw 'Build the Mono Release target first.' }
+if (!(Test-Path -LiteralPath $sourceLayouts)) { throw 'Generated Mono snapshot layouts are missing; rebuild the Mono Release target.' }
 
 function Get-TreeHashes([string]$directory) {
     if (!(Test-Path -LiteralPath $directory)) { return @() }
@@ -54,6 +56,7 @@ Assert-Tree $saveBefore (Join-Path $backup 'SaveData')
 Assert-Tree $modsBefore (Join-Path $backup 'Mods')
 New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 Copy-Item -LiteralPath $sourceDll -Destination (Join-Path $targetDir 'ProbablyStolenTools.dll') -Force
+Copy-Item -LiteralPath $sourceLayouts -Destination (Join-Path $targetDir 'ProbablyStolenTools.StaticLayouts.dll') -Force
 Copy-Item -LiteralPath $manifest -Destination (Join-Path $targetDir 'manifest.xml') -Force
 # The game only loads <mod>/preview.png (hardcoded in ModUIManager.GetLocalPreview).
 # release/preview.png is pre-shrunk (960x540 paletted); the full-size JPG is only for the
@@ -66,7 +69,7 @@ if (Test-Path -LiteralPath $preview) {
 $imported = $false
 $demoSettings = Join-Path (Split-Path -Parent $GameDir) 'Probably Stolen Demo\UserData\MelonPreferences.cfg'
 if (!(Test-Path -LiteralPath $settingsPath) -and (Test-Path -LiteralPath $demoSettings)) {
-    $harness = Join-Path $workspace 'tests\ReleaseCompatibility\bin\Release\net6.0\ReleaseCompatibility.dll'
+    $harness = Join-Path $workspace 'tests\ReleaseCompatibility\bin\Release\net8.0\ReleaseCompatibility.dll'
     $stagedSettings = Join-Path $backup 'imported-settings.xml'
     & dotnet $harness --import-settings $demoSettings $stagedSettings
     if ($LASTEXITCODE -ne 0) { throw 'Settings migration failed; game settings were not overwritten.' }
@@ -80,6 +83,9 @@ Assert-Tree $preservedMods $modsDir
 $builtHash = (Get-FileHash -LiteralPath $sourceDll -Algorithm SHA256).Hash
 $deployedHash = (Get-FileHash -LiteralPath (Join-Path $targetDir 'ProbablyStolenTools.dll') -Algorithm SHA256).Hash
 if ($builtHash -ne $deployedHash) { throw 'Deployed DLL does not match build.' }
+$layoutHash = (Get-FileHash -LiteralPath $sourceLayouts -Algorithm SHA256).Hash
+$deployedLayoutHash = (Get-FileHash -LiteralPath (Join-Path $targetDir 'ProbablyStolenTools.StaticLayouts.dll') -Algorithm SHA256).Hash
+if ($layoutHash -ne $deployedLayoutHash) { throw 'Deployed static layouts do not match build.' }
 $record = [ordered]@{
     Version = ([xml](Get-Content -LiteralPath $manifest -Raw)).Mod.ModVersion
     Timestamp = (Get-Date).ToString('o')
@@ -88,6 +94,7 @@ $record = [ordered]@{
     Loader = 'Built-in IMod / Harmony'
     GameAssemblySHA256 = (Get-FileHash -LiteralPath $managedPath -Algorithm SHA256).Hash
     DeployedDLLSHA256 = $deployedHash
+    StaticLayoutsSHA256 = $deployedLayoutHash
     SettingsImported = $imported
     SettingsPath = $settingsPath
     ExistingSaveFilesUnchanged = $true
@@ -102,6 +109,7 @@ $record | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $backup 
 Write-Output "Deployed=$targetDir"
 Write-Output "Backup=$backup"
 Write-Output "SHA256=$deployedHash"
+Write-Output "StaticLayoutsSHA256=$deployedLayoutHash"
 Write-Output "SettingsImported=$imported"
 Write-Output "VerifiedSaveFiles=$($saveBefore.Count)"
 Write-Output 'GameStarted=False'
