@@ -26,11 +26,11 @@ internal static class SemanticEntityBoundaryPlanTests
         {
             First.Next = Second; Second.Next = First;
             Runtime.Link = First; First.Runtime = Runtime;
-            First.Payload = new object[] { new Runtime { Link = Second }, new byte[] { 1, 2, 3 } };
+            First.Payload = new object[] { new Runtime { Link = Second }, new byte[] { 1, 2, 3 }, new[] { 1, 2, 3, 4 } };
             var capturedItem = First;
             Func<Item> callback = () => capturedItem;
             var root = new object[] { First, Second, Runtime, callback };
-            var access = new ManagedStateAccess(null, typeof(Item).Assembly.GetName().Name);
+            var access = new ManagedStateAccess(null, typeof(Item).Assembly.GetName().Name, true, true, true, true);
             access.AddRoot(ManagedObjects.Id(root));
             Graph = StateGraph.Capture(access, new[] { ManagedObjects.Id(root), ManagedObjects.Id(First) });
             Schema = new SemanticSlotSchema(new[]
@@ -57,6 +57,164 @@ internal static class SemanticEntityBoundaryPlanTests
     }
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
+        test("independent runtime payload covers all remaining slots objects and scoped entity bindings", () =>
+        {
+            using var f = new Fixture();
+            using var plan = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, 3000000, 256L * 1024 * 1024);
+            check(runtime.SlotCount == plan.RuntimeSlots && runtime.ObjectCount == f.Graph.ObjectCount
+                && runtime.BoundEntities == 2 && runtime.ByteCount == 8L * runtime.SlotCount
+                && runtime.BlockCount == 1 && runtime.Differences().Count == 0);
+            f.First.Value = 21; f.First.Next = null;
+            check(runtime.Differences().Count == 0 && f.Graph.Differences().Count == 2);
+            f.Graph.Restore();
+        });
+        test("runtime payload retains callback fields array capacity bytes and complete int blocks", () =>
+        {
+            using var f = new Fixture();
+            using var plan = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, 3000000, 256L * 1024 * 1024);
+            f.Runtime.Cache = 41; f.Runtime.Link = f.Second; f.First.Runtime = null;
+            var data = (object[])f.First.Payload;
+            ((byte[])data[1])[2] = 19; ((int[])data[2])[3] = 100;
+            check(runtime.Differences(20).Count == 5 && f.Graph.Differences(20).Count == 5);
+            for (int i = 0; i < 6; i++)
+            {
+                f.Graph.Restore();
+                check(runtime.Differences().Count == 0 && f.Graph.Differences().Count == 0);
+                f.Runtime.Cache = i + 1;
+            }
+            f.Graph.Restore();
+        });
+        test("runtime payload owns value tokens and retention after the old graph is disposed", () =>
+        {
+            using var f = new Fixture();
+            using var plan = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, 3000000, 256L * 1024 * 1024);
+            f.Graph.Dispose();
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            check(runtime.Differences().Count == 0);
+            f.Runtime.Cache = 99;
+            check(runtime.Differences().Count == 1);
+            f.Runtime.Cache = 0;
+            check(runtime.Differences().Count == 0);
+        });
+        test("runtime snapshots isolate simultaneous past and future values and disposal", () =>
+        {
+            using var f = new Fixture();
+            using var plan = f.Capture();
+            var first = SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, 3000000, 256L * 1024 * 1024);
+            using var second = SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, 3000000, 256L * 1024 * 1024);
+            f.Runtime.Cache = 31;
+            using var futureGraph = StateGraph.Capture(f.Graph.CreateIndependentAccess(),
+                f.Graph.Objects.Where(f.Graph.IsCapturedRoot).ToArray());
+            using var futureBoundary = SemanticEntityBoundaryPlan.Capture(futureGraph, f.Entities,
+                ManagedObjects.Get, ManagedObjects.Id, 200000, 3000000);
+            using var future = SemanticRuntimeSnapshot.Capture(futureGraph, futureBoundary, 200000, 3000000, 256L * 1024 * 1024);
+            first.Dispose();
+            check(second.Differences().Count == 1 && f.Graph.Differences().Count == 1);
+            check(future.Differences().Count == 0);
+            f.Graph.Restore();
+            check(second.Differences().Count == 0 && future.Differences().Count == 1);
+            futureGraph.Restore();
+            check(future.Differences().Count == 0 && second.Differences().Count == 1);
+            f.Graph.Restore();
+        });
+        test("runtime capture rejects out of checkpoint references and changed scalar values", () =>
+        {
+            using var f = new Fixture();
+            using var plan = f.Capture();
+            f.Runtime.Cache = 21;
+            Throws(() => SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, 3000000, 256L * 1024 * 1024), check);
+            f.Graph.Restore();
+            f.Runtime.Link = new Item();
+            Throws(() => SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, 3000000, 256L * 1024 * 1024), check);
+            f.Graph.Restore();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, 3000000, 256L * 1024 * 1024);
+            check(runtime.Differences().Count == 0);
+        });
+        test("runtime capture object slot byte budgets fail without damaging retained captures", () =>
+        {
+            using var f = new Fixture();
+            using var plan = f.Capture();
+            using var old = SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, 3000000, 256L * 1024 * 1024);
+            Throws(() => SemanticRuntimeSnapshot.Capture(f.Graph, plan, f.Graph.ObjectCount - 1, 3000000, 256L * 1024 * 1024), check);
+            Throws(() => SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, old.SlotCount - 1, old.ByteCount), check);
+            Throws(() => SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, old.SlotCount, old.ByteCount - 1), check);
+            using var exact = SemanticRuntimeSnapshot.Capture(f.Graph, plan, f.Graph.ObjectCount, old.SlotCount, old.ByteCount);
+            check(old.Differences().Count == 0 && exact.Differences().Count == 0 && f.Graph.Differences().Count == 0);
+        });
+        test("runtime payload forbids ordinary and block restoration even by internal graph access", () =>
+        {
+            using var f = new Fixture();
+            using var plan = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, plan, 200000, 3000000, 256L * 1024 * 1024);
+            var graph = (StateGraph)typeof(SemanticRuntimeSnapshot).GetField("_graph",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(runtime);
+            f.Runtime.Cache = 83;
+            Throws(graph.Restore, check);
+            check(f.Runtime.Cache == 83);
+            var blocks = (System.Collections.IEnumerable)typeof(StateGraph).GetField("_blocks",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(graph);
+            foreach (var value in blocks)
+            {
+                var block = (IStateBlock)value.GetType().GetField("Item3").GetValue(value);
+                Throws(block.RestoreValues, check);
+                Throws(block.RestoreReferences, check);
+            }
+            f.Graph.Restore();
+            check(runtime.Differences().Count == 0);
+        });
+        test("independent runtime access clones selected root surfaces without widening them", () =>
+        {
+            var owner = new Runtime();
+            var access = new ManagedStateAccess(null, typeof(Runtime).Assembly.GetName().Name);
+            access.AddRoot(ManagedObjects.Id(owner), "Cache");
+            using var graph = StateGraph.Capture(access, new[] { ManagedObjects.Id(owner) });
+            using var boundary = SemanticEntityBoundaryPlan.Capture(graph, Array.Empty<(IntPtr, SemanticSlotSchema)>(),
+                ManagedObjects.Get, ManagedObjects.Id, 200000, 3000000);
+            using var runtime = SemanticRuntimeSnapshot.Capture(graph, boundary, 1, 1, 8);
+            owner.Link = new Item();
+            check(runtime.ObjectCount == 1 && runtime.SlotCount == 1 && runtime.Differences().Count == 0);
+            owner.Cache = 1;
+            check(runtime.Differences().Count == 1);
+        });
+        test("runtime payload preserves dictionary storage cached views and active enumerator version", () =>
+        {
+            var map = new Dictionary<string, Item> { ["a"] = new Item(), ["b"] = new Item() };
+            var enumerator = map.GetEnumerator();
+            check(enumerator.MoveNext());
+            var roots = new object[] { map, map.Keys, map.Values, enumerator };
+            var access = new ManagedStateAccess(null, typeof(Item).Assembly.GetName().Name);
+            access.AddRoot(ManagedObjects.Id(roots));
+            using var graph = StateGraph.Capture(access, new[] { ManagedObjects.Id(roots) });
+            using var boundary = SemanticEntityBoundaryPlan.Capture(graph, Array.Empty<(IntPtr, SemanticSlotSchema)>(),
+                ManagedObjects.Get, ManagedObjects.Id, 200000, 3000000);
+            using var runtime = SemanticRuntimeSnapshot.Capture(graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            var value = map["a"];
+            map.Remove("a"); map.Add("a", value);
+            check(runtime.Differences().Count != 0 && graph.Differences().Count != 0);
+            graph.Restore();
+            check(runtime.Differences().Count == 0 && graph.Differences().Count == 0
+                && ReferenceEquals(((Dictionary<string, Item>.KeyCollection)roots[1]), map.Keys));
+            check(enumerator.MoveNext());
+        });
+        test("runtime payload compares floating point bits and nullable array values independently", () =>
+        {
+            var singles = new[] { BitConverter.Int32BitsToSingle(unchecked((int)0x80000000)), BitConverter.Int32BitsToSingle(0x7fc00001) };
+            var doubles = new double?[] { null, BitConverter.Int64BitsToDouble(unchecked((long)0x8000000000000000)) };
+            var root = new object[] { singles, doubles };
+            var access = new ManagedStateAccess(null, typeof(Item).Assembly.GetName().Name);
+            access.AddRoot(ManagedObjects.Id(root));
+            using var graph = StateGraph.Capture(access, new[] { ManagedObjects.Id(root) });
+            using var boundary = SemanticEntityBoundaryPlan.Capture(graph, Array.Empty<(IntPtr, SemanticSlotSchema)>(),
+                ManagedObjects.Get, ManagedObjects.Id, 200000, 3000000);
+            using var runtime = SemanticRuntimeSnapshot.Capture(graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            singles[0] = 0; singles[1] = BitConverter.Int32BitsToSingle(0x7fc00002); doubles[1] = 0;
+            check(runtime.Differences().Count == 3);
+            graph.Restore();
+            check(runtime.Differences().Count == 0 && BitConverter.SingleToInt32Bits(singles[0]) == int.MinValue);
+        });
         test("entity handles preserve original identities cycles closure links and complete runtime partition", () =>
         {
             using var f = new Fixture();

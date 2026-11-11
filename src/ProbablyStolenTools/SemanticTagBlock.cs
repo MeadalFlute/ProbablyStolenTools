@@ -33,6 +33,7 @@ namespace ProbablyStolenTools
 
         internal static void Enable(ManagedStateAccess access)
         {
+            access.ConfigureIndependentBlocks = Enable;
             access.BlockMode = Fields == null ? "legacy-tag-schema-mismatch" : "hybrid-exact-tag";
             if (Fields != null) access.BlockCapture = new Factory().Capture;
         }

@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateReferenceComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe, IStateScalarWriteDiagnostics, IStateComparisonDiagnostics
+    internal sealed class ManagedStateAccess : IStateAccess, IIndependentStateAccess, IStateValueComparer, IStateReferenceComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe, IStateScalarWriteDiagnostics, IStateComparisonDiagnostics
     {
         private readonly struct Storage
         {
@@ -48,6 +48,7 @@ namespace ProbablyStolenTools
         private long _nextValue;
         private static readonly object NullValue = new();
         internal Func<object, IReadOnlyList<StateSlot>, IStateBlock> BlockCapture;
+        internal Action<ManagedStateAccess> ConfigureIndependentBlocks;
         internal Func<object, IReadOnlyList<StateSlot>, bool> CensusValuesProbe;
         internal int CensusValueObjectCount { get; private set; }
         bool IStateCensusValueProbe.TryProbeValues(IntPtr id, IReadOnlyList<StateSlot> slots)
@@ -170,6 +171,25 @@ namespace ProbablyStolenTools
         {
             if (id == IntPtr.Zero) throw new InvalidOperationException("Required snapshot root missing.");
             _roots[id] = fields.Length == 0 ? null : new HashSet<string>(fields);
+        }
+
+        IStateAccess IIndependentStateAccess.CreateIndependent()
+        {
+            var result = new ManagedStateAccess(_unityObject, _gameAssembly, _fastReads, _reuseArraySchemas,
+                _directWrites, _intArrayBlocks)
+            {
+                SkipUnchangedScalars = SkipUnchangedScalars,
+                TypedScalarComparisons = TypedScalarComparisons,
+                DirectReferenceComparisons = DirectReferenceComparisons
+            };
+            try
+            {
+                foreach (var root in _roots)
+                    result._roots.Add(root.Key, root.Value == null ? null : new HashSet<string>(root.Value));
+                ConfigureIndependentBlocks?.Invoke(result);
+                return result;
+            }
+            catch { result.Dispose(); throw; }
         }
 
         public void Retain(IntPtr id)
@@ -568,6 +588,7 @@ namespace ProbablyStolenTools
             _arraySchemas.Clear();
             _arraySchemaSlots = 0; _arraySchemaHits = 0; _arraySlotsReused = 0;
             BlockCapture = null;
+            ConfigureIndependentBlocks = null;
             CensusValuesProbe = null;
             CensusValueObjectCount = 0;
             IntArrayBlockCount = 0;

@@ -11,12 +11,16 @@ namespace ProbablyStolenTools
     {
         private readonly SemanticEntitySnapshot _snapshot;
         private readonly SemanticEntityBoundaryPlan _boundary;
+        private readonly SemanticRuntimeSnapshot _runtime;
+        private readonly long _runtimeCaptureMs;
         private readonly int _items, _grids, _slots, _shapes, _windows, _unsupported, _legacySlots, _projectedSlots;
         private readonly int _runtimeSlots, _visualFields;
-        private SemanticEntityShadow(SemanticEntitySnapshot snapshot, SemanticEntityBoundaryPlan boundary, int items, int grids, int slots,
+        private SemanticEntityShadow(SemanticEntitySnapshot snapshot, SemanticEntityBoundaryPlan boundary,
+            SemanticRuntimeSnapshot runtime, long runtimeCaptureMs, int items, int grids, int slots,
             int shapes, int windows, int unsupported, int legacySlots, int projectedSlots, int runtimeSlots, int visualFields)
         {
-            _snapshot = snapshot; _boundary = boundary; _items = items; _grids = grids; _slots = slots;
+            _snapshot = snapshot; _boundary = boundary; _runtime = runtime; _runtimeCaptureMs = runtimeCaptureMs;
+            _items = items; _grids = grids; _slots = slots;
             _shapes = shapes; _windows = windows; _unsupported = unsupported; _legacySlots = legacySlots; _projectedSlots = projectedSlots;
             _runtimeSlots = runtimeSlots; _visualFields = visualFields;
         }
@@ -83,15 +87,20 @@ namespace ProbablyStolenTools
                 projections.Select(projection => (ManagedObjects.Id(projection.Target), indexes[projection.Fields])),
                 ManagedObjects.Get, ManagedObjects.Id, maxObjects, maxSlots);
             SemanticEntitySnapshot snapshot = null;
+            SemanticRuntimeSnapshot runtime = null;
             try
             {
                 snapshot = SemanticEntitySnapshot.Capture(projections, ManagedObjects.Id, graph.Contains, maxObjects, maxSlots, maxBytes);
                 if (snapshot.Differences(out var sample) != 0)
                     throw new InvalidOperationException("Entity projection changed during capture: " + string.Join(", ", sample));
-                return new SemanticEntityShadow(snapshot, boundary, items, grids, slots, shapes, windows, unsupported,
+                var runtimeClock = Stopwatch.StartNew();
+                runtime = SemanticRuntimeSnapshot.Capture(graph, boundary, maxObjects,
+                    maxSlots - snapshot.LogicalSlots, maxBytes - snapshot.LogicalBytes);
+                return new SemanticEntityShadow(snapshot, boundary, runtime, runtimeClock.ElapsedMilliseconds,
+                    items, grids, slots, shapes, windows, unsupported,
                     boundary.EntityRuntimeSlots, boundary.EntitySlots, boundary.EntityRuntimeSlots, visualFields);
             }
-            catch { boundary.Dispose(); snapshot?.Dispose(); throw; }
+            catch { runtime?.Dispose(); boundary.Dispose(); snapshot?.Dispose(); throw; }
         }
 
         internal string Summary => "scope=exact-item-hierarchy+inventory-fields+window-links+exact-shapes unknownTypes=legacy-only " +
@@ -103,7 +112,12 @@ namespace ProbablyStolenTools
             $"handles={_boundary.EntityCount} rootHandles={_boundary.RootEntities} " +
             $"runtimeHandleLinks={_boundary.RuntimeHandleLinks} entityHandleLinks={_boundary.EntityHandleLinks} " +
             $"partition(entity={_boundary.EntitySlots},runtime={_boundary.RuntimeSlots},total={_boundary.TotalSlots}) " +
-            $"runtimeSeeds={_boundary.RuntimeSeedCount} runtimeReachable={_boundary.RuntimeReachableObjects} runtimeCut=false " +
+            $"runtimeSeeds={_boundary.RuntimeSeedCount} runtimeReachable={_boundary.RuntimeReachableObjects} " +
+            "runtimeCut=readonly-shadow productionRuntimeCut=false " +
+            $"runtimePayload=independent-readonly runtimeObjects={_runtime.ObjectCount} runtimeSlots={_runtime.SlotCount} " +
+            $"runtimeBytes={_runtime.ByteCount} runtimeBlocks={_runtime.BlockCount} runtimeBoundHandles={_runtime.BoundEntities} " +
+            $"runtimeCaptureVerifyMs={_runtimeCaptureMs} combinedSlots={_snapshot.LogicalSlots + _runtime.SlotCount} " +
+            $"combinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount} " +
             "collectionStorage=legacy-only callbacks=legacy-only tags=legacy-hybrid";
 
         internal void ObserveRestore(long id)
@@ -113,9 +127,13 @@ namespace ProbablyStolenTools
             {
                 _boundary.Validate(ManagedObjects.Get);
                 int count = _snapshot.Differences(out var sample);
-                EventLog.Write($"[SemanticEntities] RECORD RESTORE {(count == 0 ? "MATCH" : "VALIDATION FAILED")} " +
-                    $"id={id} readOnly=true diff={count} verifyMs={clock.ElapsedMilliseconds} {Summary}" +
-                    (count == 0 ? "" : " fields=" + string.Join(", ", sample)));
+                long entityVerifyMs = clock.ElapsedMilliseconds;
+                var runtimeDiff = _runtime.Differences();
+                EventLog.Write($"[SemanticEntities] RECORD RESTORE {(count == 0 && runtimeDiff.Count == 0 ? "MATCH" : "VALIDATION FAILED")} " +
+                    $"id={id} readOnly=true diff={count} runtimeDiffSamples={runtimeDiff.Count} verifyMs={clock.ElapsedMilliseconds} " +
+                    $"entityVerifyMs={entityVerifyMs} runtimeVerifyMs={clock.ElapsedMilliseconds - entityVerifyMs} {Summary}" +
+                    (count == 0 ? "" : " fields=" + string.Join(", ", sample)) +
+                    (runtimeDiff.Count == 0 ? "" : " runtimeFields=" + string.Join(", ", runtimeDiff)));
             }
             catch (Exception e)
             {
@@ -123,7 +141,7 @@ namespace ProbablyStolenTools
                     $"verifyMs={clock.ElapsedMilliseconds}: " + e);
             }
         }
-        public void Dispose() { _boundary.Dispose(); _snapshot.Dispose(); }
+        public void Dispose() { _runtime.Dispose(); _boundary.Dispose(); _snapshot.Dispose(); }
     }
 }
 #endif

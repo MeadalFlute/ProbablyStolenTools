@@ -471,9 +471,19 @@ boundarySlot.GetType().GetField("stolenUI", dataFlags).SetValue(boundarySlot, bo
 game.GetType("GameItem", true).GetField("<contentWindow>k__BackingField", dataFlags).SetValue(boundaryItems[0], boundaryWindow);
 Action originalWindowCallback = () => throw new Exception("Window business callback must not run during snapshots.");
 windowType.GetField("<openCallback>k__BackingField", dataFlags).SetValue(boundaryWindow, originalWindowCallback);
+var boundaryTagSystem = Data("TagSystem");
+var boundaryTag = Data("TagState");
+var boundaryTagType = boundaryTag.GetType();
+var boundaryTagMap = (System.Collections.IDictionary)Activator.CreateInstance(
+    typeof(Dictionary<,>).MakeGenericType(typeof(string), boundaryTagType));
+boundaryTagMap.Add("runtime-tag", boundaryTag);
+boundaryTagSystem.GetType().GetField("<dict>k__BackingField", dataFlags).SetValue(boundaryTagSystem, boundaryTagMap);
+game.GetType("GameItem", true).GetField("<state>k__BackingField", dataFlags).SetValue(boundaryItems[0], boundaryTagSystem);
 var boundaryRoots = new[] { boundaryGrid, boundarySlot, boundaryClosure };
 var boundaryAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
     .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+mod.GetType("ProbablyStolenTools.SemanticTagBlock", true).GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
+    .Invoke(null, new[] { boundaryAccess });
 foreach (var root in boundaryRoots)
     accessType.GetMethod("AddRoot", dataFlags).Invoke(boundaryAccess, new object[] { Identity(root), Array.Empty<string>() });
 var boundaryGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
@@ -489,7 +499,25 @@ try
         var core = entityType.GetField("_snapshot", dataFlags).GetValue(shadow);
         return (int)entityCoreType.GetMethod("Differences", dataFlags).Invoke(core, new object[] { null, 1 });
     }
+    int RuntimeDifferences(object shadow)
+    {
+        var core = entityType.GetField("_runtime", dataFlags).GetValue(shadow);
+        return ((System.Collections.ICollection)core.GetType().GetMethod("Differences", dataFlags)
+            .Invoke(core, new object[] { 12 })).Count;
+    }
     using var entityRecords = (IDisposable)EntityCapture();
+    var independentRuntime = entityType.GetField("_runtime", dataFlags).GetValue(entityRecords);
+    if (RuntimeDifferences(entityRecords) != 0
+        || (int)independentRuntime.GetType().GetProperty("SlotCount", dataFlags).GetValue(independentRuntime)
+            >= (int)graphType.GetProperty("SlotCount", dataFlags).GetValue(boundaryGraph)
+        || (int)independentRuntime.GetType().GetProperty("BlockCount", dataFlags).GetValue(independentRuntime) < 1)
+        throw new Exception("Native independent runtime payload is missing or includes semantic owner fields.");
+    boundaryTagType.GetField("valueInt", dataFlags).SetValue(boundaryTag, 71);
+    if (RuntimeDifferences(entityRecords) != 1 || EntityDifferences(entityRecords) != 0)
+        throw new Exception("Independent runtime exact tag block was not captured or compared.");
+    graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
+    if (RuntimeDifferences(entityRecords) != 0)
+        throw new Exception("Independent runtime tag block did not match legacy restoration.");
     var boundaryPlan = entityType.GetField("_boundary", dataFlags).GetValue(entityRecords);
     var boundaryPlanType = boundaryPlan.GetType();
     var handleMethod = boundaryPlanType.GetMethod("GetHandle", dataFlags);
@@ -537,6 +565,8 @@ try
     boundarySlot.GetType().GetField("currentItem", dataFlags).SetValue(boundarySlot, boundaryItems[1]);
     if (EntityDifferences(entityRecords) != 5)
         throw new Exception("Independent native records missed scalar, shape bytes, order/length or same-uniqueId identity mutations.");
+    if (RuntimeDifferences(entityRecords) == 0)
+        throw new Exception("Independent native runtime payload missed list storage or full shape bytes.");
     var changedAudit = AuditBoundary();
     foreach (string name in new[] { "Items", "ScannedSlots", "EntitySlots", "IncomingRuntimeLinks", "CallbackIncomingLinks", "ArrayIncomingLinks" })
         if (BoundaryCount(changedAudit, name) != BoundaryCount(audit, name))
@@ -547,7 +577,7 @@ try
     graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
     if (((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
         .Invoke(boundaryGraph, new object[] { 12 })).Count != 0 || boundaryList.Count != 2
-        || EntityDifferences(entityRecords) != 0)
+        || EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0)
         throw new Exception("Native entity audit changed legacy restoration.");
     for (int iteration = 0; iteration < 6; iteration++)
     {
@@ -557,7 +587,7 @@ try
         if (EntityDifferences(entityRecords) < 3)
             throw new Exception("Native records lost retained shape storage or member identity.");
         graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
-        if (EntityDifferences(entityRecords) != 0
+        if (EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0
             || !ReferenceEquals(shapeDataField.GetValue(boundaryShape), boundaryShapeData)
             || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
                 .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
@@ -586,11 +616,13 @@ try
     Action changedWindowCallback = () => throw new Exception("Changed callback must not run.");
     windowType.GetField("<openCallback>k__BackingField", dataFlags).SetValue(boundaryWindow, changedWindowCallback);
     if (EntityDifferences(entityRecords) != 0
+        || RuntimeDifferences(entityRecords) != 3
         || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
             .Invoke(boundaryGraph, new object[] { 12 })).Count != 3)
         throw new Exception("Explicit runtime partition was dropped from the legacy oracle or entered entity records.");
     graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
     if (EntityDifferences(entityRecords) != 0
+        || RuntimeDifferences(entityRecords) != 0
         || !ReferenceEquals(windowType.GetField("<openCallback>k__BackingField", dataFlags).GetValue(boundaryWindow), originalWindowCallback)
         || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
             .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
@@ -614,7 +646,7 @@ try
         elementType.GetField(name, dataFlags).SetValue(boundaryItems[0], 321);
     foreach (string name in new[] { "appliedFlipped", "validateLock" })
         elementType.GetField(name, dataFlags).SetValue(boundaryItems[0], true);
-    if (EntityDifferences(entityRecords) != 0
+    if (EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 1
         || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
             .Invoke(boundaryGraph, new object[] { 12 })).Count != 1)
         throw new Exception("Full item classification lost callbacks or reintroduced excluded geometry caches.");
@@ -669,6 +701,10 @@ try
             .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
         throw new Exception("Failed entity record capture affected an older checkpoint.");
     Console.WriteLine("PASS native entity records reject filtered coverage and index limits without invalidating retained records or legacy checkpoints");
+    ((IDisposable)boundaryGraph).Dispose();
+    if (RuntimeDifferences(entityRecords) != 0 || EntityDifferences(entityRecords) != 0)
+        throw new Exception("Independent native runtime values or entity retention depended on old graph lifetime.");
+    Console.WriteLine("PASS independent native runtime payload: full remaining fields, six restore cycles, callback/cache mutations, original backing storage and valid values after oracle disposal");
 }
 finally { ((IDisposable)boundaryGraph).Dispose(); }
 

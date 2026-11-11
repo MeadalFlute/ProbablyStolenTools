@@ -135,6 +135,28 @@ namespace ProbablyStolenTools
         {
             if (_disposed) throw new ObjectDisposedException(nameof(SemanticEntityBoundaryPlan));
         }
+        internal bool IsRuntimeSlot(IntPtr owner, string slot)
+        {
+            RequireLive();
+            if (!_entities.TryGetValue(owner, out var entity)) return true;
+            var role = entity.Schema.RoleOf(slot);
+            if (role == SemanticFieldRole.Visual)
+                throw new InvalidOperationException("Visual field entered runtime entity description: " + slot);
+            return role == SemanticFieldRole.Runtime;
+        }
+        internal bool TryBind(IntPtr id, out Handle handle)
+        {
+            RequireLive();
+            handle = _entities.ContainsKey(id) ? new Handle(this, id) : default;
+            return ReferenceEquals(handle.Scope, this);
+        }
+        internal void ValidateHandle(Handle handle, object target)
+        {
+            RequireLive();
+            if (!ReferenceEquals(handle.Scope, this) || !_entities.TryGetValue(handle.Id, out var entity)
+                || !ReferenceEquals(entity.Target, target) || target.GetType() != entity.Type)
+                throw new InvalidOperationException("Runtime external entity binding changed.");
+        }
         internal Handle GetHandle(IntPtr id)
         {
             RequireLive();

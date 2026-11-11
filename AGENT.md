@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**284 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**294 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -46,11 +46,13 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ### 版本与发布
 
+23:39 会话完整物品/句柄已验证：5 捕获/8 恢复最终零差异，两次实体记录 MATCH 各 20 ms，全部 100969 对象/562713 槽拓扑覆盖通过；恢复后四件群拖正常。首节点记录 228 ms、总捕获 1308 ms，恢复中位数 656.5 ms，非 A/B。无手动节点/非默认议价样本。接续阶段已实现独立运行态只读值载荷：独立保活/字段/值令牌/块工厂，实体业务字段不重复捕获，实体 Runtime 字段及其余对象/集合物理存储完整保留；精确 owner/描述/引用集合及全部对象与旧图对照，旧图释放后仍可校验。实体+运行态按合并槽/字节预算，普通和块写回明确拒绝。294 项及原生标签块/六轮恢复/原图释放通过；待实机。`runtimeCut=readonly-shadow productionRuntimeCut=false`，生产恢复和视觉序列不变，不是提速，详见 `research/2026-11-11-independent-runtime-payload.md`。
+
 23:15 会话库存/窗口已检查：5 捕获/6 恢复最终零差异，首节点两次 RECORD RESTORE MATCH（20/16 ms），恢复后四件群拖正常。七处 reconcile 差异均属 cassettePlayer 标签字典及其底层数组，三 owner / 45 槽完整修复，无最终回退。已补齐精确 GameItemElement/GameItem/GameItemFunc 全继承链角色清单，四个派生实体字段进入只读记录、全部回调留 Runtime、六布局缓存继续 Visual 排除；覆盖改多字位图，未知物品子类不认证。276 项和原生派生字段/回调/布局排除通过，完整物品记录待实机。详见 `research/2026-11-11-complete-item-records.md`。
 
 接续阶段已实现节点隔离的原对象外部句柄、完整旧槽 Entity/Runtime 分区、运行态入口计算及仅运行态边的完整发现重放。句柄绑定原对象/精确类型/schema，拒绝跨节点/错类型/过期；Runtime 必须保留实体回调字段和集合底层。原根加所有实体出边作为运行态入口，重放必须覆盖旧图全部对象，不能漏闭包/数组；只保留句柄、入口及计数，临时邻接释放。284 项及原生同 uniqueId、跨节点、闭包/集合别名、完整槽/对象对照通过。仍 `runtimeCut=false`，没有实际运行态小图载荷、实体写回或生产捕获替换；先验收完整物品清单/句柄，下一步才进入独立小图捕获与受限写回。
 
-最新部署：23:35，运行时提交 `aacb0d8`，备份 `out/full-release-deploy-20261111-233523`；DLL SHA256 `8F3CF650922DF39673567D6C90A66D788A0AD18C37F015A9A6BF5A7FADC73C73`，78 存档文件校验未变，未导入设置/启动游戏。版本仍 0.8.14，未推送。等待完整物品/句柄及拓扑重放首次实机，保留 RECORD CAPTURE/RESTORE、captureMs，测试买卖/容器窗口/旋转及售出物品、手动节点、至少六次往返回溯和恢复后群拖。
+前次部署：23:35，运行时提交 `aacb0d8`，备份 `out/full-release-deploy-20261111-233523`；DLL SHA256 `8F3CF650922DF39673567D6C90A66D788A0AD18C37F015A9A6BF5A7FADC73C73`，78 存档文件校验未变，未导入设置/启动游戏。版本仍 0.8.14，未推送。已完成上述 23:39 日志检查，接续独立运行态载荷阶段待实机。
 
 23:01 会话首批实体记录已检查：7 捕获/6 恢复最终零差异，首节点两次 RECORD RESTORE MATCH（15/16 ms），恢复后四件群拖正常；首节点 entityRecords=209 ms、总捕获 1337 ms，仅增加诊断成本。后续阶段补齐精确库存完整继承链及 PixelWindow 的显式 Entity/Runtime/Visual 字段清单：实体记录纳入归属、锁、形状、stolenUI、父物品/链接库存/子控件等；回调/刷新缓存/集合底层仍旧图负责。逐槽检查 Entity/Runtime 都有旧覆盖，Visual 不应出现，精确 owner 未分类槽拒绝，未知 schema 只使本次诊断失败。269 项及原生十处关系变化、runtime 保留/恢复、缺 runtime 根拒绝通过，待实机。物品派生字段完整清单、外部句柄/图切分/实体写回仍未实现，详见 `research/2026-11-11-inventory-window-records.md`。
 
@@ -97,6 +99,8 @@ src/ProbablyStolenTools/           Mod 本体
   SemanticEntityBoundaryAudit.cs / SemanticEntityBoundaryShadow.cs  物品/库存实体边界只读审计
   SemanticEntitySnapshot.cs / SemanticEntityShadow.cs  独立实体字段/库存成员/完整形状只读记录
   SemanticEntityFieldPlan.cs / SemanticInventorySchemas.cs  精确库存/窗口全字段角色清单及覆盖检查
+  SemanticItemSchemas.cs / SemanticSlotCoverage.cs  物品完整继承链及多字位图覆盖检查
+  SemanticEntityBoundaryPlan.cs / SemanticRuntimeSnapshot.cs  节点句柄/入口协议及独立只读运行态载荷
   LiquidComposition.cs             成分、纯度、评级、空瓶/容量判定
   AnnotationLabels.cs              原版水质/化学/酿酒语言键与回退文本
   WaterQualityPatch.cs / WineAppraisal.cs / TooltipHooks.cs / TooltipNamePatch.cs

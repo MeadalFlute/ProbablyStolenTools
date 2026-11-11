@@ -17,6 +17,7 @@
     <Compile Include="../../src/ProbablyStolenTools/SemanticEntityFieldPlan.cs" Link="SemanticEntityFieldPlan.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SemanticSlotCoverage.cs" Link="SemanticSlotCoverage.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SemanticEntityBoundaryPlan.cs" Link="SemanticEntityBoundaryPlan.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/SemanticRuntimeSnapshot.cs" Link="SemanticRuntimeSnapshot.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CheckpointHistory.cs" Link="CheckpointHistory.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CheckpointItemInteraction.cs" Link="CheckpointItemInteraction.cs" />
     <Compile Include="../../src/ProbablyStolenTools/PanelModel.cs" Link="PanelModel.cs" />

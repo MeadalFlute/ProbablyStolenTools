@@ -88,3 +88,9 @@ GameItemElement/GameItem/GameItemFunc、库存全继承链、PixelWindow、GridS
 通过；这不是独立 RuntimeIslandGraph 值载荷，runtimeCut=false。
 完整物品/句柄待实机；第 4/5 步未开放。详见
 `2026-11-11-complete-item-records.md`，不再按前述历史停止点判断当前进度。
+
+23:39 完整物品/句柄实机已通过（5 捕获/8 恢复最终零差异）。接续第 3 步现新增
+独立 Runtime 分区值载荷：独立访问器/值令牌/保活/块工厂，逐槽/引用和全部对象
+对照旧图；只读且拒绝所有普通/块写回。294 项及原生六轮恢复/旧图释放通过，
+待实机。第 4/5 步未开启，生产仍完整旧图。
+详见 `2026-11-11-independent-runtime-payload.md`。

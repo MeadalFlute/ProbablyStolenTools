@@ -70,6 +70,12 @@ namespace ProbablyStolenTools
     internal interface IStateOwnerRepairAccess { }
     internal interface IStateOwnerRepairBlock { }
 
+    // New access with its own retention, value tokens and descriptions; never borrow checkpoint lifetime.
+    internal interface IIndependentStateAccess
+    {
+        IStateAccess CreateIndependent();
+    }
+
     internal interface IBudgetedStateDescription
     {
         IReadOnlyList<StateSlot> Describe(IntPtr id, int remainingSlots, long remainingBytes);
@@ -121,6 +127,14 @@ namespace ProbablyStolenTools
         internal long ReferenceComparisonCount => (_access as IStateReferenceComparer)?.ReferenceComparisonCount ?? 0;
         internal IEnumerable<IntPtr> Objects => _objects;
         internal bool Contains(IntPtr id) => _objects.Contains(id);
+
+        internal IStateAccess CreateIndependentAccess()
+        {
+            RequireCheckpoint();
+            if (_access is not IIndependentStateAccess factory)
+                throw new InvalidOperationException("Snapshot backend cannot create independent runtime storage.");
+            return factory.CreateIndependent();
+        }
 
         internal sealed class Reconciliation
         {
