@@ -68,3 +68,23 @@
 5. **分发必须包含两个 DLL**：只上传主 DLL 将缺依赖；上传前必须使用目标 Mono 表，不能误取 out 中的 host/mismatch 表。
 
 本轮实现已达到可部署等待游戏实测的阶段；不以“扫描通过”宣布整体发布验收完成。
+
+## 本地部署与回滚
+
+- 实现提交：`47fc6cf`（独立迁移提交，可单独审查/回滚）；版本仍为 0.9.0，未推送。
+- 2026-11-12 03:57（本地时间）重新运行完整验证脚本后部署。部署前确认游戏未运行；未关闭或启动游戏。
+- 安装目录：`<GAME_DIR>/Mods/ProbablyStolenTools`，只含 manifest、preview.png 及两个发布 DLL。
+- 主 DLL SHA256：`59B6D1FE9D7E151E1B4568307051368C36E19DBDC3F27560AA40D64280DC8ACB`。
+- 静态表 SHA256：`F2096125D20042E3609E56636FC17A566A5446A2E5B9209CB8059C34EAE70DC0`。
+- 回滚备份：仓库 `out/full-release-deploy-20261112-035729/Mods/ProbablyStolenTools`。关闭游戏后恢复整套旧 Mod 目录，包括旧 manifest；不要把旧主 DLL 与新表混装。无需恢复或覆盖存档。
+- 部署记录 `out/full-release-deploy-20261112-035729/deployment.json` 确认 79 个原存档目录文件及游戏程序集未变；其他 Mod 校验通过。无设置导入，StoppedGameProcesses 为空，GameStarted/InGameValidated 均为 false。
+- 最终离线验证输出保留在仓库 `out/static-layouts-final-validation.log`（不随 Mod 分发）。
+
+## 用户回来后的最小验收
+
+1. 加载器不再提示本 Mod 使用退役能力；日志 Session 显示 `layoutBackend=static-token-v1`，无缺失依赖或版本不匹配错误。
+2. 首节点、后续顾客节点、手动节点正常创建并多次前后恢复；保留 CAPTURE/RESTORE 耗时行，重点观察首节点及热路径有无明显退化。
+3. 检查售出/移动/旋转/柜台物品、顾客贴图、群拖和正常交易/送客；文件回溯仍只加载不写回。
+4. 混合玩家常用 Mod 重复上述流程，检查是否有未覆盖静态布局。出现失败先保留日志，不提高上限或关闭完整校验掩盖问题。
+
+本轮自主开发、离线验证和本地部署已收口；继续发布验收需要 Unity 活体结果，暂不作更多未经实测的性能替换。
