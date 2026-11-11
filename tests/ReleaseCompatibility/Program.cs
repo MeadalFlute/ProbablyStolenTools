@@ -356,6 +356,7 @@ try
         new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool) }, null)
         .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"),
             "Assembly-CSharp", true, true, false });
+    accessType.GetProperty("TypedScalarComparisons", dataFlags).SetValue(recursiveAccess, false);
     foreach (var root in new[] { player, station, itemArray })
         accessType.GetMethod("AddRoot", dataFlags).Invoke(recursiveAccess, new object[] { Identity(root), Array.Empty<string>() });
     var recursiveGraph = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
@@ -363,6 +364,24 @@ try
             50000, 1000000, 64L * 1024 * 1024 });
     try
     {
+        for (int i = 0; i < 40; i++)
+            if (((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                .Invoke(graph, new object[] { 12 })).Count != 0)
+                throw new Exception("Native typed comparison warmup differs.");
+        if ((long)graphType.GetProperty("TypedComparisonCount", dataFlags).GetValue(graph) == 0
+            || (long)graphType.GetProperty("TypedComparisonCount", dataFlags).GetValue(recursiveGraph) != 0)
+            throw new Exception("Native comparison or boxed oracle did not exercise requested modes.");
+        cashField.SetValue(player, -11); dayField.SetValue(station, -7); itemArray.SetValue(null, 3);
+        zoomLevels["inspection"] = -17;
+        var typedDiff = (IEnumerable<string>)graphType.GetMethod("Differences", dataFlags).Invoke(graph, new object[] { 128 });
+        var boxedDiff = (IEnumerable<string>)graphType.GetMethod("Differences", dataFlags).Invoke(recursiveGraph, new object[] { 128 });
+        if (!typedDiff.Any() || !typedDiff.SequenceEqual(boxedDiff))
+            throw new Exception("Native typed and boxed complete difference lists disagree.");
+        graphType.GetMethod("Restore", dataFlags).Invoke(graph, null);
+        if (((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+            .Invoke(recursiveGraph, new object[] { 12 })).Count != 0)
+            throw new Exception("Native typed restore differs from boxed oracle.");
+        Console.WriteLine("PASS native typed/boxed scalar comparisons, array indices and dictionary mutations agree after warmup");
         foreach (var writerGraph in new[] { graph, recursiveGraph, graph })
         {
             cashField.SetValue(player, -123); dayField.SetValue(station, -1);
@@ -737,13 +756,16 @@ finally
 
 if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || args.Contains("--benchmark-reconcile")
     || args.Contains("--benchmark-int-arrays") || args.Contains("--benchmark-census-tags")
-    || args.Contains("--benchmark-scalar-writes"))
+    || args.Contains("--benchmark-scalar-writes") || args.Contains("--benchmark-typed-comparisons"))
 {
     bool benchmarkWrites = args.Contains("--benchmark-writes");
     bool benchmarkReconcile = args.Contains("--benchmark-reconcile");
     bool benchmarkIntArrays = args.Contains("--benchmark-int-arrays");
     bool benchmarkCensus = args.Contains("--benchmark-census-tags");
     bool benchmarkScalars = args.Contains("--benchmark-scalar-writes");
+    bool benchmarkComparisons = args.Contains("--benchmark-typed-comparisons");
+    bool coldComparisons = benchmarkComparisons && args.Contains("--cold-comparisons");
+    var readerType = mod.GetType("ProbablyStolenTools.SnapshotFieldReader", true);
     bool denseScalars = benchmarkScalars && args.Contains("--dense-scalars");
     // Isolated native business objects on .NET 6, not a Unity/Mono frame-time measurement.
     var fixture = Array.CreateInstance(systemType, 1024);
@@ -761,7 +783,7 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
         }
         fixture.SetValue(system, i);
     }
-    var samples = new Dictionary<bool, List<(double Capture, double Verify, double Restore, long Allocated, long RestoreAllocated, double Scan, double Census, long CensusAllocated)>>
+    var samples = new Dictionary<bool, List<(double Capture, double Verify, double Restore, long Allocated, long RestoreAllocated, double Scan, double Census, long CensusAllocated, long VerifyAllocated)>>
         { [false] = new(), [true] = new() };
     long? expectedSlots = null, expectedBytes = null, expectedObjects = null;
     var captureMethod = graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic);
@@ -772,19 +794,24 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
     var applyMethod = graphType.GetNestedType("Reconciliation", BindingFlags.NonPublic).GetMethod("Apply", dataFlags);
     int repairedSlots = 0, intBlocks = 0, intSlots = 0, probedTags = 0;
     var scalarCounts = new Dictionary<bool, (long Checked, long Skipped)>();
-    int sampleCount = benchmarkIntArrays || benchmarkCensus || benchmarkWrites || benchmarkScalars ? 9 : 5;
-    int warmups = benchmarkIntArrays || benchmarkCensus || benchmarkWrites || benchmarkScalars ? 3 : 1;
+    var typedCounts = new Dictionary<bool, long>();
+    var comparisonCompileTimes = new Dictionary<bool, double>();
+    int sampleCount = benchmarkIntArrays || benchmarkCensus || benchmarkWrites || benchmarkScalars || benchmarkComparisons ? 9 : 5;
+    int warmups = benchmarkIntArrays || benchmarkCensus || benchmarkWrites || benchmarkScalars || benchmarkComparisons ? 3 : 1;
     for (int round = -warmups; round < sampleCount; round++)
         foreach (bool compact in round % 2 == 0 ? new[] { true, false } : new[] { false, true })
         {
             GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            if (coldComparisons) readerType.GetMethod("ClearCache", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null);
             var benchAccess = accessType.GetConstructor(dataFlags, null,
                 new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool) }, null)
                 .Invoke(new object[] { null, "Assembly-CSharp", true, true, !benchmarkWrites || compact,
-                    benchmarkScalars || benchmarkIntArrays && compact });
+                    benchmarkComparisons || benchmarkScalars || benchmarkIntArrays && compact });
+            if (benchmarkComparisons)
+                accessType.GetProperty("TypedScalarComparisons", dataFlags).SetValue(benchAccess, compact);
             if (benchmarkScalars)
                 accessType.GetProperty("SkipUnchangedScalars", dataFlags).SetValue(benchAccess, compact);
-            if (!denseScalars && (benchmarkReconcile || benchmarkWrites || benchmarkIntArrays || benchmarkCensus || benchmarkScalars || compact)) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
+            if (!denseScalars && (benchmarkReconcile || benchmarkWrites || benchmarkIntArrays || benchmarkCensus || benchmarkScalars || benchmarkComparisons || compact)) compactType.GetMethod("Enable", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new[] { benchAccess });
             accessType.GetMethod("AddRoot", dataFlags).Invoke(benchAccess, new object[] { Identity(fixture), Array.Empty<string>() });
             long before = GC.GetAllocatedBytesForCurrentThread();
@@ -801,9 +828,14 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
                 expectedSlots ??= slots; expectedBytes ??= bytes; expectedObjects ??= objects;
                 if (slots != expectedSlots || bytes != expectedBytes || objects != expectedObjects)
                     throw new Exception("Native benchmark hybrid coverage or logical budget differs.");
+                long beforeVerify = GC.GetAllocatedBytesForCurrentThread();
+                long compileBefore = (long)readerType.GetProperty("CompareCompileTicks", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
                 clock.Restart();
                 int differences = ((System.Collections.ICollection)verifyMethod.Invoke(benchGraph, new object[] { 12 })).Count;
                 double verified = clock.Elapsed.TotalMilliseconds;
+                long verifyAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeVerify;
+                comparisonCompileTimes[compact] = ((long)readerType.GetProperty("CompareCompileTicks", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null)
+                    - compileBefore) * (1000d / System.Diagnostics.Stopwatch.Frequency);
                 if (differences != 0) throw new Exception("Native benchmark capture verification failed.");
                 double censusMs = 0;
                 long censusAllocated = 0;
@@ -888,6 +920,12 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
                 else restoreMethod.Invoke(benchGraph, null);
                 double restored = clock.Elapsed.TotalMilliseconds;
                 long restoreAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeRestore;
+                if (benchmarkComparisons)
+                {
+                    long count = (long)accessType.GetProperty("TypedComparisonCount", dataFlags).GetValue(benchAccess);
+                    if ((count > 0) != compact) throw new Exception("Typed comparison benchmark did not exercise the requested mode.");
+                    typedCounts[compact] = count;
+                }
                 if (benchmarkScalars)
                 {
                     var counts = ((long Checked, long Skipped))accessType.GetProperty("ScalarWrites", dataFlags).GetValue(benchAccess);
@@ -899,7 +937,7 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
                 if (((System.Collections.ICollection)verifyMethod.Invoke(benchGraph, new object[] { 12 })).Count != 0)
                     throw new Exception("Native benchmark restoration verification failed.");
                 if (round >= 0) samples[compact].Add((captured, verified, restored, allocated, restoreAllocated, scanned,
-                    censusMs, censusAllocated));
+                    censusMs, censusAllocated, verifyAllocated));
             }
             finally { ((IDisposable)benchGraph).Dispose(); }
         }
@@ -910,7 +948,10 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
         string mode = benchmarkReconcile ? (compact ? "hybrid-owner-repair" : "hybrid-full-reconcile")
             : benchmarkWrites ? (compact ? "hybrid-direct-write" : "hybrid-recursive-write")
             : (compact ? "hybrid" : "legacy");
-        if (benchmarkScalars)
+        if (benchmarkComparisons)
+            Console.WriteLine(FormattableString.Invariant(
+                $"TYPED_COMPARE_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} typed={compact} cold={coldComparisons} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} typedComparisons={typedCounts[compact]} lastVerifyCompileMs={comparisonCompileTimes[compact]:F2} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} verifyAllocatedBytes={Median(values.Select(v => (double)v.VerifyAllocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
+        else if (benchmarkScalars)
             Console.WriteLine(FormattableString.Invariant(
                 $"SCALAR_WRITE_BENCH runtime=net6-not-Unity tieredCompilation={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") ?? "default"} guard={compact} dense={denseScalars} samples={sampleCount} objects={expectedObjects} slots={expectedSlots} bytes={expectedBytes} checked={scalarCounts[compact].Checked} skipped={scalarCounts[compact].Skipped} captureMs={Median(values.Select(v => v.Capture)):F2} verifyMs={Median(values.Select(v => v.Verify)):F2} restoreMs={Median(values.Select(v => v.Restore)):F2} captureAllocatedBytes={Median(values.Select(v => (double)v.Allocated)):F0} restoreAllocatedBytes={Median(values.Select(v => (double)v.RestoreAllocated)):F0}"));
         else if (benchmarkCensus)

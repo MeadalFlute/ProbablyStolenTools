@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe, IStateScalarWriteDiagnostics
+    internal sealed class ManagedStateAccess : IStateAccess, IStateValueComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe, IStateScalarWriteDiagnostics, IStateComparisonDiagnostics
     {
         private readonly struct Storage
         {
@@ -99,6 +99,8 @@ namespace ProbablyStolenTools
         private readonly bool _directWrites;
         private readonly bool _intArrayBlocks;
         internal bool SkipUnchangedScalars { get; set; }
+        internal bool TypedScalarComparisons { get; set; } = true;
+        public long TypedComparisonCount { get; private set; }
         public (long Checked, long Skipped) ScalarWrites { get; private set; }
         internal string ArraySchemaSummary => $"arraySchemas(cached={_arraySchemas.Count}," +
             $"hits={_arraySchemaHits},slotsReused={_arraySlotsReused})";
@@ -486,6 +488,21 @@ namespace ProbablyStolenTools
         public bool ValueEquals(IntPtr id, StateSlot slot, byte[] captured)
         {
             object expected = _savedValues[BitConverter.ToInt64(captured, 0)];
+            return ValueEquals(id, slot, expected);
+        }
+
+        private bool ValueEquals(IntPtr id, StateSlot slot, object expected)
+        {
+            if (TypedScalarComparisons)
+            {
+                var storage = _storage[id][slot.Offset];
+                if (!storage.Anchor && storage.Reader != null && storage.Reader.TryEquals(_retained[id],
+                    storage.Index, ReferenceEquals(expected, NullValue) ? null : expected, out bool same))
+                {
+                    TypedComparisonCount++;
+                    return same;
+                }
+            }
             object actual = Read(id, slot) ?? NullValue;
             return ScalarEquals(expected, actual);
         }
@@ -517,7 +534,7 @@ namespace ProbablyStolenTools
                 || value.GetType().IsPrimitive || value.GetType().IsEnum || value is decimal))
             {
                 ScalarWrites = (ScalarWrites.Checked + 1, ScalarWrites.Skipped);
-                if (ScalarEquals(value, Read(id, slot) ?? NullValue))
+                if (ValueEquals(id, slot, value))
                 {
                     ScalarWrites = (ScalarWrites.Checked, ScalarWrites.Skipped + 1);
                     return;
@@ -545,6 +562,7 @@ namespace ProbablyStolenTools
             IntArrayBlockCount = 0;
             IntArraySlotCount = 0;
             ScalarWrites = default;
+            TypedComparisonCount = 0;
         }
     }
 }

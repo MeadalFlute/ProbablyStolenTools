@@ -429,6 +429,7 @@ namespace ProbablyStolenTools
             var access = new NativeStateAccess(typeof(UnityEngine.Object), "Assembly-CSharp", true, true, true,
                 Plugin.CfgIntArrayBlocks?.Value == true);
             access.SkipUnchangedScalars = Plugin.CfgSkipUnchangedScalars?.Value == true;
+            access.TypedScalarComparisons = Plugin.CfgTypedScalarComparisons?.Value == true;
             if (Plugin.CfgSemanticTagBlocks?.Value == true) SemanticTagBlock.Enable(access);
 #else
             var access = new NativeStateAccess();
@@ -667,6 +668,9 @@ namespace ProbablyStolenTools
 #endif
                 long tSemantic = timing.ElapsedMilliseconds;
                 phase = "verify";
+#if MONO
+                long captureCompareCompileBefore = SnapshotFieldReader.CompareCompileTicks;
+#endif
                 var diff = candidate.Graph.Differences();
                 if (diff.Count != 0) throw new InvalidOperationException("Capture changed while reading: " + string.Join(", ", diff));
                 long tVerify = timing.ElapsedMilliseconds;
@@ -706,6 +710,8 @@ namespace ProbablyStolenTools
                 string readers = $" backend={access.BlockMode} tagBlocks={_active.Graph.BlockCount - access.IntArrayBlockCount} " +
                     $"intArrayBlocks={access.IntArrayBlockCount} intArraySlots={access.IntArraySlotCount} " +
                     $"walkReaderCompileMs={walkReaderCompileMs} " +
+                    $"typedComparisons={access.TypedComparisonCount} " +
+                    $"verifyCompareCompileMs={SnapshotFieldReader.CompileMilliseconds(SnapshotFieldReader.CompareCompileTicks - captureCompareCompileBefore)} " +
                     SnapshotFieldReader.Summary + " " + access.ArraySchemaSummary +
                     (Plugin.CfgVerboseLog?.Value == true ? " " + access.WorkloadSummary() : "");
 #else
@@ -853,6 +859,10 @@ namespace ProbablyStolenTools
             long censusBytes = 0;
             string workload = "";
             var scalarWritesBefore = target.Graph.ScalarWrites;
+            long typedComparisonsBefore = target.Graph.TypedComparisonCount;
+#if MONO
+            long compareCompileBefore = SnapshotFieldReader.CompareCompileTicks;
+#endif
             Restoring = true;
             float scale = Time.timeScale;
             try
@@ -1066,8 +1076,14 @@ namespace ProbablyStolenTools
                 if (completed)
                 {
                     long tFinish = timing.ElapsedMilliseconds;
+#if MONO
+                    string comparisonDiagnostic = $" compareCompileMs={SnapshotFieldReader.CompileMilliseconds(SnapshotFieldReader.CompareCompileTicks - compareCompileBefore)}";
+#else
+                    string comparisonDiagnostic = "";
+#endif
                     EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
                         $"releaseOk={releaseError == null} " +
+                        $"typedComparisons={target.Graph.TypedComparisonCount - typedComparisonsBefore}{comparisonDiagnostic} " +
                         $"ordinaryScalarWrites(checked={target.Graph.ScalarWrites.Checked - scalarWritesBefore.Checked}," +
                         $"skipped={target.Graph.ScalarWrites.Skipped - scalarWritesBefore.Skipped}) " +
                         $"census(objects={censusObjects},slots={censusSlots},bytes={censusBytes},exactTagProbes={censusTagProbes}) " +

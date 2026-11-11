@@ -43,6 +43,11 @@ namespace ProbablyStolenTools
         (long Checked, long Skipped) ScalarWrites { get; }
     }
 
+    internal interface IStateComparisonDiagnostics
+    {
+        long TypedComparisonCount { get; }
+    }
+
     // Opt-in eight-byte scalar tokens only: read every scalar without retaining values or replacing reference discovery.
     internal interface IStateCensusValueProbe
     {
@@ -105,6 +110,7 @@ namespace ProbablyStolenTools
         internal int BlockCount => _blocks.Count;
         internal (long Checked, long Skipped) ScalarWrites
             => (_access as IStateScalarWriteDiagnostics)?.ScalarWrites ?? default;
+        internal long TypedComparisonCount => (_access as IStateComparisonDiagnostics)?.TypedComparisonCount ?? 0;
         internal IEnumerable<IntPtr> Objects => _objects;
         internal bool Contains(IntPtr id) => _objects.Contains(id);
 

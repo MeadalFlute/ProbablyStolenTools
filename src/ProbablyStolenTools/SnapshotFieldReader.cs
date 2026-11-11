@@ -16,8 +16,12 @@ namespace ProbablyStolenTools
         private static readonly Dictionary<(Type Owner, string Name), SnapshotFieldReader> Cache = new();
         private static long _compileTicks;
         private static int _compileAttempts;
+        private static long _compareCompileTicks;
+        private static int _compareCompileAttempts;
         internal static long CompileTicks => Interlocked.Read(ref _compileTicks);
         internal static int CompileAttempts => Volatile.Read(ref _compileAttempts);
+        internal static long CompareCompileTicks => Interlocked.Read(ref _compareCompileTicks);
+        internal static int CompareCompileAttempts => Volatile.Read(ref _compareCompileAttempts);
         internal static long CompileMilliseconds(long ticks) => (long)(ticks * (1000.0 / Stopwatch.Frequency));
         private readonly Type _ownerType;
         private readonly FieldInfo[] _path;
@@ -25,7 +29,11 @@ namespace ProbablyStolenTools
         private Func<object, int, object> _read;
         private int _reads;
         private bool _attempted;
+        private Func<object, int, object, bool> _equals;
+        private int _comparisons;
+        private bool _compareAttempted;
         internal bool Compiled => _read != null;
+        internal bool ComparerCompiled => _equals != null;
 
         private SnapshotFieldReader(Type owner, FieldInfo[] path, bool element)
         { _ownerType = owner; _path = path; _element = element; }
@@ -55,6 +63,76 @@ namespace ProbablyStolenTools
             return false;
         }
 
+        internal bool TryEquals(object owner, int index, object expected, out bool same)
+        {
+            if (!_compareAttempted && ++_comparisons >= CompileAfterReads) CompileComparer();
+            if (_equals != null)
+            {
+                try { same = _equals(owner, index, expected); return true; }
+                catch (Exception e) when (Unavailable(e)) { _equals = null; }
+            }
+            same = false;
+            return false;
+        }
+
+        private Expression StorageExpression(ParameterExpression owner, ParameterExpression index)
+        {
+            Expression value = Expression.Convert(owner, _ownerType);
+            if (_element) value = Expression.ArrayIndex(value, index);
+            foreach (var field in _path) value = Expression.Field(value, field);
+            return value;
+        }
+
+        private void CompileComparer()
+        {
+            _compareAttempted = true;
+            var scalarType = _path.Length == 0
+                ? (_element ? _ownerType.GetElementType() : _ownerType) : _path[_path.Length - 1].FieldType;
+            if (scalarType == null) return;
+            var type = Nullable.GetUnderlyingType(scalarType) ?? scalarType;
+            if (!type.IsPrimitive && !type.IsEnum && type != typeof(decimal)) return;
+            if (type == typeof(IntPtr) || type == typeof(UIntPtr)) return;
+            long started = Stopwatch.GetTimestamp();
+            try
+            {
+                var owner = Expression.Parameter(typeof(object), "owner");
+                var index = Expression.Parameter(typeof(int), "index");
+                var expected = Expression.Parameter(typeof(object), "expected");
+                var actual = Expression.Variable(scalarType, "actual");
+                var saved = Expression.Variable(scalarType, "saved");
+                Expression Equal(Expression left, Expression right)
+                {
+                    if (type == typeof(float) || type == typeof(double))
+                    {
+                        var bits = typeof(BitConverter).GetMethod(type == typeof(float)
+                            ? nameof(BitConverter.SingleToInt32Bits) : nameof(BitConverter.DoubleToInt64Bits));
+                        return Expression.Equal(Expression.Call(bits, left), Expression.Call(bits, right));
+                    }
+                    return Expression.Equal(left, right);
+                }
+                Expression comparison;
+                if (type == scalarType) comparison = Equal(actual, saved);
+                else
+                {
+                    var actualHas = Expression.Property(actual, "HasValue");
+                    var savedHas = Expression.Property(saved, "HasValue");
+                    comparison = Expression.AndAlso(Expression.Equal(actualHas, savedHas),
+                        Expression.OrElse(Expression.Not(actualHas),
+                            Equal(Expression.Property(actual, "Value"), Expression.Property(saved, "Value"))));
+                }
+                var body = Expression.Block(new[] { actual, saved },
+                    Expression.Assign(actual, StorageExpression(owner, index)),
+                    Expression.Assign(saved, Expression.Convert(expected, scalarType)), comparison);
+                _equals = Expression.Lambda<Func<object, int, object, bool>>(body, owner, index, expected).Compile();
+            }
+            catch (Exception e) when (Unavailable(e) || e is ArgumentException) { }
+            finally
+            {
+                Interlocked.Add(ref _compareCompileTicks, Stopwatch.GetTimestamp() - started);
+                Interlocked.Increment(ref _compareCompileAttempts);
+            }
+        }
+
         private void Compile()
         {
             _attempted = true;
@@ -63,9 +141,7 @@ namespace ProbablyStolenTools
             {
                 var owner = Expression.Parameter(typeof(object), "owner");
                 var index = Expression.Parameter(typeof(int), "index");
-                Expression value = Expression.Convert(owner, _ownerType);
-                if (_element) value = Expression.ArrayIndex(value, index);
-                foreach (var field in _path) value = Expression.Field(value, field);
+                Expression value = StorageExpression(owner, index);
                 _read = Expression.Lambda<Func<object, int, object>>(
                     Expression.Convert(value, typeof(object)), owner, index).Compile();
             }
@@ -88,6 +164,8 @@ namespace ProbablyStolenTools
                 Cache.Clear();
                 Interlocked.Exchange(ref _compileTicks, 0);
                 Interlocked.Exchange(ref _compileAttempts, 0);
+                Interlocked.Exchange(ref _compareCompileTicks, 0);
+                Interlocked.Exchange(ref _compareCompileAttempts, 0);
             }
         }
 
@@ -97,12 +175,17 @@ namespace ProbablyStolenTools
             {
                 lock (Cache)
                 {
-                    int compiled = 0, fallback = 0;
+                    int compiled = 0, fallback = 0, comparers = 0;
                     foreach (var reader in Cache.Values)
+                    {
                         if (reader.Compiled) compiled++;
                         else if (reader._attempted) fallback++;
+                        if (reader.ComparerCompiled) comparers++;
+                    }
                     return $"readers(compiled={compiled},fallback={fallback},cached={Cache.Count}," +
-                        $"compileAttemptsTotal={CompileAttempts},compileMsTotal={CompileMilliseconds(CompileTicks)})";
+                        $"compileAttemptsTotal={CompileAttempts},compileMsTotal={CompileMilliseconds(CompileTicks)}," +
+                        $"comparers={comparers},compareCompileAttemptsTotal={CompareCompileAttempts}," +
+                        $"compareCompileMsTotal={CompileMilliseconds(CompareCompileTicks)})";
                 }
             }
         }
