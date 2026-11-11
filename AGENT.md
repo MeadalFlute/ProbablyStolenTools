@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**294 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**302 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -46,9 +46,11 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ### 版本与发布
 
+23:52 会话独立运行态已通过：6 捕获（含手动）/8 恢复最终零差异，三次实体/运行态 MATCH、runtime 校验 33/33/36 ms，恢复后群拖正常。首节点总捕获 2241 ms，entityRecords=1264 / runtimeCaptureVerifyMs=893，明确增加诊断成本。接续第 4 步仅开放精确 GridShapeBuilder 形状实体写回试点：`Snapshot.SemanticShapeRestore=true`，只为每上下文采样节点准备独立七标量+原 data 引用记录，首次写回跳过对应旧槽，其余仍旧图；完整旧捕获/校验、owner/full 二次修复和视觉顺序保留。准备失败可用旧路径，实际写错不隐藏重试。302 项及原生八字段/六轮实际实体写回、共享字节数组、释放后预检拒绝通过；待实机。运行态仍禁止写回，未替换生产捕获。详见 `research/2026-11-12-shape-entity-writes.md`。
+
 23:39 会话完整物品/句柄已验证：5 捕获/8 恢复最终零差异，两次实体记录 MATCH 各 20 ms，全部 100969 对象/562713 槽拓扑覆盖通过；恢复后四件群拖正常。首节点记录 228 ms、总捕获 1308 ms，恢复中位数 656.5 ms，非 A/B。无手动节点/非默认议价样本。接续阶段已实现独立运行态只读值载荷：独立保活/字段/值令牌/块工厂，实体业务字段不重复捕获，实体 Runtime 字段及其余对象/集合物理存储完整保留；精确 owner/描述/引用集合及全部对象与旧图对照，旧图释放后仍可校验。实体+运行态按合并槽/字节预算，普通和块写回明确拒绝。294 项及原生标签块/六轮恢复/原图释放通过；待实机。`runtimeCut=readonly-shadow productionRuntimeCut=false`，生产恢复和视觉序列不变，不是提速，详见 `research/2026-11-11-independent-runtime-payload.md`。
 
-最新部署：23:49，运行时提交 `a86dd23`，备份 `out/full-release-deploy-20261111-234913`；DLL SHA256 `516BC5CC3EA23883F9CAF3A5854A1597C71308B74440697337CEC2EFA695439C`，78 存档文件校验未变，未导入设置/启动游戏，版本 0.8.14，未推送。等待独立运行态首轮实机：首节点 runtimeCaptureVerifyMs/combinedSlots/combinedBytes，手动节点及至少六次往返回溯、恢复后群拖、旋转/售出物品画面；RECORD RESTORE 须 runtimeDiffSamples=0。本轮会额外增加首节点及采样节点恢复对照开销，不启用实体写回。
+前次部署：23:49，运行时提交 `a86dd23`，备份 `out/full-release-deploy-20261111-234913`；DLL SHA256 `516BC5CC3EA23883F9CAF3A5854A1597C71308B74440697337CEC2EFA695439C`，78 存档文件校验未变，未导入设置/启动游戏，版本 0.8.14，未推送。已完成上述 23:52 实机检查；后续形状实体写回试点待实机。
 
 23:15 会话库存/窗口已检查：5 捕获/6 恢复最终零差异，首节点两次 RECORD RESTORE MATCH（20/16 ms），恢复后四件群拖正常。七处 reconcile 差异均属 cassettePlayer 标签字典及其底层数组，三 owner / 45 槽完整修复，无最终回退。已补齐精确 GameItemElement/GameItem/GameItemFunc 全继承链角色清单，四个派生实体字段进入只读记录、全部回调留 Runtime、六布局缓存继续 Visual 排除；覆盖改多字位图，未知物品子类不认证。276 项和原生派生字段/回调/布局排除通过，完整物品记录待实机。详见 `research/2026-11-11-complete-item-records.md`。
 
@@ -103,6 +105,7 @@ src/ProbablyStolenTools/           Mod 本体
   SemanticEntityFieldPlan.cs / SemanticInventorySchemas.cs  精确库存/窗口全字段角色清单及覆盖检查
   SemanticItemSchemas.cs / SemanticSlotCoverage.cs  物品完整继承链及多字位图覆盖检查
   SemanticEntityBoundaryPlan.cs / SemanticRuntimeSnapshot.cs  节点句柄/入口协议及独立只读运行态载荷
+  SemanticShapeWriter.cs            精确形状实体首次写回试点，保留旧图完整 oracle
   LiquidComposition.cs             成分、纯度、评级、空瓶/容量判定
   AnnotationLabels.cs              原版水质/化学/酿酒语言键与回退文本
   WaterQualityPatch.cs / WineAppraisal.cs / TooltipHooks.cs / TooltipNamePatch.cs

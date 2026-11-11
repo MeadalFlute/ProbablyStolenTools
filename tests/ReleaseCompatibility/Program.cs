@@ -506,6 +506,12 @@ try
             .Invoke(core, new object[] { 12 })).Count;
     }
     using var entityRecords = (IDisposable)EntityCapture();
+    entityType.GetMethod("EnableShapeRestore", dataFlags).Invoke(entityRecords,
+        new object[] { boundaryGraph, 50000, 1000000, 64L * 1024 * 1024 });
+    bool RestoreWithShapes() => (bool)entityType.GetMethod("TryRestoreShapes", dataFlags)
+        .Invoke(entityRecords, new[] { boundaryGraph });
+    if ((int)entityType.GetProperty("ShapePilotOwners", dataFlags).GetValue(entityRecords) != 1)
+        throw new Exception("Exact shared native shape was not admitted to the entity writer pilot.");
     var independentRuntime = entityType.GetField("_runtime", dataFlags).GetValue(entityRecords);
     if (RuntimeDifferences(entityRecords) != 0
         || (int)independentRuntime.GetType().GetProperty("SlotCount", dataFlags).GetValue(independentRuntime)
@@ -584,16 +590,24 @@ try
         boundaryList[0] = boundaryItems[1];
         boundaryShapeData[iteration] = 9;
         shapeDataField.SetValue(boundaryShape, (byte[])boundaryShapeData.Clone());
+        boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, iteration + 10);
+        boundaryShape.GetType().GetProperty("minY").SetValue(boundaryShape, iteration - 10);
+        boundaryShape.GetType().GetProperty("width").SetValue(boundaryShape, iteration + 20);
+        boundaryShape.GetType().GetProperty("height").SetValue(boundaryShape, iteration + 30);
+        boundaryShape.GetType().GetProperty("orientation").SetValue(boundaryShape, iteration % 4);
+        boundaryShape.GetType().GetProperty("flipped").SetValue(boundaryShape, true);
+        boundaryShape.GetType().GetField("outside", dataFlags).SetValue(boundaryShape, (byte)71);
         if (EntityDifferences(entityRecords) < 3)
             throw new Exception("Native records lost retained shape storage or member identity.");
-        graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
+        if (!RestoreWithShapes()) throw new Exception("Native shape writer unexpectedly fell back to an unavailable plan.");
         if (EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0
             || !ReferenceEquals(shapeDataField.GetValue(boundaryShape), boundaryShapeData)
             || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
                 .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
             throw new Exception("Native record/legacy oracle mismatch after repeated original-storage restoration.");
     }
-    Console.WriteLine("PASS independent read-only native entity records: complete item base schema, grid/slot order and identities, full shared shape bytes, six legacy restore cycles");
+    Console.WriteLine("PASS independent read-only native entity records: complete item base schema, grid/slot order and identities, full shared shape bytes, six retained-graph restore cycles");
+    Console.WriteLine("PASS native shape entity writer: all eight fields, shared original data identity and every byte, six real entity-write cycles, old graph plus independent runtime and entity oracle agreement");
     Console.WriteLine("PASS native entity boundary audit: distinct zero-uniqueId items, grid/slot membership, native closure aliases, captured-only topology and unchanged legacy restoration");
     if (!((string)entityType.GetProperty("Summary", dataFlags).GetValue(entityRecords)).Contains("windows=1"))
         throw new Exception("Native inventory/window links were not independently recorded.");
@@ -701,6 +715,27 @@ try
             .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
         throw new Exception("Failed entity record capture affected an older checkpoint.");
     Console.WriteLine("PASS native entity records reject filtered coverage and index limits without invalidating retained records or legacy checkpoints");
+    var shapeWriterType = mod.GetType("ProbablyStolenTools.SemanticShapeWriter", true);
+    try
+    {
+        using var unexpected = (IDisposable)shapeWriterType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { boundaryGraph, 50000, 7, 64L * 1024 * 1024 });
+        throw new Exception("Native shape writer accepted incomplete record budget.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    var shapeWriter = (IDisposable)entityType.GetField("_shapeWriter", dataFlags).GetValue(entityRecords);
+    shapeWriter.Dispose();
+    boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 77);
+    try
+    {
+        RestoreWithShapes();
+        throw new Exception("Disposed native entity writer remained writable.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is ObjectDisposedException) { }
+    if ((int)boundaryItems[0].GetType().GetProperty("unitCount").GetValue(boundaryItems[0]) != 77)
+        throw new Exception("Invalid shape writer was checked after old graph business writes.");
+    graphType.GetMethod("Restore", dataFlags).Invoke(boundaryGraph, null);
+    Console.WriteLine("PASS native shape writer limits and disposed-writer preflight leave legacy full restoration available without hidden write retry");
     ((IDisposable)boundaryGraph).Dispose();
     if (RuntimeDifferences(entityRecords) != 0 || EntityDifferences(entityRecords) != 0)
         throw new Exception("Independent native runtime values or entity retention depended on old graph lifetime.");

@@ -703,6 +703,19 @@ namespace ProbablyStolenTools
                     {
                         candidate.SemanticEntities = SemanticEntityShadow.Capture(candidate.Graph,
                             MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
+                        if (Plugin.CfgSemanticShapeRestore?.Value == true)
+                        {
+                            try
+                            {
+                                candidate.SemanticEntities.EnableShapeRestore(candidate.Graph,
+                                    MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
+                            }
+                            catch (Exception e)
+                            {
+                                EventLog.Write($"[SemanticEntities] SHAPE PILOT UNAVAILABLE id={candidate.Id} " +
+                                    "legacyAuthoritative=true: " + e);
+                            }
+                        }
                     }
                     catch (Exception e)
                     {
@@ -908,6 +921,7 @@ namespace ProbablyStolenTools
             int censusObjects = 0, censusSlots = 0;
             int censusTagProbes = 0;
             int finalDifferences = -1;
+            int shapePilotOwners = 0;
             long censusBytes = 0;
             string workload = "";
             var scalarWritesBefore = target.Graph.ScalarWrites;
@@ -986,7 +1000,13 @@ namespace ProbablyStolenTools
                 dialog.HideAllDialogUI();
                 // Never call InterruptDialog: it can execute endAction on the abandoned timeline.
                 int countersBefore = CounterCount();
-                target.Graph.Restore();
+#if MONO
+                if (Plugin.CfgSemanticShapeRestore?.Value == true && target.SemanticEntities != null
+                    && target.SemanticEntities.TryRestoreShapes(target.Graph))
+                    shapePilotOwners = target.SemanticEntities.ShapePilotOwners;
+                else
+#endif
+                    target.Graph.Restore();
                 RNG.random = target.Random;
                 tWrite = timing.ElapsedMilliseconds;
                 phase = "native-refresh";
@@ -1137,6 +1157,7 @@ namespace ProbablyStolenTools
 #endif
                     EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
                         $"releaseOk={releaseError == null} " +
+                        $"shapePilotOwners={shapePilotOwners} " +
                         $"typedComparisons={target.Graph.TypedComparisonCount - typedComparisonsBefore}{comparisonDiagnostic} " +
                         $"referenceComparisons={target.Graph.ReferenceComparisonCount - referenceComparisonsBefore} " +
                         $"ordinaryScalarWrites(checked={target.Graph.ScalarWrites.Checked - scalarWritesBefore.Checked}," +

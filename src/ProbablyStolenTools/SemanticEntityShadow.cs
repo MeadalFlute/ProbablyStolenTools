@@ -13,6 +13,29 @@ namespace ProbablyStolenTools
         private readonly SemanticEntityBoundaryPlan _boundary;
         private readonly SemanticRuntimeSnapshot _runtime;
         private readonly long _runtimeCaptureMs;
+        private SemanticShapeWriter _shapeWriter;
+        private StateGraph.EntityRestorePlan _shapePlan;
+        internal int ShapePilotOwners => _shapeWriter?.Owners.Count ?? 0;
+        internal void EnableShapeRestore(StateGraph graph, int maxObjects, int maxSlots, long maxBytes)
+        {
+            if (_shapeWriter != null) throw new InvalidOperationException("Shape writer already prepared.");
+            var writer = SemanticShapeWriter.Capture(graph, maxObjects,
+                maxSlots - _snapshot.LogicalSlots - _runtime.SlotCount,
+                maxBytes - _snapshot.LogicalBytes - _runtime.ByteCount);
+            try
+            {
+                var plan = graph.PrepareEntityRestore(writer, maxObjects, maxSlots);
+                _shapeWriter = writer;
+                _shapePlan = plan;
+            }
+            catch { writer.Dispose(); throw; }
+        }
+        internal bool TryRestoreShapes(StateGraph graph)
+        {
+            if (_shapePlan == null) return false;
+            _shapePlan.Apply(graph);
+            return true;
+        }
         private readonly int _items, _grids, _slots, _shapes, _windows, _unsupported, _legacySlots, _projectedSlots;
         private readonly int _runtimeSlots, _visualFields;
         private SemanticEntityShadow(SemanticEntitySnapshot snapshot, SemanticEntityBoundaryPlan boundary,
@@ -104,7 +127,7 @@ namespace ProbablyStolenTools
         }
 
         internal string Summary => "scope=exact-item-hierarchy+inventory-fields+window-links+exact-shapes unknownTypes=legacy-only " +
-            $"pruningAllowed=false restoreAllowed=false records={_snapshot.RecordCount} items={_items} grid={_grids} slot={_slots} " +
+            $"pruningAllowed=false recordRestoreAllowed=false runtimeRestoreAllowed=false records={_snapshot.RecordCount} items={_items} grid={_grids} slot={_slots} " +
             $"shapes={_shapes} windows={_windows} unsupported={_unsupported} sequences={_snapshot.SequenceCount} " +
             $"projectedOwnerSlots={_projectedSlots} legacyOwnerSlots={_legacySlots} " +
             $"classifiedRuntimeSlots={_runtimeSlots} excludedVisualFields={_visualFields} " +
@@ -118,6 +141,9 @@ namespace ProbablyStolenTools
             $"runtimeBytes={_runtime.ByteCount} runtimeBlocks={_runtime.BlockCount} runtimeBoundHandles={_runtime.BoundEntities} " +
             $"runtimeCaptureVerifyMs={_runtimeCaptureMs} combinedSlots={_snapshot.LogicalSlots + _runtime.SlotCount} " +
             $"combinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount} " +
+            $"shapePilotOwners={ShapePilotOwners} shapePilotSlots={ShapePilotOwners * 8L} " +
+            $"pilotCombinedSlots={_snapshot.LogicalSlots + _runtime.SlotCount + ShapePilotOwners * 8L} " +
+            $"pilotCombinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount + ShapePilotOwners * (7 * 8L + IntPtr.Size)} " +
             "collectionStorage=legacy-only callbacks=legacy-only tags=legacy-hybrid";
 
         internal void ObserveRestore(long id)
@@ -141,7 +167,11 @@ namespace ProbablyStolenTools
                     $"verifyMs={clock.ElapsedMilliseconds}: " + e);
             }
         }
-        public void Dispose() { _runtime.Dispose(); _boundary.Dispose(); _snapshot.Dispose(); }
+        public void Dispose()
+        {
+            _shapeWriter?.Dispose(); _shapeWriter = null; _shapePlan = null;
+            _runtime.Dispose(); _boundary.Dispose(); _snapshot.Dispose();
+        }
     }
 }
 #endif

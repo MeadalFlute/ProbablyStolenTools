@@ -76,6 +76,16 @@ namespace ProbablyStolenTools
         IStateAccess CreateIndependent();
     }
 
+    internal readonly record struct StateEntityField(string Name, bool IsReference);
+    internal interface IStateEntityWriter
+    {
+        IReadOnlyCollection<IntPtr> Owners { get; }
+        IReadOnlyList<StateEntityField> Fields { get; }
+        void Validate();
+        void RestoreValues();
+        void RestoreReferences();
+    }
+
     internal interface IBudgetedStateDescription
     {
         IReadOnlyList<StateSlot> Describe(IntPtr id, int remainingSlots, long remainingBytes);
@@ -187,6 +197,59 @@ namespace ProbablyStolenTools
         private StateGraph(IStateAccess access, bool captureValues)
         { _access = access; _captureValues = captureValues; }
 
+        internal sealed class EntityRestorePlan
+        {
+            private readonly StateGraph _graph;
+            internal readonly IStateEntityWriter Writer;
+            internal readonly HashSet<IntPtr> Owners;
+            internal EntityRestorePlan(StateGraph graph, IStateEntityWriter writer, HashSet<IntPtr> owners)
+            { _graph = graph; Writer = writer; Owners = owners; }
+            internal void Apply(StateGraph graph)
+            {
+                if (!ReferenceEquals(graph, _graph))
+                    throw new InvalidOperationException("Entity writer belongs to another checkpoint.");
+                graph.RestoreCore(this);
+            }
+        }
+
+        internal EntityRestorePlan PrepareEntityRestore(IStateEntityWriter writer, int maxOwners, int maxSlots)
+        {
+            RequireCheckpoint();
+            if (_access is not IStateOwnerRepairAccess)
+                throw new InvalidOperationException("Snapshot backend does not permit entity owner writes.");
+            if (writer == null || writer.Owners.Count == 0 || writer.Fields.Count == 0
+                || writer.Owners.Count > maxOwners || (long)writer.Owners.Count * writer.Fields.Count > maxSlots)
+                throw new InvalidOperationException("Entity writer metadata is empty or exceeds budget.");
+            var fields = new Dictionary<string, bool>(StringComparer.Ordinal);
+            foreach (var field in writer.Fields)
+            {
+                if (field.Name == null || fields.ContainsKey(field.Name))
+                    throw new InvalidOperationException("Duplicate/invalid entity writer field.");
+                fields.Add(field.Name, field.IsReference);
+            }
+            var owners = new HashSet<IntPtr>();
+            var coverage = new Dictionary<IntPtr, HashSet<string>>();
+            foreach (var id in writer.Owners)
+            {
+                if (!Contains(id) || id == IntPtr.Zero || !owners.Add(id))
+                    throw new InvalidOperationException("Entity writer owner is missing or duplicated.");
+                coverage.Add(id, new HashSet<string>(StringComparer.Ordinal));
+            }
+            VisitCapturedSlots((owner, slot, reference) =>
+            {
+                if (!coverage.TryGetValue(owner, out var seen)) return;
+                if (!fields.TryGetValue(slot.Name, out bool referenceKind) || referenceKind != slot.IsReference
+                    || !seen.Add(slot.Name))
+                    throw new InvalidOperationException("Entity writer coverage/kind differs: " + slot.Name);
+            });
+            if (coverage.Values.Any(seen => seen.Count != fields.Count))
+                throw new InvalidOperationException("Entity writer does not cover complete captured owners.");
+            if (_blocks.Any(block => owners.Contains(block.Owner) && block.Payload is not IStateOwnerRepairBlock))
+                throw new InvalidOperationException("Unknown owner block cannot be replaced by an entity writer.");
+            writer.Validate();
+            return new EntityRestorePlan(this, writer, owners);
+        }
+
         internal static StateGraph Capture(IStateAccess access, IEnumerable<IntPtr> roots,
             int maxObjects = 200000, int maxSlots = 3000000, long maxBytes = 256L * 1024 * 1024)
             => Walk(access, roots, maxObjects, maxSlots, maxBytes, true);
@@ -297,17 +360,27 @@ namespace ProbablyStolenTools
         }
 
         internal void Restore()
+            => RestoreCore(null);
+
+        private void RestoreCore(EntityRestorePlan entities)
         {
             RequireCheckpoint();
             _revision++;
             _access.Validate();
+            entities?.Writer.Validate();
             // All original objects/arrays are retained. Restore their contents first and links second.
             foreach (var e in _entries)
-                if (!e.Slot.IsReference) _access.WriteValue(e.Owner, e.Slot, e.Bytes);
-            foreach (var block in _blocks) block.Payload.RestoreValues();
+                if (!e.Slot.IsReference && (entities == null || !entities.Owners.Contains(e.Owner)))
+                    _access.WriteValue(e.Owner, e.Slot, e.Bytes);
+            foreach (var block in _blocks)
+                if (entities == null || !entities.Owners.Contains(block.Owner)) block.Payload.RestoreValues();
+            entities?.Writer.RestoreValues();
             foreach (var e in _entries)
-                if (e.Slot.IsReference) _access.WriteReference(e.Owner, e.Slot, e.Reference);
-            foreach (var block in _blocks) block.Payload.RestoreReferences();
+                if (e.Slot.IsReference && (entities == null || !entities.Owners.Contains(e.Owner)))
+                    _access.WriteReference(e.Owner, e.Slot, e.Reference);
+            foreach (var block in _blocks)
+                if (entities == null || !entities.Owners.Contains(block.Owner)) block.Payload.RestoreReferences();
+            entities?.Writer.RestoreReferences();
         }
 
         internal IReadOnlyList<string> Differences(int max = 12)
