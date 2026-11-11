@@ -16,13 +16,60 @@ internal static class SemanticEntityBoundaryPlanTests
         public Item Link = null;
         public int Cache = 0;
     }
+    private sealed class UnknownBlock : IStateBlock
+    {
+        private readonly Runtime _target;
+        private readonly Item _link;
+        private readonly int _cache;
+        internal UnknownBlock(Runtime target) { _target = target; _link = target.Link; _cache = target.Cache; }
+        public IntPtr ReferenceAt(StateSlot slot) => ManagedObjects.Id(_link);
+        public void RestoreValues() => throw new Exception("Unapproved block write must not run.");
+        public void RestoreReferences() => throw new Exception("Unapproved block write must not run.");
+        public int CollectDifferences(List<string> result, int max)
+        {
+            int count = (_target.Cache == _cache ? 0 : 1) + (ReferenceEquals(_target.Link, _link) ? 0 : 1);
+            if (count != 0 && result.Count < max) result.Add("unknown-block");
+            return count;
+        }
+    }
+    private sealed class Writer : IStateEntityWriter, IStateEntityPartitionWriter, IDisposable
+    {
+        private readonly (Item Target, int Value, Item Next, object Payload)[] _items;
+        private bool _disposed;
+        internal Action ValuesAction, ReferencesAction;
+        public IReadOnlyCollection<IntPtr> Owners { get; }
+        public IReadOnlyList<StateEntityField> Fields { get; } = new[]
+        {
+            new StateEntityField(Fixture.Name("Value"), false), new StateEntityField(Fixture.Name("Next"), true),
+            new StateEntityField(Fixture.Name("Payload"), true)
+        };
+        public IReadOnlyList<StateEntityField> LegacyFields { get; } =
+            new[] { new StateEntityField(Fixture.Name("Runtime"), true) };
+        internal Writer(params Item[] items)
+        {
+            _items = items.Select(item => (item, item.Value, item.Next, item.Payload)).ToArray();
+            Owners = items.Select(ManagedObjects.Id).ToArray();
+        }
+        public void Validate() { if (_disposed) throw new ObjectDisposedException(nameof(Writer)); }
+        public void RestoreValues()
+        {
+            Validate(); ValuesAction?.Invoke();
+            foreach (var item in _items) item.Target.Value = item.Value;
+        }
+        public void RestoreReferences()
+        {
+            Validate(); ReferencesAction?.Invoke();
+            foreach (var item in _items) { item.Target.Next = item.Next; item.Target.Payload = item.Payload; }
+        }
+        public void Dispose() => _disposed = true;
+    }
     private sealed class Fixture : IDisposable
     {
         internal readonly Item First = new(), Second = new();
         internal readonly Runtime Runtime = new();
         internal readonly StateGraph Graph;
         internal readonly SemanticSlotSchema Schema;
-        internal Fixture()
+        internal Fixture(Action<ManagedStateAccess> configure = null)
         {
             First.Next = Second; Second.Next = First;
             Runtime.Link = First; First.Runtime = Runtime;
@@ -31,6 +78,7 @@ internal static class SemanticEntityBoundaryPlanTests
             Func<Item> callback = () => capturedItem;
             var root = new object[] { First, Second, Runtime, callback };
             var access = new ManagedStateAccess(null, typeof(Item).Assembly.GetName().Name, true, true, true, true);
+            configure?.Invoke(access);
             access.AddRoot(ManagedObjects.Id(root));
             Graph = StateGraph.Capture(access, new[] { ManagedObjects.Id(root), ManagedObjects.Id(First) });
             Schema = new SemanticSlotSchema(new[]
@@ -57,6 +105,217 @@ internal static class SemanticEntityBoundaryPlanTests
     }
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
+        test("unknown runtime blocks remain read-only even when their exact partition coverage matches", () =>
+        {
+            using var f = new Fixture(access => access.ConfigureIndependentBlocks = independent =>
+                independent.BlockCapture = (target, slots) => target is Runtime value ? new UnknownBlock(value) : null);
+            using var boundary = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var writer = new Writer(f.First, f.Second);
+            Throws(() => runtime.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(writer, 100, 1000), 200000, 3000000), check);
+            f.Runtime.Cache = 19; f.First.Value = 17;
+            var runtimeGraph = (StateGraph)typeof(SemanticRuntimeSnapshot).GetField("_graph",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(runtime);
+            Throws(runtimeGraph.Restore, check);
+            check(f.Runtime.Cache == 19 && f.First.Value == 17);
+            f.Graph.Restore();
+            check(runtime.Differences().Count == 0);
+        });
+        test("disposed oracle rejects paired writes while independent runtime diagnostics remain readable", () =>
+        {
+            using var f = new Fixture();
+            using var boundary = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var writer = new Writer(f.First, f.Second);
+            var plan = runtime.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(writer, 100, 1000), 200000, 3000000);
+            f.Graph.Dispose(); f.First.Value = 17; f.Runtime.Cache = 19;
+            try { plan.Apply(f.Graph); throw new Exception("Expected disposed oracle rejection."); }
+            catch (ObjectDisposedException) { check(true); }
+            check(f.First.Value == 17 && f.Runtime.Cache == 19 && runtime.Differences().Count == 1);
+        });
+        test("expired entity boundary rejects before independent runtime or entity writes", () =>
+        {
+            using var f = new Fixture();
+            using var boundary = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var writer = new Writer(f.First, f.Second);
+            var plan = runtime.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(writer, 100, 1000), 200000, 3000000);
+            boundary.Dispose(); f.First.Value = 17; f.Runtime.Cache = 19;
+            try { plan.Apply(f.Graph); throw new Exception("Expected expired boundary rejection."); }
+            catch (ObjectDisposedException) { check(true); }
+            check(f.First.Value == 17 && f.Runtime.Cache == 19);
+            f.Graph.Restore();
+        });
+        test("paired runtime and entity writes restore every field block and original link without old graph writes", () =>
+        {
+            using var f = new Fixture();
+            using var boundary = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var writer = new Writer(f.First, f.Second);
+            var plan = runtime.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(writer, 100, 1000), 200000, 3000000);
+            var data = (object[])f.First.Payload;
+            var original = f.Graph.ScalarWrites;
+            for (int i = 0; i < 6; i++)
+            {
+                f.First.Value = 71; f.First.Next = null; f.First.Runtime = null; f.Second.Payload = data;
+                f.Runtime.Cache = 83; f.Runtime.Link = f.Second;
+                ((byte[])data[1])[2] = 99; ((int[])data[2])[3] = 100;
+                plan.Apply(f.Graph);
+                check(f.Graph.Differences().Count == 0 && runtime.Differences().Count == 0
+                    && ReferenceEquals(f.First.Next, f.Second) && ReferenceEquals(f.Second.Next, f.First)
+                    && ReferenceEquals(f.First.Runtime, f.Runtime) && f.Graph.ScalarWrites == original);
+            }
+        });
+        test("paired partition writes finish all runtime and entity scalars before any references", () =>
+        {
+            using var f = new Fixture();
+            using var boundary = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var writer = new Writer(f.First, f.Second);
+            var plan = runtime.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(writer, 100, 1000), 200000, 3000000);
+            f.First.Value = 77; f.First.Next = null; f.First.Runtime = null; f.Runtime.Cache = 88;
+            writer.ValuesAction = () => check(f.Runtime.Cache == 0 && f.First.Value == 77
+                && f.First.Next == null && f.First.Runtime == null);
+            writer.ReferencesAction = () => check(f.First.Value == 0 && f.First.Next == null
+                && ReferenceEquals(f.First.Runtime, f.Runtime));
+            plan.Apply(f.Graph);
+            check(f.Graph.Differences().Count == 0);
+        });
+        test("disposed entity writer rejects before independent runtime values or blocks change", () =>
+        {
+            using var f = new Fixture();
+            using var boundary = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var writer = new Writer(f.First, f.Second);
+            var plan = runtime.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(writer, 100, 1000), 200000, 3000000);
+            writer.Dispose(); f.First.Value = 17; f.Runtime.Cache = 19;
+            var array = (int[])((object[])f.First.Payload)[2]; array[3] = 99;
+            try { plan.Apply(f.Graph); throw new Exception("Expected disposed writer rejection."); }
+            catch (ObjectDisposedException) { check(true); }
+            check(f.First.Value == 17 && f.Runtime.Cache == 19 && array[3] == 99);
+            f.Graph.Restore();
+            check(f.Graph.Differences().Count == 0);
+        });
+        test("disposed runtime payload rejects before either partition writes and old graph remains usable", () =>
+        {
+            using var f = new Fixture();
+            using var boundary = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var writer = new Writer(f.First, f.Second);
+            var plan = runtime.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(writer, 100, 1000), 200000, 3000000);
+            runtime.Dispose(); f.First.Value = 17; f.Runtime.Cache = 19; f.First.Next = null;
+            try { plan.Apply(f.Graph); throw new Exception("Expected disposed runtime rejection."); }
+            catch (ObjectDisposedException) { check(true); }
+            check(f.First.Value == 17 && f.Runtime.Cache == 19 && f.First.Next == null);
+            f.Graph.Restore();
+            check(f.Graph.Differences().Count == 0);
+        });
+        test("incomplete paired entity coverage rejects without enabling runtime writes then allows proper retry", () =>
+        {
+            using var f = new Fixture();
+            using var boundary = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var partial = new Writer(f.First);
+            Throws(() => runtime.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(partial, 100, 1000), 200000, 3000000), check);
+            var runtimeGraph = (StateGraph)typeof(SemanticRuntimeSnapshot).GetField("_graph",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(runtime);
+            f.Runtime.Cache = 19;
+            Throws(runtimeGraph.Restore, check);
+            check(f.Runtime.Cache == 19);
+            f.Graph.Restore();
+            using var complete = new Writer(f.First, f.Second);
+            var plan = runtime.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(complete, 100, 1000), 200000, 3000000);
+            f.Runtime.Cache = 21; f.First.Value = 31;
+            plan.Apply(f.Graph);
+            check(f.Graph.Differences().Count == 0);
+        });
+        test("overlapping runtime and entity partitions are rejected even with otherwise valid schemas", () =>
+        {
+            using var f = new Fixture();
+            var schema = new SemanticSlotSchema(new[]
+            {
+                (Fixture.Name("Value"), false, SemanticFieldRole.Entity),
+                (Fixture.Name("Next"), true, SemanticFieldRole.Runtime),
+                (Fixture.Name("Runtime"), true, SemanticFieldRole.Runtime),
+                (Fixture.Name("Payload"), true, SemanticFieldRole.Entity)
+            });
+            using var boundary = SemanticEntityBoundaryPlan.Capture(f.Graph,
+                new[] { (ManagedObjects.Id(f.First), schema), (ManagedObjects.Id(f.Second), schema) },
+                ManagedObjects.Get, ManagedObjects.Id, 200000, 3000000);
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var writer = new Writer(f.First, f.Second);
+            Throws(() => runtime.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(writer, 100, 1000), 200000, 3000000), check);
+            check(f.Graph.Differences().Count == 0);
+        });
+        test("paired plans reject other checkpoints even when all retained object identities match", () =>
+        {
+            using var f = new Fixture();
+            using var boundary = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var writer = new Writer(f.First, f.Second);
+            var entities = f.Graph.PrepareEntityRestore(writer, 100, 1000);
+            var plan = runtime.PrepareRestore(f.Graph, entities, 200000, 3000000);
+            using var other = StateGraph.Capture(f.Graph.CreateIndependentAccess(), f.Graph.Objects.Where(f.Graph.IsCapturedRoot));
+            Throws(() => runtime.PrepareRestore(other, other.PrepareEntityRestore(writer, 100, 1000), 200000, 3000000), check);
+            Throws(() => runtime.PrepareRestore(f.Graph, other.PrepareEntityRestore(writer, 100, 1000), 200000, 3000000), check);
+            f.First.Value = 17; f.Runtime.Cache = 19;
+            Throws(() => plan.Apply(other), check);
+            check(f.First.Value == 17 && f.Runtime.Cache == 19);
+            plan.Apply(f.Graph);
+        });
+        test("paired partition metadata budgets reject before writes and preserve later complete preparation", () =>
+        {
+            using var f = new Fixture();
+            using var boundary = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var writer = new Writer(f.First, f.Second);
+            var entities = f.Graph.PrepareEntityRestore(writer, 100, 1000);
+            Throws(() => runtime.PrepareRestore(f.Graph, entities, f.Graph.ObjectCount - 1, f.Graph.SlotCount), check);
+            Throws(() => runtime.PrepareRestore(f.Graph, entities, f.Graph.ObjectCount, f.Graph.SlotCount - 1), check);
+            var plan = runtime.PrepareRestore(f.Graph, entities, f.Graph.ObjectCount, f.Graph.SlotCount);
+            f.First.Value = 17; f.Runtime.Cache = 19;
+            plan.Apply(f.Graph);
+            check(f.Graph.Differences().Count == 0);
+        });
+        test("real paired write errors propagate without hidden full restoration or reference writes", () =>
+        {
+            using var f = new Fixture();
+            using var boundary = f.Capture();
+            using var runtime = SemanticRuntimeSnapshot.Capture(f.Graph, boundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var writer = new Writer(f.First, f.Second);
+            var plan = runtime.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(writer, 100, 1000), 200000, 3000000);
+            writer.ValuesAction = () => throw new InvalidOperationException("Injected entity write failure.");
+            f.First.Value = 17; f.First.Next = null; f.Runtime.Cache = 19;
+            Throws(() => plan.Apply(f.Graph), check);
+            check(f.First.Value == 17 && f.First.Next == null && f.Runtime.Cache == 0
+                && f.Graph.Differences().Count != 0);
+            f.Graph.Restore();
+            check(f.Graph.Differences().Count == 0);
+        });
+        test("paired past and future plans preserve independent values and references over repeated round trips", () =>
+        {
+            using var f = new Fixture();
+            using var pastBoundary = f.Capture();
+            using var past = SemanticRuntimeSnapshot.Capture(f.Graph, pastBoundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var pastWriter = new Writer(f.First, f.Second);
+            var pastPlan = past.PrepareRestore(f.Graph, f.Graph.PrepareEntityRestore(pastWriter, 100, 1000), 200000, 3000000);
+            f.First.Value = 31; f.Runtime.Cache = 41; f.First.Next = f.First;
+            using var futureGraph = StateGraph.Capture(f.Graph.CreateIndependentAccess(), f.Graph.Objects.Where(f.Graph.IsCapturedRoot));
+            using var futureBoundary = SemanticEntityBoundaryPlan.Capture(futureGraph, f.Entities,
+                ManagedObjects.Get, ManagedObjects.Id, 200000, 3000000);
+            using var future = SemanticRuntimeSnapshot.Capture(futureGraph, futureBoundary, 200000, 3000000, 256L * 1024 * 1024);
+            using var futureWriter = new Writer(f.First, f.Second);
+            var futurePlan = future.PrepareRestore(futureGraph, futureGraph.PrepareEntityRestore(futureWriter, 100, 1000), 200000, 3000000);
+            for (int i = 0; i < 6; i++)
+            {
+                pastPlan.Apply(f.Graph);
+                check(f.First.Value == 0 && f.Runtime.Cache == 0 && ReferenceEquals(f.First.Next, f.Second)
+                    && f.Graph.Differences().Count == 0 && past.Differences().Count == 0);
+                futurePlan.Apply(futureGraph);
+                check(f.First.Value == 31 && f.Runtime.Cache == 41 && ReferenceEquals(f.First.Next, f.First)
+                    && futureGraph.Differences().Count == 0 && future.Differences().Count == 0);
+            }
+        });
         test("independent runtime payload covers all remaining slots objects and scoped entity bindings", () =>
         {
             using var f = new Fixture();

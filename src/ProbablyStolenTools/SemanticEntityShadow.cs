@@ -19,6 +19,10 @@ namespace ProbablyStolenTools
         private SemanticInventoryWriter _gridWriter, _slotWriter;
         private readonly Dictionary<int, IStateEntityWriter[]> _writers = new();
         private readonly Dictionary<int, StateGraph.EntityRestorePlan> _restorePlans = new();
+        private StateGraph.PartitionRestorePlan _runtimeRestorePlan;
+        private int _runtimeMask;
+        internal int RuntimePilotSlots => _runtimeRestorePlan == null ? 0 : _runtime.SlotCount;
+        internal (long Checked, long Skipped) RuntimeScalarWrites => _runtime.ScalarWrites;
         internal int ShapePilotOwners => _shapeWriter?.Owners.Count ?? 0;
         internal int WindowPilotOwners => _windowWriter?.Owners.Count ?? 0;
         internal int ItemPilotOwners => _itemWriter?.Owners.Count ?? 0;
@@ -32,6 +36,7 @@ namespace ProbablyStolenTools
             + (_gridWriter?.LogicalBytes ?? 0) + (_slotWriter?.LogicalBytes ?? 0);
         private bool RegisterWriters(StateGraph graph, int bit, IStateEntityWriter[] writers, int maxObjects, int maxSlots)
         {
+            if (_runtimeRestorePlan != null) throw new InvalidOperationException("Runtime partition plan is already frozen.");
             if (_writers.ContainsKey(bit)) throw new InvalidOperationException("Entity writer already prepared.");
             var admitted = writers.Where(writer => writer.Owners.Count != 0).ToArray();
             if (admitted.Length == 0) return false;
@@ -111,11 +116,29 @@ namespace ProbablyStolenTools
         }
         internal bool TryRestoreEntities(StateGraph graph, bool shapes, bool windows, bool items, bool inventories)
         {
-            int mask = (shapes && _shapeWriter != null ? 1 : 0) | (windows && _windowWriter != null ? 2 : 0)
-                | (items && _itemWriter != null ? 4 : 0)
-                | (inventories && (_gridWriter != null || _slotWriter != null) ? 8 : 0);
+            int mask = SelectedMask(shapes, windows, items, inventories);
             if (!_restorePlans.TryGetValue(mask, out var plan)) return false;
             plan.Apply(graph);
+            return true;
+        }
+        private int SelectedMask(bool shapes, bool windows, bool items, bool inventories)
+            => (shapes && _shapeWriter != null ? 1 : 0) | (windows && _windowWriter != null ? 2 : 0)
+                | (items && _itemWriter != null ? 4 : 0)
+                | (inventories && (_gridWriter != null || _slotWriter != null) ? 8 : 0);
+        internal void EnableRuntimeRestore(StateGraph graph, int maxObjects, int maxSlots)
+        {
+            if (_runtimeRestorePlan != null) throw new InvalidOperationException("Runtime restore already prepared.");
+            int mask = _writers.Keys.Aggregate(0, (current, bit) => current | bit);
+            if (!_restorePlans.TryGetValue(mask, out var entities))
+                throw new InvalidOperationException("Complete entity writer group is unavailable.");
+            var plan = _runtime.PrepareRestore(graph, entities, maxObjects, maxSlots);
+            _runtimeMask = mask;
+            _runtimeRestorePlan = plan;
+        }
+        internal bool TryRestoreRuntime(StateGraph graph, bool shapes, bool windows, bool items, bool inventories)
+        {
+            if (_runtimeRestorePlan == null || SelectedMask(shapes, windows, items, inventories) != _runtimeMask) return false;
+            _runtimeRestorePlan.Apply(graph);
             return true;
         }
         private readonly int _items, _grids, _slots, _shapes, _windows, _unsupported, _legacySlots, _projectedSlots;
@@ -209,7 +232,7 @@ namespace ProbablyStolenTools
         }
 
         internal string Summary => "scope=exact-item-hierarchy+inventory-fields+window-links+exact-shapes unknownTypes=legacy-only " +
-            $"pruningAllowed=false recordRestoreAllowed=false runtimeRestoreAllowed=false records={_snapshot.RecordCount} items={_items} grid={_grids} slot={_slots} " +
+            $"pruningAllowed=false recordRestoreAllowed=false runtimeRestoreAllowed={_runtimeRestorePlan != null} records={_snapshot.RecordCount} items={_items} grid={_grids} slot={_slots} " +
             $"shapes={_shapes} windows={_windows} unsupported={_unsupported} sequences={_snapshot.SequenceCount} " +
             $"projectedOwnerSlots={_projectedSlots} legacyOwnerSlots={_legacySlots} " +
             $"classifiedRuntimeSlots={_runtimeSlots} excludedVisualFields={_visualFields} " +
@@ -218,8 +241,8 @@ namespace ProbablyStolenTools
             $"runtimeHandleLinks={_boundary.RuntimeHandleLinks} entityHandleLinks={_boundary.EntityHandleLinks} " +
             $"partition(entity={_boundary.EntitySlots},runtime={_boundary.RuntimeSlots},total={_boundary.TotalSlots}) " +
             $"runtimeSeeds={_boundary.RuntimeSeedCount} runtimeReachable={_boundary.RuntimeReachableObjects} " +
-            "runtimeCut=readonly-shadow productionRuntimeCut=false " +
-            $"runtimePayload=independent-readonly runtimeObjects={_runtime.ObjectCount} runtimeSlots={_runtime.SlotCount} " +
+            $"runtimeCut={(_runtimeRestorePlan == null ? "readonly-shadow" : "partition-write-pilot")} productionRuntimeCut=false " +
+            $"runtimePayload={(_runtimeRestorePlan == null ? "independent-readonly" : "independent-write-pilot")} runtimeObjects={_runtime.ObjectCount} runtimeSlots={_runtime.SlotCount} " +
             $"runtimeBytes={_runtime.ByteCount} runtimeBlocks={_runtime.BlockCount} runtimeBoundHandles={_runtime.BoundEntities} " +
             $"runtimeCaptureVerifyMs={_runtimeCaptureMs} combinedSlots={_snapshot.LogicalSlots + _runtime.SlotCount} " +
             $"combinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount} " +
@@ -228,9 +251,10 @@ namespace ProbablyStolenTools
             $"itemPilotOwners={ItemPilotOwners} itemPilotSlots={_itemWriter?.LogicalSlots ?? 0} " +
             $"inventoryPilotOwners={InventoryPilotOwners} gridPilotOwners={GridPilotOwners} slotPilotOwners={SlotPilotOwners} " +
             $"inventoryPilotSlots={(_gridWriter?.LogicalSlots ?? 0) + (_slotWriter?.LogicalSlots ?? 0)} " +
+            $"runtimePilotSlots={RuntimePilotSlots} " +
             $"pilotCombinedSlots={_snapshot.LogicalSlots + _runtime.SlotCount + PilotSlots} " +
             $"pilotCombinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount + PilotBytes} " +
-            "collectionStorage=legacy-only callbacks=legacy-only tags=legacy-hybrid";
+            "collectionStorage=original-physical callbacks=original-reference tags=hybrid-blocks";
 
         internal void ObserveRestore(long id)
         {
@@ -255,6 +279,7 @@ namespace ProbablyStolenTools
         }
         public void Dispose()
         {
+            _runtimeRestorePlan = null; _runtimeMask = 0;
             _restorePlans.Clear(); _writers.Clear();
             _shapeWriter?.Dispose(); _shapeWriter = null;
             _windowWriter?.Dispose(); _windowWriter = null;

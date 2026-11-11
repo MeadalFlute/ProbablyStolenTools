@@ -70,6 +70,12 @@ namespace ProbablyStolenTools
     internal interface IStateOwnerRepairAccess { }
     internal interface IStateOwnerRepairBlock { }
 
+    // Explicitly gated remaining-partition storage, not permission for owner repair.
+    internal interface IStatePartitionWriteAccess
+    {
+        void ValidatePartitionWrites();
+    }
+
     // New access with its own retention, value tokens and descriptions; never borrow checkpoint lifetime.
     internal interface IIndependentStateAccess
     {
@@ -213,12 +219,76 @@ namespace ProbablyStolenTools
             internal bool Replaces(IntPtr owner, StateSlot slot)
                 => _fields.TryGetValue(owner, out var fields) && fields.Contains(slot.Name);
             internal bool ReplacesBlock(IntPtr owner) => _fields.ContainsKey(owner);
-            internal void Apply(StateGraph graph)
+            internal void RequireGraph(StateGraph graph)
             {
                 if (!ReferenceEquals(graph, _graph))
                     throw new InvalidOperationException("Entity writer belongs to another checkpoint.");
+            }
+            internal void Apply(StateGraph graph)
+            {
+                RequireGraph(graph);
                 graph.RestoreCore(this);
             }
+        }
+
+        internal sealed class PartitionRestorePlan
+        {
+            private readonly StateGraph _oracle, _runtime;
+            private readonly EntityRestorePlan _entities;
+            internal PartitionRestorePlan(StateGraph oracle, StateGraph runtime, EntityRestorePlan entities)
+            { _oracle = oracle; _runtime = runtime; _entities = entities; }
+            internal void Apply(StateGraph oracle)
+            {
+                if (!ReferenceEquals(oracle, _oracle))
+                    throw new InvalidOperationException("Partition restore belongs to another checkpoint.");
+                _oracle.RequireCheckpoint();
+                _runtime.RequireCheckpoint();
+                // Preflight every participant before either partition can write.
+                _oracle._access.Validate();
+                _runtime._access.Validate();
+                ((IStatePartitionWriteAccess)_runtime._access).ValidatePartitionWrites();
+                foreach (var writer in _entities.Writers) writer.Validate();
+                _oracle._revision++;
+                _runtime._revision++;
+                _runtime.RestoreValuesCore(null);
+                foreach (var writer in _entities.Writers) writer.RestoreValues();
+                _runtime.RestoreReferencesCore(null);
+                foreach (var writer in _entities.Writers) writer.RestoreReferences();
+            }
+        }
+
+        internal PartitionRestorePlan PreparePartitionRestore(StateGraph runtime, EntityRestorePlan entities,
+            int maxObjects, int maxSlots)
+        {
+            RequireCheckpoint();
+            if (runtime == null || entities == null || ReferenceEquals(runtime, this))
+                throw new InvalidOperationException("Independent runtime and entity partitions are required.");
+            runtime.RequireCheckpoint();
+            entities.RequireGraph(this);
+            if (_access is not IStateOwnerRepairAccess || runtime._access is not IStatePartitionWriteAccess)
+                throw new InvalidOperationException("Snapshot backend does not permit partition writes.");
+            if (ObjectCount > maxObjects || SlotCount > maxSlots || runtime.SlotCount > maxSlots
+                || !_objects.SetEquals(runtime._objects))
+                throw new InvalidOperationException("Partition object coverage or metadata budget differs.");
+            var remaining = new Dictionary<(IntPtr Owner, StateSlot Slot), IntPtr>();
+            runtime.VisitCapturedSlots((owner, slot, reference) =>
+            {
+                if (!remaining.TryAdd((owner, slot), reference))
+                    throw new InvalidOperationException("Duplicate runtime partition slot.");
+            });
+            VisitCapturedSlots((owner, slot, reference) =>
+            {
+                if (entities.Replaces(owner, slot))
+                {
+                    if (remaining.ContainsKey((owner, slot)))
+                        throw new InvalidOperationException("Entity/runtime partitions overlap: " + slot.Name);
+                }
+                else if (!remaining.Remove((owner, slot), out var saved) || saved != reference)
+                    throw new InvalidOperationException("Runtime partition descriptor/reference coverage differs: " + slot.Name);
+            });
+            if (remaining.Count != 0)
+                throw new InvalidOperationException("Runtime partition contains extra slots.");
+            return new PartitionRestorePlan(this, runtime, entities);
         }
 
         internal EntityRestorePlan PrepareEntityRestore(IStateEntityWriter writer, int maxOwners, int maxSlots)
@@ -400,6 +470,12 @@ namespace ProbablyStolenTools
             if (entities != null)
                 foreach (var writer in entities.Writers) writer.Validate();
             // All original objects/arrays are retained. Restore their contents first and links second.
+            RestoreValuesCore(entities);
+            RestoreReferencesCore(entities);
+        }
+
+        private void RestoreValuesCore(EntityRestorePlan entities)
+        {
             foreach (var e in _entries)
                 if (!e.Slot.IsReference && (entities == null || !entities.Replaces(e.Owner, e.Slot)))
                     _access.WriteValue(e.Owner, e.Slot, e.Bytes);
@@ -407,6 +483,10 @@ namespace ProbablyStolenTools
                 if (entities == null || !entities.ReplacesBlock(block.Owner)) block.Payload.RestoreValues();
             if (entities != null)
                 foreach (var writer in entities.Writers) writer.RestoreValues();
+        }
+
+        private void RestoreReferencesCore(EntityRestorePlan entities)
+        {
             foreach (var e in _entries)
                 if (e.Slot.IsReference && (entities == null || !entities.Replaces(e.Owner, e.Slot)))
                     _access.WriteReference(e.Owner, e.Slot, e.Reference);

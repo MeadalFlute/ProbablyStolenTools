@@ -4,19 +4,21 @@ using System.Linq;
 
 namespace ProbablyStolenTools
 {
-    // Independent value payload for the remaining runtime partition. No restore API.
+    // Independent remaining-partition payload; writes require a complete paired entity plan.
     internal sealed class SemanticRuntimeSnapshot : IDisposable
     {
         private readonly StateGraph _graph;
         private readonly RuntimeAccess _access;
+        private readonly StateGraph _oracle;
         internal int ObjectCount => _graph.ObjectCount;
         internal int SlotCount => _graph.SlotCount;
         internal long ByteCount => _graph.ByteCount;
         internal int BlockCount => _graph.BlockCount;
         internal int BoundEntities => _access.BoundEntities;
+        internal (long Checked, long Skipped) ScalarWrites => _graph.ScalarWrites;
 
-        private SemanticRuntimeSnapshot(StateGraph graph, RuntimeAccess access)
-        { _graph = graph; _access = access; }
+        private SemanticRuntimeSnapshot(StateGraph graph, RuntimeAccess access, StateGraph oracle)
+        { _graph = graph; _access = access; _oracle = oracle; }
 
         internal static SemanticRuntimeSnapshot Capture(StateGraph oracle, SemanticEntityBoundaryPlan boundary,
             int maxObjects, int maxSlots, long maxBytes)
@@ -52,7 +54,7 @@ namespace ProbablyStolenTools
                 if (oracle.Differences(1).Count != 0)
                     throw new InvalidOperationException("Original checkpoint changed during independent runtime capture.");
                 access.CompleteCapture();
-                return new SemanticRuntimeSnapshot(graph, access);
+                return new SemanticRuntimeSnapshot(graph, access, oracle);
             }
             catch
             {
@@ -67,18 +69,51 @@ namespace ProbablyStolenTools
             if (max < 1) throw new ArgumentOutOfRangeException(nameof(max));
             return _graph.Differences(max);
         }
+        internal StateGraph.PartitionRestorePlan PrepareRestore(StateGraph oracle, StateGraph.EntityRestorePlan entities,
+            int maxObjects, int maxSlots)
+        {
+            if (!ReferenceEquals(oracle, _oracle))
+                throw new InvalidOperationException("Runtime payload belongs to another checkpoint.");
+            var plan = oracle.PreparePartitionRestore(_graph, entities, maxObjects, maxSlots);
+            _access.EnableWrites();
+            return plan;
+        }
         public void Dispose() => _graph.Dispose();
 
         private sealed class RuntimeAccess : IStateAccess, IBudgetedStateDescription,
-            IStateValueComparer, IStateReferenceComparer, IStateBlockAccess
+            IStateValueComparer, IStateReferenceComparer, IStateBlockAccess, IStatePartitionWriteAccess,
+            IStateScalarWriteDiagnostics
         {
             private readonly IStateAccess _inner;
             private readonly SemanticEntityBoundaryPlan _boundary;
             private Func<IntPtr, bool> _covered;
             private readonly Dictionary<IntPtr, SemanticEntityBoundaryPlan.Handle> _handles = new();
+            private bool _writesEnabled, _disposed;
+            private bool _storageWritesAllowed;
             internal int BoundEntities => _handles.Count;
             internal RuntimeAccess(IStateAccess inner, SemanticEntityBoundaryPlan boundary, Func<IntPtr, bool> covered)
-            { _inner = inner; _boundary = boundary; _covered = covered; }
+            {
+                _inner = inner; _boundary = boundary; _covered = covered;
+                _storageWritesAllowed = inner is IStateOwnerRepairAccess;
+            }
+            internal void EnableWrites()
+            {
+                if (_disposed) throw new ObjectDisposedException(nameof(RuntimeAccess));
+                if (!_storageWritesAllowed)
+                    throw new InvalidOperationException("Runtime backend or block does not permit storage-only writes.");
+                _writesEnabled = true;
+            }
+            public void ValidatePartitionWrites()
+            {
+                if (_disposed) throw new ObjectDisposedException(nameof(RuntimeAccess));
+                if (!_writesEnabled) throw new InvalidOperationException("Diagnostic runtime payload is read-only.");
+            }
+            private void ValidateSlot(IntPtr id, StateSlot slot)
+            {
+                ValidatePartitionWrites();
+                if (_handles.ContainsKey(id) && !_boundary.IsRuntimeSlot(id, slot.Name))
+                    throw new InvalidOperationException("Entity field cannot be written by runtime partition.");
+            }
             internal void CompleteCapture() => _covered = null;
             public void Retain(IntPtr id)
             {
@@ -111,12 +146,15 @@ namespace ProbablyStolenTools
                 => _inner is IStateReferenceComparer comparer ? comparer.ReferenceMatches(id, slot, captured)
                     : _inner.ReadReference(id, slot) == captured;
             public long ReferenceComparisonCount => (_inner as IStateReferenceComparer)?.ReferenceComparisonCount ?? 0;
+            public (long Checked, long Skipped) ScalarWrites => (_inner as IStateScalarWriteDiagnostics)?.ScalarWrites ?? default;
             public IStateBlock CaptureBlock(IntPtr id, IReadOnlyList<StateSlot> slots)
             {
                 // A full-owner payload must never bypass entity field exclusion.
                 if (_handles.ContainsKey(id) || _inner is not IStateBlockAccess blocks) return null;
                 var block = blocks.CaptureBlock(id, slots);
-                return block == null ? null : new ReadOnlyBlock(block);
+                if (block == null) return null;
+                if (block is not IStateOwnerRepairBlock) _storageWritesAllowed = false;
+                return new GuardedBlock(block, ValidatePartitionWrites);
             }
             public void Validate()
             {
@@ -125,24 +163,32 @@ namespace ProbablyStolenTools
                     _boundary.ValidateHandle(pair.Value, ManagedObjects.Get(pair.Key));
             }
             public void WriteValue(IntPtr id, StateSlot slot, byte[] value)
-                => throw new InvalidOperationException("Diagnostic runtime payload is read-only.");
+            {
+                ValidateSlot(id, slot);
+                _inner.WriteValue(id, slot, value);
+            }
             public void WriteReference(IntPtr id, StateSlot slot, IntPtr value)
-                => throw new InvalidOperationException("Diagnostic runtime payload is read-only.");
+            {
+                ValidateSlot(id, slot);
+                _inner.WriteReference(id, slot, value);
+            }
             public void Dispose()
             {
+                _disposed = true; _writesEnabled = false;
                 _handles.Clear();
                 _covered = null;
                 _inner.Dispose();
             }
         }
-        private sealed class ReadOnlyBlock : IStateBlock
+        private sealed class GuardedBlock : IStateBlock
         {
             private readonly IStateBlock _inner;
-            internal ReadOnlyBlock(IStateBlock inner) => _inner = inner;
+            private readonly Action _validate;
+            internal GuardedBlock(IStateBlock inner, Action validate) { _inner = inner; _validate = validate; }
             public IntPtr ReferenceAt(StateSlot slot) => _inner.ReferenceAt(slot);
             public int CollectDifferences(List<string> result, int max) => _inner.CollectDifferences(result, max);
-            public void RestoreValues() => throw new InvalidOperationException("Diagnostic runtime block is read-only.");
-            public void RestoreReferences() => throw new InvalidOperationException("Diagnostic runtime block is read-only.");
+            public void RestoreValues() { _validate(); _inner.RestoreValues(); }
+            public void RestoreReferences() { _validate(); _inner.RestoreReferences(); }
         }
     }
 }

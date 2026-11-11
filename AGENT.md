@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**323 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**336 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -45,6 +45,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 已部署普通标量免写（19:40）：`Snapshot.SkipUnchangedScalars=true` 仍逐槽读取，只有 null/框架 primitive/enum/decimal 与捕获值精确相同时才省去真实写入，浮点按位比较；自定义 nullable 结构体无条件写入，不新增其 Equals 调用。不同值仍递归复制写回，块、引用、捕获、普查、预检/最终完整校验及 owner/full 回退保持。Session 追加开关，RESTORE 追加本次 ordinaryScalarWrites(checked/skipped)，仅计普通标量调用、不含块/引用。两次原生隔离开关对照写回约快 30-32%，少分配约 1.04 MiB；大量变化样本快约 15.6%但多分配约 1.21 MiB，不代表 Unity 或整次恢复收益。226 项回归及原生兼容通过，待实机，详见 `research/2026-11-11-unchanged-scalar-writes.md`。局部递归改静态递归候选无收益，已撤除。
 
 ### 版本与发布
+
+当前进度：2026-11-12 01:04:53.592 库存补测通过。3捕获/4恢复最终零差异，首节点两次286库存写回和双载荷 MATCH；两次恢复首节点后的四件群拖完成，用户确认无问题。首节点3557 ms（entityRecords2482含runtime1040），后续274/316 ms；恢复中位数685.5 ms，非 A/B、不归因提速。接续新增 `Snapshot.SemanticRuntimeRestore=true` 受限联合写回：仅采样节点、完整启用实体组与独立运行态逐槽无重叠覆盖旧图才准入，首次写回不再由旧图承担，旧完整捕获/预检/最终校验/owner/full修复/视觉顺序保留。关闭必要实体开关走既有实体/旧图路径，实际写错不隐藏重试。336项及原生六轮真实运行态标签/数组/字典/闭包/回调/成员对照通过。待联合运行态首次实机，生产捕获尚未替换，重复诊断暂保留，不是完整后端。详见 `research/2026-11-12-runtime-partition-writes.md`；以下为各历史阶段记录。
 
 最新实机为 2026-11-12 00:54:04.901 库存会话：5 捕获（含手动）/9 恢复最终 diff=0/releaseOk=True，无最终回退；首节点三次实际 inventoryPilotOwners=286（grid107/slot179），连同物品/窗口/形状完整覆盖 78095 Entity 槽，双载荷全部 MATCH。首节点 3084 ms（entityRecords2115，包含 runtime864），其他捕获 263-345 ms，恢复中位数 711 ms，非 A/B、不宣称提速。PSTools 无失败/不可用，Player.log 见启动 TLS/Curl 网络错误，未见快照异常；非默认议价仍未覆盖。用户明确未做回溯后群拖，日志十次群拖均在首次恢复前，不能认定交互全面验收。保持 `ae2ec9c` 部署，无运行时代码变更；先补首节点恢复后 2-4 件群拖、到后续节点再返回并重复，检查成员和贴图碰撞；此缺口补齐前不开放独立运行态写回/替换生产捕获。详见库存阶段 First Live Results。
 
@@ -126,7 +128,7 @@ src/ProbablyStolenTools/           Mod 本体
   SemanticEntitySnapshot.cs / SemanticEntityShadow.cs  独立实体字段/库存成员/完整形状只读记录
   SemanticEntityFieldPlan.cs / SemanticInventorySchemas.cs  精确库存/窗口全字段角色清单及覆盖检查
   SemanticItemSchemas.cs / SemanticSlotCoverage.cs  物品完整继承链及多字位图覆盖检查
-  SemanticEntityBoundaryPlan.cs / SemanticRuntimeSnapshot.cs  节点句柄/入口协议及独立只读运行态载荷
+  SemanticEntityBoundaryPlan.cs / SemanticRuntimeSnapshot.cs  节点句柄/入口协议及独立运行态载荷（受限联合写回）
   SemanticShapeWriter.cs            精确形状实体首次写回试点，保留旧图完整 oracle
   LiquidComposition.cs             成分、纯度、评级、空瓶/容量判定
   AnnotationLabels.cs              原版水质/化学/酿酒语言键与回退文本
@@ -154,7 +156,8 @@ docs/workshop/                     创意工坊文本
 - 普通引用完整比较可由 `IStateReferenceComparer` 许可直接身份比较；ManagedStateAccess 的 `Snapshot.DirectReferenceComparisons` 读取真实存储后，仅与该节点 `_retained` 目标做 ReferenceEquals（null 仍 null），不调用业务 Equals/运算符。全图 Validate 和全部扫描不变，未知后端/禁用仍旧 ID 路径；Capture/Census 引用发现、Tag 块、写回不变。扫描不再仅为比较而登记变化 live 引用的全局 ID，仍完整识别变化；读取/身份异常直接传播。referenceComparisons 是普通引用成功比较调用数，不是新身份数。
 - `Snapshot.SemanticEntityAudit` 仅在每上下文首个采样节点只读扫描旧拓扑，不调用业务 getter、Validate/Restore/Differences，不认证实体独占或覆盖完整。callback 为 delegate/CompilerGenerated 类型元数据启发式，普通目标方法不一定分类；全部其他边仍计数。数组入边不等于独占成员链接，图外/opaque/静态引用未知。禁止从零别名或有限日志批准裁剪、集合重建或实体写回；实体迁移必须另有完整字段覆盖清单、外部句柄协议和旧图 oracle。
 - `Snapshot.SemanticEntityRecords` 每上下文最多尝试一次独立只读记录：精确 GameItemElement/GameItem/GameItemFunc 完整继承链、精确库存完整继承链、PixelWindow 与 GridShapeBuilder 完整字段角色清单/全部 data 字节；保留原对象和引用身份，未知子类 legacy-only。不据 MATCH 裁剪。每个实体/运行态字段必须被旧槽完整覆盖，Visual 必须排除；未知字段/超预算/读取失败只记录诊断失败，完整主图仍权威。采样节点恢复后校验句柄原身份并完整比较记录但不写入，不增加业务重试。CAPTURE entityRecords 单列诊断成本，包含句柄/分区/拓扑重放，不是提速。
-- 实体记录现扩展精确库存完整继承链与精确 PixelWindow 的 Entity/Runtime/Visual manifest，名称/精确类型/完整声明数全部检查，不给未知字段默认分区。Entity/Runtime 必须各有完整旧槽，Visual 必须未进业务图；除已明确保留额外字段的 Item 基类投影外，精确 owner 未知槽即拒绝诊断。Runtime 回调/缓存/标签等仍旧图负责，MATCH 不认证可删；stolenUI、parent、父物品/链接库存等读取真实字段，不调用 ChildStorage/childItems/UncheckedAccept/Expel/Validate。style enum 全宽值保留；现有 VisualState 及实际恢复完全不变。
+- 实体记录现扩展精确库存完整继承链与精确 PixelWindow 的 Entity/Runtime/Visual manifest，名称/精确类型/完整声明数全部检查，不给未知字段默认分区。Entity/Runtime 必须各有完整旧槽，Visual 必须未进业务图；除已明确保留额外字段的 Item 基类投影外，精确 owner 未知槽即拒绝诊断。Runtime 回调/缓存/标签等保留完整物理存储，MATCH 不认证可删；stolenUI、parent、父物品/链接库存等读取真实字段，不调用 ChildStorage/childItems/UncheckedAccept/Expel/Validate。style enum 全宽值保留；现有 VisualState 及实际恢复顺序不变。
+- `Snapshot.SemanticRuntimeRestore` 只允许完整实体组与独立 Runtime 的受限联合首次写回。绑定同一旧 checkpoint，核对全部对象、逐槽完整描述/引用身份及无重叠/缺失覆盖；准备后才允许获许可的普通真实存储和块写入，未知块拒绝。所有实体及两图/句柄/写权限先预检，全部标量先于全部引用；失效或真实写错不隐藏重试。只用捕获时冻结的完整实体组，禁用必要开关走原组合。旧图仍完整捕获、Census/预检/最终读取、owner/full二次修复不变；不得据试点删除旧载荷/诊断或重建集合。RESTORE 的 runtimePilot/runtimePilotSlots 为实际参与，runtimeScalarWrites 单列独立普通标量写入；ordinaryScalarWrites 不再代表两载荷总工作。
 - Mono 普通字段写回不生成委托：需要写入的单字段直接 FieldInfo.SetValue，标量/引用数组元素直接 Array.SetValue；引用字段保留 ReferenceEquals 守卫（不能用 Equals）。`Snapshot.SkipUnchangedScalars=true` 仅对 null/框架 primitive/enum/decimal 的普通槽先读真实存储，按与 ValueEquals 相同的比较语义（浮点按位）免写完全相同值，自定义 nullable 结构体不增加 Equals 调用；配置关闭则无条件写普通标量，配置只影响新节点访问器，关闭后重启。不同值的嵌套结构体和结构体数组保持逐层装箱、递归及父层复制回写。全图 Restore 仍访问全部槽位，普通标量/块标量/普通引用/块引用顺序不变，块不免写；二次写回可按下述 owner 规则筛选，但不能省略完整校验。新读取异常沿原失败流程，不重试无条件写入。五参数 ManagedStateAccess 构造器的 directWrites=false 默认禁用免写，仅为离线/原生夹具保留递归对照，不是新的玩家设置。
 - 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`，默认 **200000 / 3000000 / 256**。
 - 超限跳过本次捕获，释放半成品并保留旧节点；不使用不完整快照，不自动无限加大上限。面板显示失败、提示去重，日志包含实际计数、各上限及来源路径。
@@ -183,7 +186,7 @@ docs/workshop/                     创意工坊文本
 
 写入前：验证目标视觉状态；当前业务图用 `StateGraph.Census` 完整普查（同根、同引用覆盖、逐字段读取、同预算），只为寻找新增物品/窗口，不保存 Entry 或 Mono 值令牌。目标 `Differences()` 完整读取预检仍保留。普查结果禁止 Restore/Differences，失败不写入。
 
-1. 首次完整还原业务图（`StateGraph.Restore`）；原生 Validate/UI 刷新后完整扫描，按 owner 规则第二次还原或回退完整 Restore。
+1. 首次完整还原业务图（采样节点可用完整实体组＋独立运行态联合写回，否则既有实体/`StateGraph.Restore`）；原生 Validate/UI 刷新后完整扫描，按 owner 规则第二次还原或回退完整 Restore。
 2. `foreach (var view in target.Visuals) view.Restore();`
    `VisualState` 保存并还原：父级、`anchorMin/anchorMax`、`pivot`、`sizeDelta`、`anchoredPosition3D`、`localScale`、`localRotation`、激活状态，以及 Image 的 sprite/color/`enabled`/`raycastTarget`。
 3. `RestoreItemGeometry(target)`：按还原后的 `modifiedShape` / `modifiedXOrigin` 调一次原生 `UpdateRectTransform()`，并写回物品正常层与拖拽层的尺寸、锚点和背景原点；若写入后仍与期望不符，直接抛异常（不要静默成功）。

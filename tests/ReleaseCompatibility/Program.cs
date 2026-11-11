@@ -742,6 +742,15 @@ try
     }
     try
     {
+        entityType.GetMethod("EnableRuntimeRestore", dataFlags).Invoke(entityRecords,
+            new object[] { boundaryGraph, 50000, 1000000 });
+        throw new Exception("Incomplete native entity group admitted independent runtime writes.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    if ((int)entityType.GetProperty("RuntimePilotSlots", dataFlags).GetValue(entityRecords) != 0)
+        throw new Exception("Failed native runtime preparation published a partial writer.");
+    try
+    {
         entityType.GetMethod("EnableInventoryRestore", dataFlags).Invoke(entityRecords,
             new object[] { boundaryGraph, 2, 1000000, 64L * 1024 * 1024 });
         throw new Exception("Native inventory family ignored combined owner budget.");
@@ -825,6 +834,60 @@ try
             }
             catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
         }
+    entityType.GetMethod("EnableRuntimeRestore", dataFlags).Invoke(entityRecords,
+        new object[] { boundaryGraph, 50000, 1000000 });
+    bool RestoreWithRuntime(int mask) => (bool)entityType.GetMethod("TryRestoreRuntime", dataFlags).Invoke(entityRecords,
+        new object[] { boundaryGraph, (mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, (mask & 8) != 0 });
+    if ((int)entityType.GetProperty("RuntimePilotSlots", dataFlags).GetValue(entityRecords)
+        != (int)graphType.GetProperty("SlotCount", dataFlags).GetValue(boundaryGraph)
+            - (int)boundaryPlanType.GetProperty("EntitySlots", dataFlags).GetValue(boundaryPlan))
+        throw new Exception("Native runtime write pilot does not cover the complete remaining partition.");
+    var originalScalarWrites = graphType.GetProperty("ScalarWrites", dataFlags).GetValue(boundaryGraph);
+    var originalTagBuckets = (int[])boundaryTagMap.GetType().GetField("_buckets", dataFlags).GetValue(boundaryTagMap);
+    for (int iteration = 0; iteration < 6; iteration++)
+    {
+        boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 71);
+        boundaryItems[0].GetType().GetProperty("parentInventory").SetValue(boundaryItems[0], boundarySlot);
+        boundaryGrid.GetType().GetField("items", dataFlags).SetValue(boundaryGrid, null);
+        boundarySlot.GetType().GetField("currentItem", dataFlags).SetValue(boundarySlot, null);
+        boundaryList.Clear();
+        for (int i = 0; i < 12; i++) boundaryList.Add(boundaryItems[1]);
+        sharedItemTypes.Clear(); sharedItemTypes.Add("changed");
+        boundaryShapeData[5] = 71;
+        shapeDataField.SetValue(boundaryShape, new byte[1]);
+        boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, 81);
+        windowType.GetField("isLocked", dataFlags).SetValue(boundaryWindow, true);
+        windowType.GetField("<openCallback>k__BackingField", dataFlags).SetValue(boundaryWindow, null);
+        windowParents.Clear(); linkedStorage.Clear();
+        boundaryClosure.GetType().GetField("item", dataFlags).SetValue(boundaryClosure, boundaryItems[1]);
+        boundaryTagType.GetField("valueInt", dataFlags).SetValue(boundaryTag, 99);
+        for (int i = 0; i < 12; i++) boundaryTagMap["growth-" + i] = boundaryTag;
+        originalTagBuckets[0] = 99;
+        inventoryDict.SetValue(boundaryGrid, null); inventoryDict.SetValue(boundarySlot, null);
+        inventoryCallback.SetValue(boundaryGrid, neverInvokeInventoryCallback);
+        inventoryCallback.SetValue(boundarySlot, neverInvokeInventoryCallback);
+        boundaryGrid.GetType().GetField("_lastShapeHash", dataFlags).SetValue(boundaryGrid, 123);
+        boundarySlot.GetType().GetField("validateLock", dataFlags).SetValue(boundarySlot, true);
+        // Missing any required family must not touch state through the runtime payload.
+        for (int mask = 0; mask < 15; mask++)
+            if (RestoreWithRuntime(mask) || (int)boundaryItems[0].GetType().GetProperty("unitCount").GetValue(boundaryItems[0]) != 71
+                || (int)boundaryTagType.GetField("valueInt", dataFlags).GetValue(boundaryTag) != 99)
+                throw new Exception("Partial entity selection admitted native runtime writes, mask=" + mask);
+        if (!RestoreWithRuntime(15) || EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0
+            || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                .Invoke(boundaryGraph, new object[] { 12 })).Count != 0
+            || !Equals(graphType.GetProperty("ScalarWrites", dataFlags).GetValue(boundaryGraph), originalScalarWrites)
+            || !ReferenceEquals(shapeDataField.GetValue(boundaryShape), boundaryShapeData) || boundaryShapeData[5] != 5
+            || boundaryList.Count != 2 || !ReferenceEquals(boundaryList[0], boundaryItems[0])
+            || boundaryTagMap.Count != 1 || !boundaryTagMap.Contains("runtime-tag")
+            || !ReferenceEquals(boundaryTagMap.GetType().GetField("_buckets", dataFlags).GetValue(boundaryTagMap), originalTagBuckets)
+            || !ReferenceEquals(windowType.GetField("<openCallback>k__BackingField", dataFlags).GetValue(boundaryWindow), originalWindowCallback))
+            throw new Exception("Native paired entity/runtime restore lost original storage, values, aliases or callback identity.");
+    }
+    var runtimeWrites = entityType.GetProperty("RuntimeScalarWrites", dataFlags).GetValue(entityRecords);
+    if ((long)runtimeWrites.GetType().GetField("Item1").GetValue(runtimeWrites) == 0)
+        throw new Exception("Native independent runtime ordinary write diagnostics did not count actual writes.");
+    Console.WriteLine("PASS native paired entity/runtime writer: incomplete group rejection, six actual independent storage restores, original tag/int blocks and dictionary capacity, callbacks and closure aliases, all partial switch selections rejected without writes, no ordinary oracle writes");
     gridWriter.Dispose(); slotWriter.Dispose();
     boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 77);
     boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, 81);
@@ -835,9 +898,17 @@ try
         throw new Exception("Disposed empty-owner inventory writers bypassed preflight.");
     }
     catch (TargetInvocationException e) when (e.InnerException is ObjectDisposedException) { }
+    boundaryTagType.GetField("valueInt", dataFlags).SetValue(boundaryTag, 99);
+    try
+    {
+        RestoreWithRuntime(15);
+        throw new Exception("Native runtime wrote before disposed inventory preflight.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is ObjectDisposedException) { }
     if ((int)boundaryItems[0].GetType().GetProperty("unitCount").GetValue(boundaryItems[0]) != 77
         || (int)boundaryShape.GetType().GetProperty("minX").GetValue(boundaryShape) != 81
         || !(bool)windowType.GetField("isLocked", dataFlags).GetValue(boundaryWindow)
+        || (int)boundaryTagType.GetField("valueInt", dataFlags).GetValue(boundaryTag) != 99
         || !RestoreWithAllEntities(7) || EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0)
         throw new Exception("Inventory preflight wrote earlier state or damaged inventory-disabled plans.");
     Console.WriteLine("PASS native inventory family budgets, atomic registration, both disposed writers checked before every business write and original writer combinations retained");
@@ -871,8 +942,28 @@ try
             || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
                 .Invoke(singleGraph, new object[] { 12 })).Count != 0)
             throw new Exception("Single-type inventory family lost complete original state: " + rootName);
+        if (hasInventory)
+        {
+            entityType.GetMethod("EnableRuntimeRestore", dataFlags).Invoke(singleRecords,
+                new object[] { singleGraph, 50000, 1000000 });
+            changedField.SetValue(root, true);
+            if (!(bool)entityType.GetMethod("TryRestoreRuntime", dataFlags)
+                    .Invoke(singleRecords, new object[] { singleGraph, false, false, false, true })
+                || (bool)changedField.GetValue(root) || EntityDifferences(singleRecords) != 0 || RuntimeDifferences(singleRecords) != 0)
+                throw new Exception("Native runtime pair unnecessarily required absent entity families: " + rootName);
+        }
+        else
+        {
+            try
+            {
+                entityType.GetMethod("EnableRuntimeRestore", dataFlags).Invoke(singleRecords,
+                    new object[] { singleGraph, 50000, 1000000 });
+                throw new Exception("Empty native writer group admitted runtime writes.");
+            }
+            catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+        }
     }
-    Console.WriteLine("PASS native inventory family admits grid-only and slot-only roots independently, and absent inventories leave ordinary restoration available without writes");
+    Console.WriteLine("PASS native inventory family admits grid-only and slot-only roots and paired runtime independently, absent types do not require switches, and empty groups leave ordinary restoration available without writes");
     itemWriter.Dispose();
     boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, 81);
     windowType.GetField("isLocked", dataFlags).SetValue(boundaryWindow, true);

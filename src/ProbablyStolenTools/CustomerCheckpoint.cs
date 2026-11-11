@@ -755,6 +755,19 @@ namespace ProbablyStolenTools
                                     "legacyAuthoritative=true: " + e);
                             }
                         }
+                        if (Plugin.CfgSemanticRuntimeRestore?.Value == true)
+                        {
+                            try
+                            {
+                                candidate.SemanticEntities.EnableRuntimeRestore(candidate.Graph,
+                                    MaxSnapshotObjects, MaxSnapshotSlots);
+                            }
+                            catch (Exception e)
+                            {
+                                EventLog.Write($"[SemanticEntities] RUNTIME PILOT UNAVAILABLE id={candidate.Id} " +
+                                    "legacyAuthoritative=true: " + e);
+                            }
+                        }
                     }
                     catch (Exception e)
                     {
@@ -964,6 +977,9 @@ namespace ProbablyStolenTools
             int windowPilotOwners = 0;
             int itemPilotOwners = 0;
             int inventoryPilotOwners = 0;
+            bool runtimePilot = false;
+            int runtimePilotSlots = 0;
+            (long Checked, long Skipped) runtimeScalarWrites = default;
             long censusBytes = 0;
             string workload = "";
             var scalarWritesBefore = target.Graph.ScalarWrites;
@@ -971,6 +987,7 @@ namespace ProbablyStolenTools
             long referenceComparisonsBefore = target.Graph.ReferenceComparisonCount;
 #if MONO
             long compareCompileBefore = SnapshotFieldReader.CompareCompileTicks;
+            var runtimeWritesBefore = target.SemanticEntities?.RuntimeScalarWrites ?? default;
 #endif
             Restoring = true;
             float scale = Time.timeScale;
@@ -1043,10 +1060,20 @@ namespace ProbablyStolenTools
                 // Never call InterruptDialog: it can execute endAction on the abandoned timeline.
                 int countersBefore = CounterCount();
 #if MONO
-                if (target.SemanticEntities != null && target.SemanticEntities.TryRestoreEntities(target.Graph,
+                runtimePilot = Plugin.CfgSemanticRuntimeRestore?.Value == true && target.SemanticEntities != null
+                    && target.SemanticEntities.TryRestoreRuntime(target.Graph,
+                        Plugin.CfgSemanticShapeRestore?.Value == true, Plugin.CfgSemanticWindowRestore?.Value == true,
+                        Plugin.CfgSemanticItemRestore?.Value == true, Plugin.CfgSemanticInventoryRestore?.Value == true);
+                if (runtimePilot || (target.SemanticEntities != null && target.SemanticEntities.TryRestoreEntities(target.Graph,
                     Plugin.CfgSemanticShapeRestore?.Value == true, Plugin.CfgSemanticWindowRestore?.Value == true,
-                    Plugin.CfgSemanticItemRestore?.Value == true, Plugin.CfgSemanticInventoryRestore?.Value == true))
+                    Plugin.CfgSemanticItemRestore?.Value == true, Plugin.CfgSemanticInventoryRestore?.Value == true)))
                 {
+                    if (runtimePilot)
+                    {
+                        runtimePilotSlots = target.SemanticEntities.RuntimePilotSlots;
+                        var writes = target.SemanticEntities.RuntimeScalarWrites;
+                        runtimeScalarWrites = (writes.Checked - runtimeWritesBefore.Checked, writes.Skipped - runtimeWritesBefore.Skipped);
+                    }
                     if (Plugin.CfgSemanticShapeRestore?.Value == true)
                         shapePilotOwners = target.SemanticEntities.ShapePilotOwners;
                     if (Plugin.CfgSemanticWindowRestore?.Value == true)
@@ -1210,6 +1237,8 @@ namespace ProbablyStolenTools
                     EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
                         $"releaseOk={releaseError == null} " +
                         $"shapePilotOwners={shapePilotOwners} windowPilotOwners={windowPilotOwners} itemPilotOwners={itemPilotOwners} inventoryPilotOwners={inventoryPilotOwners} " +
+                        $"runtimePilot={runtimePilot} runtimePilotSlots={runtimePilotSlots} " +
+                        $"runtimeScalarWrites(checked={runtimeScalarWrites.Checked},skipped={runtimeScalarWrites.Skipped}) " +
                         $"typedComparisons={target.Graph.TypedComparisonCount - typedComparisonsBefore}{comparisonDiagnostic} " +
                         $"referenceComparisons={target.Graph.ReferenceComparisonCount - referenceComparisonsBefore} " +
                         $"ordinaryScalarWrites(checked={target.Graph.ScalarWrites.Checked - scalarWritesBefore.Checked}," +

@@ -119,3 +119,19 @@ Need a short follow-up using the same deployed build: restore the sampled
 first node, group-drag2-4 items, visit a later node and return, repeat the drag.
 Inspect membership and sprite/collision alignment. No new runtime deployment
 or independent-runtime writes until this interaction gap is checked.
+
+## Post-Restore Group Drag Follow-Up
+
+2026-11-12 01:04:53.592 session, user confirms no problem.
+Three captures and four restores, all final diff=0/releaseOk=True,
+finalFallback=False. Sampled id1 restored twice with286 inventory writers and
+independent entity/runtime MATCH (entity19/19 ms, runtime35/75 ms).
+Four-item drags completed after restoring id1 at01:05:48.334-48.857 and
+01:06:00.878-01:06:01.633, with later-node restores and group drags between.
+No FAILED/UNAVAILABLE. Player.log again has startup TLS/Curl connection errors,
+not a demonstrated snapshot error. The previously pending group-drag check is
+now covered by both user feedback and restore-followed-by-drag logs.
+
+First capture3557 ms (entityRecords2482, including runtime1040), later274/316 ms;
+restores853/590/606/765 ms, median685.5 ms. Non-A/B; no speedup attribution.
+Proceed to independently gated paired runtime writes, not capture replacement.
