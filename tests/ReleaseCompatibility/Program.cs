@@ -63,7 +63,8 @@ foreach (var type in types)
         {
             Type expected;
             if (parameter.Name == "__state") continue;
-            if (parameter.Name == "__instance") expected = target;
+            if (parameter.Name == "__exception") expected = typeof(Exception);
+            else if (parameter.Name == "__instance") expected = target;
             else if (parameter.Name == "__result") expected = original.ReturnType;
             else if (parameter.Name.StartsWith("__") && int.TryParse(parameter.Name.Substring(2), out int index))
                 expected = original.GetParameters()[index].ParameterType;
@@ -100,7 +101,8 @@ var roots = new Dictionary<string, string[]>
     ["GameMaster"] = new[] { "worldTags" },
     ["GameItemElement"] = new[] { "validateLock", "appliedMinX", "appliedMinY",
         "appliedOrientation", "appliedGridSize", "appliedFlipped" },
-    ["ItemMouseDoubleClickHandler"] = new[] { "lastKey" }
+    ["ItemMouseDoubleClickHandler"] = new[] { "lastKey" },
+    ["ItemMultiSelectHandler"] = new[] { "selectedItems" }
 };
 int fields = 0;
 foreach (var root in roots)
@@ -114,6 +116,14 @@ foreach (var root in roots)
     }
 }
 Console.WriteLine($"PASS {hooks} hook targets and {fields} snapshot/private fields");
+var multiSelect = game.GetType("ItemMultiSelectHandler", true);
+foreach (string property in new[] { "HasSelection", "IsGroupDragging" })
+    if (multiSelect.GetProperty(property)?.PropertyType != typeof(bool))
+        throw new Exception("Missing native multi-select property: " + property);
+if (multiSelect.GetMethod("Cancel", Type.EmptyTypes)?.ReturnType != typeof(bool)
+    || multiSelect.GetField("key")?.FieldType.FullName != "UnityEngine.KeyCode")
+    throw new Exception("Native multi-select cancellation/key contract changed.");
+Console.WriteLine("PASS native multi-select gesture and cancellation contracts");
 var loadedNames = System.IO.Directory.GetFiles(managed, "*.dll")
     .Select(Path.GetFileNameWithoutExtension).ToHashSet(StringComparer.OrdinalIgnoreCase);
 game.GetType("ModLoader").GetField("gameAssemblyNames", BindingFlags.Static | BindingFlags.NonPublic)

@@ -188,7 +188,7 @@ namespace ProbablyStolenTools
                 || (mono != null && mono.IsMoving())
                 || store.isHandlingShootout || store.isClientBeingArrested
                 || (ui != null && (ui.isAboutToStartMainDialog || ui.isShootingMode))
-                || (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem)
+                || ItemInteractionBusy()
                 || GameFields.PhoneBusy(PhoneUIManager.Instance);
             if (legitimatelyBusy)
             {
@@ -345,7 +345,7 @@ namespace ProbablyStolenTools
                 && mono != null && !mono.IsMoving() && !store.isHandlingShootout
                 && !store.isClientBeingArrested
                 && StoreUIManager.Instance != null && !StoreUIManager.Instance.isAboutToStartMainDialog
-                && (ItemMouseDragHandler.current == null || !ItemMouseDragHandler.current.IsDraggingItem)
+                && !ItemInteractionBusy()
                 && !GameFields.PhoneBusy(PhoneUIManager.Instance);
             if (!settled) { _settledSince = 0; return; }
             if (_settledSince == 0) { _settledSince = Time.unscaledTime; return; }
@@ -364,6 +364,7 @@ namespace ProbablyStolenTools
             return store != null && store.currentClientInstance != null && store.isClientArrived
                 && (int)store.storeState == 1 && !store.isClientBeingArrested && !store.isHandlingShootout
                 && ui != null && !ui.isShootingMode
+                && !ItemInteractionBusy()
                 && StoreClientMono.Instance != null && !StoreClientMono.Instance.IsMoving()
                 && dialog != null && dialog.currentDialog == null && dialog.isConversationActiveFlag == 0;
         }
@@ -380,8 +381,8 @@ namespace ProbablyStolenTools
             if (_faulted) { PanelNotice.Show("无法建立节点：上次恢复失败，请重新载入游戏", true); return; }
             var store = Plugin.Store();
             if (store == null) { PanelNotice.Show("无法建立节点：商店数据未就绪", true); return; }
-            if (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem)
-            { PanelNotice.Show("无法建立节点：正在拖拽物品", true); return; }
+            if (ItemInteractionBusy())
+            { PanelNotice.Show("无法建立节点：正在框选或拖拽物品", true); return; }
             if (Time.unscaledTime - _lastManualAt < 1.5f) return;
             _lastManualAt = Time.unscaledTime;
             Observe();
@@ -492,7 +493,7 @@ namespace ProbablyStolenTools
                 case "closeArmed": return "正在闭店";
                 case "noClientMono": return "顾客模型未就绪";
                 case "clientMoving": return "顾客正在移动";
-                case "dragging": return "正在拖拽物品";
+                case "dragging": return "正在框选或拖拽物品";
                 case "phoneBusy": return "正在通话";
                 case "differentClient": return "当前顾客不是该节点记录的顾客";
                 default:
@@ -536,7 +537,8 @@ namespace ProbablyStolenTools
                     " cur=" + B(dialog != null && dialog.currentDialog != null) +
                     " conv=" + (dialog == null ? -1 : dialog.isConversationActiveFlag) +
                     " openingDone=" + B(OpeningDialogueDone(store)) +
-                    " pending=" + PendingCallbacks.Count;
+                    " pending=" + PendingCallbacks.Count +
+                    " itemInteraction=" + B(ItemInteractionBusy());
                 if (SettleLog.ShouldWrite(state, Time.unscaledTime, out int suppressed))
                     EventLog.Write("[Customer] settle wait: " + state + " repeatedSuppressed=" + suppressed);
             }
@@ -785,7 +787,7 @@ namespace ProbablyStolenTools
             if (_closeArmed) blockers.Add("closeArmed");
             if (StoreClientMono.Instance == null) blockers.Add("noClientMono");
             else if (StoreClientMono.Instance.IsMoving()) blockers.Add("clientMoving");
-            if (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem) blockers.Add("dragging");
+            if (ItemInteractionBusy()) blockers.Add("dragging");
             if (GameFields.PhoneBusy(phone)) blockers.Add("phoneBusy");
             if (blockers.Count != 0)
             {
@@ -888,6 +890,17 @@ namespace ProbablyStolenTools
 #endif
                 }
                 tPreflight = timing.ElapsedMilliseconds;
+                phase = "selection-reset";
+#if MONO
+                // Native selectedHomes and ghost offsets belong to the abandoned timeline.
+                // Active gestures were refused above; Cancel here only clears a static selection.
+                var selection = ItemMultiSelectHandler.current;
+                if (selection != null && selection.HasSelection)
+                {
+                    selection.Cancel();
+                    EventLog.Write("[Customer] cleared native selection before restore id=" + target.Id);
+                }
+#endif
                 phase = "write";
                 Time.timeScale = 0;
                 wrote = true;
@@ -1071,6 +1084,18 @@ namespace ProbablyStolenTools
                     EventLog.Write($"[Customer] REPAIR FULL FALLBACK id={target.Id} restoreCompleted={completed} " +
                         $"reason=final-diff values=omitted sample=[{reconciliation.FallbackSummary}]");
             }
+        }
+
+        private static bool ItemInteractionBusy()
+        {
+            bool single = ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem;
+#if MONO
+            var multi = ItemMultiSelectHandler.current;
+            return CheckpointItemInteraction.IsBusy(single, multi != null && multi.IsGroupDragging,
+                multi != null && multi.HasSelection, multi != null && Input.GetKey(multi.key));
+#else
+            return single;
+#endif
         }
 
         internal static bool DeferDestroy(GameItemElement item)

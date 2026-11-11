@@ -22,6 +22,7 @@ SnapshotDifferenceSourceTests.Run(Test, Check);
 SnapshotReconciliationTests.Run(Test, Check);
 SnapshotIntArrayTests.Run(Test, Check);
 ItemLayoutTests.Run(Test, Check);
+CheckpointItemInteractionTests.Run(Test, Check);
 ReportRegressionTests.Run(Test, Check);
 AnnotationLocaleTests.Run(Test, Check);
 

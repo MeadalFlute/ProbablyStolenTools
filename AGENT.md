@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**209 项**离线测试；正式版 **55 个** Harmony 挂点、**73 个**快照字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**213 项**离线测试；正式版 **57 个** Harmony 挂点、**74 个**快照/私有字段；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -34,7 +34,9 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 已实施独立的 owner 二次修复阶段：第一次全图写回不变，刷新后完整扫描并恢复变化对象的全部捕获字段；有界计划、后端显式许可、未知/超限全图回退、完整最终校验和一次完成差异后的全图回退均已离线/原生夹具验证。配置 `Snapshot.OwnerReconcile=true`，17:50 会话首次实机日志已检查：5 次捕获、9 次恢复（含手动及重复往返）最终零差异，全部 owners/eligible，无最终回退；二次写回 14-16 ms（上一会话 206-240 ms），整次恢复中位数 773 ms（上一会话 980 ms），非严格 A/B。日志不证明画面正确，非默认议价及实机全图回退未覆盖；第三方 opaque 状态仍不恢复。当前主要成本转为首次全图写回、普查及完整读取，不能据此删除校验或放宽集合重建。详见 `research/2026-11-11-owner-reconciliation.md`。
 
-下一轮已实施独立的完整 `int[]` 载荷：只接受精确、非空、非筛选根的原生 int[]，保存整个数组副本并复制回原数组，不重建字典、不裁剪容量；所有元素仍完整比较，逻辑预算保持每槽 8 字节，Census 不变。配置 `Snapshot.IntArrayBlocks=true`，CAPTURE 新增 intArrayBlocks/intArraySlots，tagBlocks 仍只计标签块。209 项测试及原生标签/桶数组/普通槽位对照通过；隔离 .NET 基准捕获有改善，但分配未下降、不能推算 Unity 收益，首次实机待用户操作。单对象查找缓存原型因基准收益不足已撤除，未部署。详见 `research/2026-11-11-int-array-blocks.md`。
+完整 `int[]` 载荷：只接受精确、非空、非筛选根的原生 int[]，保存整个数组副本并复制回原数组，不重建字典、不裁剪容量；所有元素仍完整比较，逻辑预算保持每槽 8 字节，Census 不变。配置 `Snapshot.IntArrayBlocks=true`，CAPTURE 新增 intArrayBlocks/intArraySlots，tagBlocks 仍只计标签块。18:31 会话 4 次捕获、6 次恢复最终零差异；int 块实际启用，两个节点覆盖 int 块 owner 修复，未最终回退。常规捕获 313-379 ms、首节点 865 ms；恢复中位数 732.5 ms（上一会话 773 ms），非严格 A/B、改善有限，不能推算隔离基准收益。用户同时报告批量拖拽失效，尚不能宣称 UI 全面通过。单对象查找缓存原型已撤除。详见 `research/2026-11-11-int-array-blocks.md`。
+
+框选/批量移动排查：原版 ItemMultiSelectHandler 自带此功能，本 Mod 不重写批量移动。已补单件拖拽、群组拖拽及按键未释放的框选/待拖拽统一门控（自动/闭店/手动捕获及恢复）；静态选区不阻塞建点，回溯通过预检后、业务写入前调用原版 Cancel 清除旧 selectedHomes/高亮，不调用 EndGroupDrag 提交操作。只在群组拖拽开始/结束记录计数和异常，不逐帧打印或吞掉原版异常。当前仅修复已证实的保护缺口，用户报告的确切触发条件/根因仍待复现；先验收交互，再继续载荷优化。详见 `research/2026-11-11-multi-select-rewind.md`。
 
 ### 版本与发布
 
