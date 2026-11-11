@@ -78,7 +78,7 @@ docs/workshop/                     创意工坊文本
 - 捕获后必须跑完整 `Differences()`；差异非空就视为恢复失败，不能再报成功。
 - Mono 标量校验走 `IStateValueComparer`，只比较捕获值，不往节点值表登记新值；float/double 按位比较，保留正负零和 NaN 差别。其他后端仍走原字节比较；差异消息达到上限也必须扫描完整图。
 - `Storage`、`StateGraph.Entry` 是只读值类型；普通字段索引为 `-1`，不能依赖结构体默认值 `0`。
-- `Snapshot.SemanticTagShadow=true` 默认启用标签语义只读实验：每次上下文清空或文件重载后最多尝试捕获一个节点，随节点释放。保留所有禁用/零值标签、共享对象与浮点位模式；字段结构不匹配、超预算或读取异常只记录失败，旧快照仍为权威。**没有语义 Restore/Write API，不裁剪原对象图，不减少原校验，不调用原版保存。此轮增加诊断工作，不是已启用的提速后端。**
+- `Snapshot.SemanticTagShadow=true` 默认启用标签语义只读实验：每次上下文清空或文件重载后最多尝试捕获一个节点，随节点释放。保留所有禁用/零值标签、共享对象与浮点位模式；字段结构不匹配、超预算或读取异常只记录失败，旧快照仍为权威。原版库存等也是 TagSystem 子类，允许其**标签基类字段投影**，子类额外字段仍仅由旧图覆盖；日志明确 `scope=tag-base-fields extraFields=legacy-only` 并给出子类数量及前六种类型。第三方继承链仍拒绝，错误包含实际类型/程序集与旧图来源，不能因原版子类误拒整个样本。**没有语义 Restore/Write API，不裁剪原对象图，不减少原校验，不调用原版保存。此轮增加诊断工作，不是已启用的提速后端。**
 
 ---
 
@@ -232,5 +232,6 @@ docs/workshop/                     创意工坊文本
 - `research/2026-11-11-snapshot-optimization-step6.md`：完整阶段计时、可选类型汇总与本轮停止边界。
 - `research/2026-11-11-snapshot-review-followup.md`：预算/释放异常评审跟进、下午真实游玩阶段分布与测量限制。
 - `research/2026-11-11-semantic-tags-step1.md`：标签语义只读实验、原版字段兼容验证、模型基准及启用写入前的边界。
+- `research/2026-11-11-semantic-tags-live-check.md`：首次实机采样失败、原版子类投影修正及本次真实耗时。
 - `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
 - `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。

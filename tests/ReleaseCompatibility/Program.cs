@@ -340,23 +340,29 @@ var systemType = game.GetType("TagSystem", true);
 var mapType = typeof(Dictionary<,>).MakeGenericType(typeof(string), tagType);
 var tagMap = (System.Collections.IDictionary)Activator.CreateInstance(mapType);
 var tagSystem = Data("TagSystem");
-var secondSystem = Data("TagSystem");
+var secondSystem = Data("GameGridInventory");
+var effectSystem = Data("CombatAbilityEffect");
 var mapField = systemType.GetField("<dict>k__BackingField", dataFlags);
 mapField.SetValue(tagSystem, tagMap);
 mapField.SetValue(secondSystem, tagMap);
+mapField.SetValue(effectSystem, tagMap);
 var tagState = Data("TagState");
+var modifierState = Data("ItemStateModifier");
 object[] tagValues = { false, null, 0, BitConverter.Int32BitsToSingle(unchecked((int)0x80000000)),
     0L, BitConverter.Int64BitsToDouble(unchecked((long)0x7ff8000000000001)), false, "inactive", "Inactive" };
 string[] tagNames = { "valueEnabled", "internalValueString", "valueInt", "valueFloat", "valueLong",
     "valueDouble", "valueBool", "<identifier>k__BackingField", "<identifierName>k__BackingField" };
 var tagFields = tagNames.Select(name => tagType.GetField(name, dataFlags)).ToArray();
-for (int i = 0; i < tagFields.Length; i++) tagFields[i].SetValue(tagState, tagValues[i]);
+foreach (var state in new[] { tagState, modifierState })
+    for (int i = 0; i < tagFields.Length; i++) tagFields[i].SetValue(state, tagValues[i]);
 tagMap.Add("inactive", tagState);
 tagMap.Add("alias", tagState);
 tagMap.Add("null", null);
-var tagRoots = Array.CreateInstance(systemType, 2);
+tagMap.Add("modifier", modifierState);
+var tagRoots = Array.CreateInstance(systemType, 3);
 tagRoots.SetValue(tagSystem, 0);
 tagRoots.SetValue(secondSystem, 1);
+tagRoots.SetValue(effectSystem, 2);
 var tagAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
     .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
 accessType.GetMethod("AddRoot", dataFlags).Invoke(tagAccess, new object[] { Identity(tagRoots), Array.Empty<string>() });
@@ -373,19 +379,34 @@ try
         .Invoke(target, new object[] { 12 })).Count;
     if (Diff(tagGraph, graphType) != 0 || Diff(semantic, semantic.GetType()) != 0)
         throw new Exception("Semantic probing modified native tag data.");
-    if ((int)semantic.GetType().GetProperty("TagCount", dataFlags).GetValue(semantic) != 1
-        || (int)semantic.GetType().GetProperty("EntryCount", dataFlags).GetValue(semantic) != 3)
+    if ((int)semantic.GetType().GetProperty("TagCount", dataFlags).GetValue(semantic) != 2
+        || (int)semantic.GetType().GetProperty("EntryCount", dataFlags).GetValue(semantic) != 4)
         throw new Exception("Semantic adapter dropped disabled, null or aliased entries.");
+    string summary = (string)shadowType.GetProperty("Summary", dataFlags).GetValue(shadow);
+    if (!summary.Contains("scope=tag-base-fields extraFields=legacy-only")
+        || !summary.Contains("derivedSystems=2 derivedStates=1")
+        || !summary.Contains("GameGridInventory:1") || !summary.Contains("ItemStateModifier:1"))
+        throw new Exception("Semantic summary must disclose native subclass projection scope: " + summary);
     object[] changed = { true, "", 42, 0f, 99L, 1d, true, "changed", "Changed" };
-    for (int i = 0; i < tagFields.Length; i++)
-    {
-        tagFields[i].SetValue(tagState, changed[i]);
-        if (Diff(semantic, semantic.GetType()) == 0)
-            throw new Exception("Native semantic reader missed field: " + tagNames[i]);
-        graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
-        if (Diff(semantic, semantic.GetType()) != 0)
-            throw new Exception("Native semantic field did not restore: " + tagNames[i]);
-    }
+    foreach (var state in new[] { tagState, modifierState })
+        for (int i = 0; i < tagFields.Length; i++)
+        {
+            tagFields[i].SetValue(state, changed[i]);
+            if (Diff(semantic, semantic.GetType()) == 0)
+                throw new Exception("Native semantic reader missed field: " + state.GetType().Name + "." + tagNames[i]);
+            graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
+            if (Diff(semantic, semantic.GetType()) != 0)
+                throw new Exception("Native semantic field did not restore: " + tagNames[i]);
+        }
+    var priorityField = modifierState.GetType().GetField("priority", dataFlags);
+    var durationField = effectSystem.GetType().GetField("<duration>k__BackingField", dataFlags);
+    priorityField.SetValue(modifierState, 99);
+    durationField.SetValue(effectSystem, 7);
+    if (Diff(semantic, semantic.GetType()) != 0 || Diff(tagGraph, graphType) == 0)
+        throw new Exception("Subclass extra fields must remain explicitly outside semantic comparison and inside legacy coverage.");
+    graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
+    if ((int)priorityField.GetValue(modifierState) != 0 || (int)durationField.GetValue(effectSystem) != 0)
+        throw new Exception("Legacy restore lost subclass extra fields.");
     for (int round = 0; round < 2; round++)
     {
         for (int i = 0; i < tagFields.Length; i++) tagFields[i].SetValue(tagState, changed[i]);
@@ -397,10 +418,43 @@ try
         graphType.GetMethod("Restore", dataFlags).Invoke(tagGraph, null);
         if (Diff(tagGraph, graphType) != 0 || Diff(semantic, semantic.GetType()) != 0
             || !ReferenceEquals(mapField.GetValue(tagSystem), tagMap)
-            || !ReferenceEquals(mapField.GetValue(secondSystem), tagMap))
+            || !ReferenceEquals(mapField.GetValue(secondSystem), tagMap)
+            || !ReferenceEquals(mapField.GetValue(effectSystem), tagMap))
             throw new Exception("Native tag restore did not match the read-only semantic checkpoint.");
     }
-    Console.WriteLine("PASS installed TagSystem/TagState schema and read-only semantic coverage; shared maps, disabled/null/aliased tags, float bits and repeated legacy restores");
+    // Synthetic third-party subclasses must still fail closed, with an actionable type name.
+    var externalModule = System.Reflection.Emit.AssemblyBuilder.DefineDynamicAssembly(
+        new AssemblyName("SemanticExternalFixture"), System.Reflection.Emit.AssemblyBuilderAccess.Run)
+        .DefineDynamicModule("Fixture");
+    foreach (var parent in new[] { systemType, tagType })
+    {
+        var builder = externalModule.DefineType("External" + parent.Name, TypeAttributes.Public, parent);
+        var constructor = builder.DefineConstructor(MethodAttributes.Public,
+            CallingConventions.Standard, new[] { typeof(string), typeof(string) });
+        var il = constructor.GetILGenerator();
+        il.Emit(System.Reflection.Emit.OpCodes.Ldarg_0);
+        if (parent == tagType)
+        {
+            il.Emit(System.Reflection.Emit.OpCodes.Ldarg_1);
+            il.Emit(System.Reflection.Emit.OpCodes.Ldarg_2);
+        }
+        il.Emit(System.Reflection.Emit.OpCodes.Call, parent.GetConstructor(parent == tagType
+            ? new[] { typeof(string), typeof(string) } : Type.EmptyTypes));
+        il.Emit(System.Reflection.Emit.OpCodes.Ret);
+        var externalType = builder.CreateType();
+        bool refused = false;
+        try
+        {
+            shadowType.GetMethod("CheckNativeType", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { externalType, parent });
+        }
+        catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException
+            && e.InnerException.Message.Contains(externalType.FullName)) { refused = true; }
+        if (!refused) throw new Exception("Third-party tag subtype was not refused: " + externalType.FullName);
+    }
+    if (Diff(tagGraph, graphType) != 0 || Diff(semantic, semantic.GetType()) != 0)
+        throw new Exception("Subtype refusal invalidated retained checkpoints.");
+    Console.WriteLine("PASS installed native tag base-field projection including GameGridInventory/CombatAbilityEffect/ItemStateModifier; extra fields remain legacy-only, external subtypes refused, shared maps and repeated restores intact");
 }
 finally
 {

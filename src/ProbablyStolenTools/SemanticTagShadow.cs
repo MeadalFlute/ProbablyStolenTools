@@ -10,12 +10,28 @@ namespace ProbablyStolenTools
     internal sealed class SemanticTagShadow : IDisposable
     {
         private readonly SemanticTagSnapshot<TagSystem, TagState> _snapshot;
-        private SemanticTagShadow(SemanticTagSnapshot<TagSystem, TagState> snapshot) { _snapshot = snapshot; }
+        private readonly int _derivedSystems, _derivedStates;
+        private readonly string _systemTypes, _stateTypes;
+        private SemanticTagShadow(SemanticTagSnapshot<TagSystem, TagState> snapshot,
+            int derivedSystems, int derivedStates, string systemTypes, string stateTypes)
+        {
+            _snapshot = snapshot;
+            _derivedSystems = derivedSystems; _derivedStates = derivedStates;
+            _systemTypes = systemTypes; _stateTypes = stateTypes;
+        }
+
+        private static void CheckNativeType(Type type, Type baseType)
+        {
+            for (var current = type; current != baseType; current = current.BaseType)
+                if (current == null || current.Assembly != baseType.Assembly)
+                    throw new InvalidOperationException("Semantic tag base-field projection does not cover external type: " +
+                        type.AssemblyQualifiedName);
+        }
 
         internal static SemanticTagValue Read(TagState tag)
         {
-            if (tag.GetType() != typeof(TagState))
-                throw new InvalidOperationException("Semantic tags do not cover TagState subclasses.");
+            CheckNativeType(tag.GetType(), typeof(TagState));
+            // These nonvirtual getters read only TagState storage, even for native subclasses.
             return new SemanticTagValue(tag.valueEnabled, tag.valueString, tag.valueInt,
                 BitConverter.SingleToInt32Bits(tag.valueFloat), tag.valueLong,
                 BitConverter.DoubleToInt64Bits(tag.valueDouble), tag.valueBool, tag.identifier, tag.identifierName);
@@ -34,30 +50,69 @@ namespace ProbablyStolenTools
             CheckSchema(typeof(TagSystem), "<dict>k__BackingField");
             CheckSchema(typeof(TagState), "valueEnabled", "internalValueString", "valueInt", "valueFloat",
                 "valueLong", "valueDouble", "valueBool", "<identifier>k__BackingField", "<identifierName>k__BackingField");
+            int derivedSystems = 0, derivedStates = 0;
+            var systemTypes = new Dictionary<string, int>(StringComparer.Ordinal);
+            var stateTypes = new Dictionary<string, int>(StringComparer.Ordinal);
+            void Count(Dictionary<string, int> types, Type type)
+            {
+                string name = type.FullName;
+                types.TryGetValue(name, out int count);
+                types[name] = count + 1;
+            }
+            string Types(Dictionary<string, int> types) => string.Join(",", types
+                .OrderByDescending(pair => pair.Value).ThenBy(pair => pair.Key, StringComparer.Ordinal)
+                .Take(6).Select(pair => pair.Key + ":" + pair.Value)) +
+                (types.Count > 6 ? ",otherTypes:" + (types.Count - 6) : "");
             IEnumerable<TagSystem> Systems()
             {
                 foreach (var id in graph.Objects)
-                    if (ManagedObjects.Get(id) is TagSystem system) yield return system;
+                {
+                    if (!(ManagedObjects.Get(id) is TagSystem system)) continue;
+                    try { CheckNativeType(system.GetType(), typeof(TagSystem)); }
+                    catch (Exception e)
+                    {
+                        throw new InvalidOperationException(e.Message + " source=" + graph.SourceOf(id), e);
+                    }
+                    if (system.GetType() != typeof(TagSystem)) derivedSystems++;
+                    Count(systemTypes, system.GetType());
+                    yield return system;
+                }
             }
-            var snapshot = SemanticTagSnapshot<TagSystem, TagState>.Capture(Systems(), system =>
+            bool capturing = true;
+            SemanticTagValue ReadState(TagState tag)
             {
-                if (system.GetType() != typeof(TagSystem))
-                    throw new InvalidOperationException("Semantic tags do not cover TagSystem subclasses.");
-                return system.dict;
-            }, Read, maxObjects, maxSlots, maxBytes);
+                SemanticTagValue value;
+                try { value = Read(tag); }
+                catch (Exception e)
+                {
+                    throw new InvalidOperationException(e.Message + " source=" + graph.SourceOf(ManagedObjects.Id(tag)), e);
+                }
+                if (capturing)
+                {
+                    if (tag.GetType() != typeof(TagState)) derivedStates++;
+                    Count(stateTypes, tag.GetType());
+                }
+                return value;
+            }
+            var snapshot = SemanticTagSnapshot<TagSystem, TagState>.Capture(Systems(), system => system.dict,
+                ReadState, maxObjects, maxSlots, maxBytes);
+            capturing = false;
             try
             {
                 snapshot.ValidateCoverage(value => graph.Contains(ManagedObjects.Id(value)));
                 var diff = snapshot.Differences();
                 if (diff.Count != 0) throw new InvalidOperationException("Semantic tag capture changed: " + string.Join(", ", diff));
-                return new SemanticTagShadow(snapshot);
+                return new SemanticTagShadow(snapshot, derivedSystems, derivedStates, Types(systemTypes), Types(stateTypes));
             }
             catch { snapshot.Dispose(); throw; }
         }
 
-        internal string Summary => $"systems={_snapshot.SystemCount} maps={_snapshot.MapCount} " +
+        internal string Summary => "scope=tag-base-fields extraFields=legacy-only " +
+            $"systems={_snapshot.SystemCount} maps={_snapshot.MapCount} " +
             $"entries={_snapshot.EntryCount} states={_snapshot.TagCount} " +
-            $"logicalSlots={_snapshot.LogicalSlots} logicalBytes={_snapshot.LogicalBytes}";
+            $"logicalSlots={_snapshot.LogicalSlots} logicalBytes={_snapshot.LogicalBytes} " +
+            $"derivedSystems={_derivedSystems} derivedStates={_derivedStates} " +
+            $"systemTypes=[{_systemTypes}] stateTypes=[{_stateTypes}]";
 
         internal void ObserveRestore(long id)
         {
