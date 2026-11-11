@@ -1322,6 +1322,171 @@ try
 }
 finally { ((IDisposable)boundaryGraph).Dispose(); }
 
+// Single-pass production candidate: installed exact schemas, separate old oracle, no entity pilot writes.
+var entityBlocksType = mod.GetType("ProbablyStolenTools.SemanticEntityBlocks", true);
+var blockOracleType = mod.GetType("ProbablyStolenTools.SemanticCaptureOracle", true);
+var blockStaticFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+if (entityBlocksType.GetProperty("SchemaFailure", blockStaticFlags).GetValue(null) != null)
+    throw new Exception("Native single-pass entity manifest failed: "
+        + entityBlocksType.GetProperty("SchemaFailure", blockStaticFlags).GetValue(null));
+object BlockAccess(bool enabled)
+{
+    var access = accessType.GetConstructor(dataFlags, null,
+        new[] { typeof(Type), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool) }, null)
+        .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"),
+            "Assembly-CSharp", true, true, true, true });
+    mod.GetType("ProbablyStolenTools.SemanticTagBlock", true).GetMethod("Enable", blockStaticFlags)
+        .Invoke(null, new[] { access });
+    if (enabled) entityBlocksType.GetMethod("Enable", blockStaticFlags).Invoke(null, new[] { access });
+    foreach (var root in boundaryRoots)
+        accessType.GetMethod("AddRoot", dataFlags).Invoke(access, new object[] { Identity(root), Array.Empty<string>() });
+    return access;
+}
+object BlockGraph(object access) => graphType.GetMethod("Capture", blockStaticFlags).Invoke(null,
+    new object[] { access, boundaryRoots.Select(Identity).ToArray(), 50000, 1000000, 64L * 1024 * 1024 });
+IDisposable BlockOracle(object candidate) => (IDisposable)blockOracleType.GetConstructors(dataFlags).Single()
+    .Invoke(new[] { candidate, BlockGraph(BlockAccess(false)) });
+void VerifyBlockOracle(IDisposable oracle) => blockOracleType.GetMethod("VerifyRestore", dataFlags).Invoke(oracle, null);
+var nativeBlockAccess = BlockAccess(true);
+using (var nativeBlockGraph = (IDisposable)BlockGraph(nativeBlockAccess))
+using (var nativeBlockOracle = BlockOracle(nativeBlockGraph))
+{
+    var factory = accessType.GetProperty("EntityBlocks", dataFlags).GetValue(nativeBlockAccess);
+    int blocks = (int)factory.GetType().GetProperty("BlockCount", dataFlags).GetValue(factory);
+    if (blocks != 6 || (int)factory.GetType().GetProperty("FallbackCount", dataFlags).GetValue(factory) != 0)
+        throw new Exception("Native exact entity blocks must cover both items, both inventories, window and shape: " + blocks);
+    var manifests = (System.Collections.IEnumerable)entityBlocksType.GetField("Manifests", blockStaticFlags).GetValue(null);
+    var nativeFields = new List<(object Target, FieldInfo Field, object Value)>();
+    foreach (var blockManifest in manifests)
+    {
+        Type exact = (Type)blockManifest.GetType().GetField("Item1").GetValue(blockManifest);
+        var plans = (Array)blockManifest.GetType().GetField("Item2").GetValue(blockManifest);
+        foreach (var target in boundaryItems.Concat(new[] { boundaryGrid, boundarySlot, boundaryWindow, boundaryShape })
+            .Where(target => target.GetType() == exact))
+            foreach (var plan in plans)
+                foreach (FieldInfo field in (Array)plan.GetType().GetField("Fields", dataFlags).GetValue(plan))
+                {
+                    var role = plan.GetType().GetMethod("RoleOf", dataFlags).Invoke(plan,
+                        new object[] { field.DeclaringType.FullName + "." + field.Name }).ToString();
+                    if (role != "Visual") nativeFields.Add((target, field, field.GetValue(target)));
+                }
+    }
+    var layoutField = game.GetType("GameItemElement").GetField("appliedMinX", dataFlags);
+    int originalLayout = (int)layoutField.GetValue(boundaryItems[0]);
+    for (int iteration = 0; iteration < 6; iteration++)
+    {
+        foreach (var entry in nativeFields)
+        {
+            Type t = entry.Field.FieldType;
+            object changed = !t.IsValueType ? null : t == typeof(bool) ? !(bool)entry.Value
+                : t == typeof(byte) ? (byte)((byte)entry.Value ^ 255)
+                : t == typeof(int) ? (int)entry.Value ^ 12345
+                : t == typeof(long) ? (long)entry.Value ^ long.MinValue
+                : t == typeof(float) ? 0.314159f : t == typeof(double) ? 0.271828d
+                : t.IsEnum ? Enum.ToObject(t, 731) : throw new Exception("Unexercised native scalar " + t);
+            entry.Field.SetValue(entry.Target, changed);
+        }
+        boundaryList.Clear(); boundaryList.Add(boundaryItems[1]);
+        boundaryTagMap.Clear(); boundaryTagMap["different"] = boundaryTag;
+        boundaryShapeData[5] = 99;
+        layoutField.SetValue(boundaryItems[0], 12345);
+        graphType.GetMethod("Restore", dataFlags).Invoke(nativeBlockGraph, null);
+        VerifyBlockOracle(nativeBlockOracle);
+        foreach (var entry in nativeFields)
+        {
+            object actual = entry.Field.GetValue(entry.Target);
+            bool same = entry.Field.FieldType.IsValueType
+                ? actual is float f && entry.Value is float sf
+                    ? BitConverter.SingleToInt32Bits(f) == BitConverter.SingleToInt32Bits(sf) : Equals(actual, entry.Value)
+                : ReferenceEquals(actual, entry.Value);
+            if (!same) throw new Exception("Native single-pass entity lost field " + entry.Field);
+        }
+        if ((int)layoutField.GetValue(boundaryItems[0]) != 12345 || boundaryShapeData[5] != 5
+            || boundaryList.Count != 2 || boundaryTagMap.Count != 1 || !boundaryTagMap.Contains("runtime-tag"))
+            throw new Exception("Native single-pass block changed visual exclusions or original collection storage.");
+    }
+    layoutField.SetValue(boundaryItems[0], originalLayout);
+    var independent = (IDisposable)graphType.GetMethod("CreateIndependentAccess", dataFlags).Invoke(nativeBlockGraph, null);
+    var independentFactory = accessType.GetProperty("EntityBlocks", dataFlags).GetValue(independent);
+    if (ReferenceEquals(factory, independentFactory)
+        || (int)independentFactory.GetType().GetProperty("BlockCount", dataFlags).GetValue(independentFactory) != 0)
+        throw new Exception("Independent single-pass block factory reused another checkpoint's counters or payloads.");
+    using (var independentGraph = (IDisposable)BlockGraph(independent))
+    using (var independentOracle = BlockOracle(independentGraph))
+    {
+        if ((int)independentFactory.GetType().GetProperty("BlockCount", dataFlags).GetValue(independentFactory) != 6)
+            throw new Exception("Independent block composition lost native entity schemas.");
+        VerifyBlockOracle(independentOracle);
+    }
+    boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 29);
+    boundaryItems[0].GetType().GetProperty("parentInventory").SetValue(boundaryItems[0], boundarySlot);
+    boundaryList.Clear(); boundaryList.Add(boundaryItems[1]); boundaryList.Add(boundaryItems[0]);
+    for (int i = 0; i < 12; i++) boundaryTagMap["future-block-" + i] = boundaryTag;
+    using (var future = (IDisposable)BlockGraph(BlockAccess(true)))
+    using (var futureOracle = BlockOracle(future))
+        for (int iteration = 0; iteration < 6; iteration++)
+        {
+            graphType.GetMethod("Restore", dataFlags).Invoke(nativeBlockGraph, null);
+            VerifyBlockOracle(nativeBlockOracle);
+            graphType.GetMethod("Restore", dataFlags).Invoke(future, null);
+            VerifyBlockOracle(futureOracle);
+            if ((int)boundaryItems[0].GetType().GetProperty("unitCount").GetValue(boundaryItems[0]) != 29
+                || boundaryTagMap.Count != 13 || !ReferenceEquals(boundaryList[0], boundaryItems[1]))
+                throw new Exception("Native single-pass two-node storage or member order mixed.");
+        }
+    graphType.GetMethod("Restore", dataFlags).Invoke(nativeBlockGraph, null);
+    VerifyBlockOracle(nativeBlockOracle);
+    Console.WriteLine("PASS native single-pass exact entity blocks: all five schemas/six owners, every Entity/Runtime field, six full mutation restores, independent tag/int factories, visual exclusions and six two-node roundtrips with legacy oracle");
+}
+if (args.Contains("--benchmark-entity-blocks"))
+{
+    var fixture = new List<object>();
+    for (int i = 0; i < 1000; i++)
+    {
+        var benchItem = Data("GameItemElement");
+        var benchShape = Data("GridShapeBuilder");
+        shapeDataField.SetValue(benchShape, new byte[] { 1, 0, 3, 0, 5, 0 });
+        game.GetType("GameItem").GetField("<shape>k__BackingField", dataFlags).SetValue(benchItem, benchShape);
+        fixture.Add(benchItem); fixture.Add(benchShape);
+        fixture.Add(Data("GridShapeBuilder")); fixture.Add(Data("GridShapeBuilder"));
+        fixture.Add(Data("GameGridInventory")); fixture.Add(Data("GameSlotInventory"));
+        fixture.Add(Data("PixelWindow"));
+    }
+    var fixtureRoot = fixture.ToArray();
+    var samples = new Dictionary<bool, List<(double Capture, double Verify, double Restore, long CaptureBytes, long VerifyBytes, long RestoreBytes)>>
+        { [false] = new(), [true] = new() };
+    for (int round = 0; round < 8; round++)
+        foreach (bool enabled in round % 2 == 0 ? new[] { false, true } : new[] { true, false })
+        {
+            var benchBlockAccess = BlockAccess(enabled);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            using var snapshot = (IDisposable)graphType.GetMethod("Capture", blockStaticFlags).Invoke(null,
+                new object[] { benchBlockAccess, new[] { Identity(fixtureRoot) }, 50000, 1000000, 64L * 1024 * 1024 });
+            double capture = clock.Elapsed.TotalMilliseconds;
+            long captureBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+            before = GC.GetAllocatedBytesForCurrentThread(); clock.Restart();
+            for (int pass = 0; pass < 5; pass++)
+                if (((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                    .Invoke(snapshot, new object[] { 12 })).Count != 0)
+                    throw new Exception("Entity block benchmark has unexpected differences.");
+            double verify = clock.Elapsed.TotalMilliseconds / 5;
+            long verifyBytes = (GC.GetAllocatedBytesForCurrentThread() - before) / 5;
+            before = GC.GetAllocatedBytesForCurrentThread(); clock.Restart();
+            for (int pass = 0; pass < 5; pass++) graphType.GetMethod("Restore", dataFlags).Invoke(snapshot, null);
+            double restore = clock.Elapsed.TotalMilliseconds / 5;
+            long restoreBytes = (GC.GetAllocatedBytesForCurrentThread() - before) / 5;
+            if (round != 0) samples[enabled].Add((capture, verify, restore, captureBytes, verifyBytes, restoreBytes));
+        }
+    double BlockMedian(IEnumerable<double> source) { var a = source.OrderBy(x => x).ToArray(); return a[a.Length / 2]; }
+    foreach (bool enabled in new[] { false, true })
+    {
+        var s = samples[enabled];
+        Console.WriteLine(FormattableString.Invariant(
+            $"ENTITY_BLOCK_BENCH runtime=net6-not-Unity blocks={enabled} samples={s.Count} entityOwners=7000 captureMs={BlockMedian(s.Select(x => x.Capture)):F2} verifyMs={BlockMedian(s.Select(x => x.Verify)):F2} restoreMs={BlockMedian(s.Select(x => x.Restore)):F2} captureAllocatedBytes={BlockMedian(s.Select(x => (double)x.CaptureBytes)):F0} verifyAllocatedBytes={BlockMedian(s.Select(x => (double)x.VerifyBytes)):F0} restoreAllocatedBytes={BlockMedian(s.Select(x => (double)x.RestoreBytes)):F0}"));
+    }
+}
+
 // Exercise the read-only semantic adapter against installed game types, without Unity or save APIs.
 var tagType = game.GetType("TagState", true);
 var systemType = game.GetType("TagSystem", true);

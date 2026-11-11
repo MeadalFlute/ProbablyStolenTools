@@ -16,6 +16,8 @@
     <Compile Include="../../src/ProbablyStolenTools/SemanticEntitySnapshot.cs" Link="SemanticEntitySnapshot.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SemanticEntityFieldPlan.cs" Link="SemanticEntityFieldPlan.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SemanticFieldEntityWriter.cs" Link="SemanticFieldEntityWriter.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/SemanticFieldBlock.cs" Link="SemanticFieldBlock.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/SemanticCaptureOracle.cs" Link="SemanticCaptureOracle.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SemanticSlotCoverage.cs" Link="SemanticSlotCoverage.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SemanticEntityBoundaryPlan.cs" Link="SemanticEntityBoundaryPlan.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SemanticRuntimeSnapshot.cs" Link="SemanticRuntimeSnapshot.cs" />

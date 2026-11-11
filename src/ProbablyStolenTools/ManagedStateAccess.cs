@@ -48,6 +48,7 @@ namespace ProbablyStolenTools
         private long _nextValue;
         private static readonly object NullValue = new();
         internal Func<object, IReadOnlyList<StateSlot>, IStateBlock> BlockCapture;
+        internal SemanticFieldBlockFactory EntityBlocks { get; set; }
         internal Action<ManagedStateAccess> ConfigureIndependentBlocks;
         internal Func<object, IReadOnlyList<StateSlot>, bool> CensusValuesProbe;
         internal int CensusValueObjectCount { get; private set; }
@@ -96,6 +97,7 @@ namespace ProbablyStolenTools
         private readonly Type _unityObject;
         private readonly string _gameAssembly;
         private readonly bool _fastReads;
+        internal bool FastReads => _fastReads;
         private readonly bool _reuseArraySchemas;
         private readonly bool _directWrites;
         private readonly bool _intArrayBlocks;

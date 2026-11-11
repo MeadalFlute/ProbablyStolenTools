@@ -29,6 +29,7 @@ SemanticEntityBoundaryPlanTests.Run(Test, Check);
 SemanticCheckpointSamplingTests.Run(Test, Check);
 EntityWriterTests.Run(Test, Check);
 FieldEntityWriterTests.Run(Test, Check);
+SemanticFieldBlockTests.Run(Test, Check);
 SnapshotDifferenceSourceTests.Run(Test, Check);
 SnapshotReconciliationTests.Run(Test, Check);
 SnapshotIntArrayTests.Run(Test, Check);
