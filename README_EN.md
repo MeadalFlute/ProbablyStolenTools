@@ -1,8 +1,8 @@
-﻿# Probably Stolen Tools
+# Probably Stolen Tools
 
 English | [中文](README.md)
 
-A helper mod for **Probably Stolen**, targeting the full release **0.8.15**.
+A helper mod for **Probably Stolen**, targeting the full release **0.9.0**.
 The full release runs Unity 2021.3.45f2 / Mono / x64 (game 0.46D) and provides its own **IMod / Harmony** loader — MelonLoader and BepInEx are not required.
 
 ---
@@ -19,6 +19,13 @@ The full release runs Unity 2021.3.45f2 / Mono / x64 (game 0.46D) and provides i
 - Manual checkpoints created while closed (including the morning state before opening) can be restored.
 - Abandoned future branches are truncated only when the next customer is accepted.
 - Memory checkpoints are released when you leave the shop, the day changes or the scene changes; cross-scene rewinds are not supported.
+- **Since 0.9.0**: customer/manual checkpoints use a hybrid "full object graph + exact entity payload" backend that keeps original object identities, full verification and fail-closed fallback. It is still an in-memory rewind backend, not vanilla save replacement.
+
+### Languages
+
+- Water quality, purity, grade and wine annotations now read the game's native localization keys and follow the selected game language instead of supporting only Chinese/English.
+- Missing entries fall back from the current language table to the English table and then to English text; unknown third-party liquids keep their own names.
+- Settings can independently disable "Water quality labels", "Chemistry assist" and "Wine annotations".
 
 ### Appraisal and information
 
@@ -104,6 +111,7 @@ Requires the `files`, `reflection-external` and `dynamic-code` capabilities; no 
 - Built for the **full release** (Mono); Demo / MelonLoader paths are no longer maintained.
 - Generally compatible with mods that don't modify the same UI or add new data structures to the game.
 - Snapshots walk the game's business object graph, so mods that add a very large object graph **can** make capture fail (the panel then shows a "Damaged" row with the reason).
+- **Forward-compatibility note**: the loader has announced that `dynamic-code` / `reflection-external` will be refused from 2026-12-10. 0.9.0 is only verified for the **current game version**; do not claim next-loader compatibility until the migration lands (see `research/2026-11-12-loader-capability-migration.md`).
 
 ---
 
@@ -156,7 +164,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **373** tests; the release build passes **57** Harmony targets, **76** fields and the official mod scanner. The single-pass entity backend is a candidate awaiting live acceptance. Offline tests are not a substitute for in-game verification.
+Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **373** tests; the release build passes **57** Harmony targets, **76** fields and the official mod scanner. The single-pass entity backend ships with 0.9.0; offline tests are not a substitute for in-game verification.
 
 `Snapshot.SemanticDevelopmentChecks` gates duplicate development snapshots and defaults to false for release. Enabling it adds time and memory to the primary and extra manual sample. Disabling it preserves complete preflight, verification, repair and necessary diagnostics. `Snapshot.SemanticEntityBlocks` controls the new backend. Restart the game after changing these settings.
 
@@ -165,7 +173,7 @@ Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **373**
 ## Versioning
 
 - The single source of truth is `ModVersion` in `release/manifest.xml`.
-- Rule: **major and minor versions are manual; the patch version increments before every `git push`** (for example 0.8.14 → 0.8.15).
+- Rule: **major and minor versions are manual; the patch version increments before every `git push`** (for example 0.8.15 → 0.9.0).
 - README-only changes do not bump the version.
 
 ---

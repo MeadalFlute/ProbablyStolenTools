@@ -1,9 +1,9 @@
-﻿# Probably Stolen Tools — 交接文档
+# Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.8.15**（2026-11-12，单次遍历实体后端已完成开发对照实机，已关闭额外对照并降噪，待发布模式最终短测）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，不再维护。本机旧 Demo 依赖下的非 Mono 编译目前失败，不能宣称兼容通过，详见标签混合载荷记录。
-> 旧版本文档（0.2.1–0.6.0、Demo、性能优化过程）已归档到 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
+> 适用源码：正式版 **0.9.0**（2026-11-12）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
+> 旧版本文档（0.2.1–0.6.0、Demo、早期性能优化过程）归档在 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
-本文只写当前仍然成立的事实。历史细节看 `research/`，实现细节以源码为准。
+本文只写当前仍成立的事实。实现细节以源码为准，阶段记录与实验数据看 `research/`。
 
 ---
 
@@ -22,350 +22,157 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**373 项**离线测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查，另有单次遍历实体/旧图对照、实体投影 schema 原生夹具及顾客路径契约；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
-
-精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
-
-普通字段写回减重已检查 16:56 会话：4 次捕获、6 次恢复最终零差异；同顾客首次恢复中位数约下降 8.4%，仍非严格 A/B。reconcile 热点为第二次全图写回（221-320 ms），几何同步仅 4-6 ms；下一步先诊断刷新后的差异归属，不据 reportedDiff=4 直接跳过或选择性写回。首节点编译仅占 walk 约 10.3%。本轮未记录手动节点，详见 `research/2026-11-11-snapshot-write-fastpath.md`。
-
-差异归属诊断已检查 17:18 会话：5 次捕获、7 次恢复（含手动及重复往返）均成功。每次 reportedDiff=7，已展示的 6 条集中于 cassettePlayer.modifiedState 的标签字典及底层数组；泛型长类型名使字段后缀截断，第七条尚未展示，不能据此直接缩小二次恢复。后续先修正诊断可读性，详见 `research/2026-11-11-reconcile-difference-sources.md`。
-
-诊断可读性已在 17:28 会话通过：6 次捕获、7 次恢复最终零差异。六次仅 cassettePlayer.modifiedState.dict 的 `_buckets/_entries/_count/_version` 变化，另一次手动节点还变了 BargainUIManager.trackedClient；样本全部显示。该会话仍完整二次写回，需 206-240 ms。记录见同一诊断文档。
-
-已实施独立的 owner 二次修复阶段：第一次全图写回不变，刷新后完整扫描并恢复变化对象的全部捕获字段；有界计划、后端显式许可、未知/超限全图回退、完整最终校验和一次完成差异后的全图回退均已离线/原生夹具验证。配置 `Snapshot.OwnerReconcile=true`，17:50 会话首次实机日志已检查：5 次捕获、9 次恢复（含手动及重复往返）最终零差异，全部 owners/eligible，无最终回退；二次写回 14-16 ms（上一会话 206-240 ms），整次恢复中位数 773 ms（上一会话 980 ms），非严格 A/B。日志不证明画面正确，非默认议价及实机全图回退未覆盖；第三方 opaque 状态仍不恢复。当前主要成本转为首次全图写回、普查及完整读取，不能据此删除校验或放宽集合重建。详见 `research/2026-11-11-owner-reconciliation.md`。
-
-完整 `int[]` 载荷：只接受精确、非空、非筛选根的原生 int[]，保存整个数组副本并复制回原数组，不重建字典、不裁剪容量；所有元素仍完整比较，逻辑预算保持每槽 8 字节，Census 不变。配置 `Snapshot.IntArrayBlocks=true`，CAPTURE 新增 intArrayBlocks/intArraySlots，tagBlocks 仍只计标签块。18:31 会话 4 次捕获、6 次恢复最终零差异；int 块实际启用，两个节点覆盖 int 块 owner 修复，未最终回退。常规捕获 313-379 ms、首节点 865 ms；恢复中位数 732.5 ms（上一会话 773 ms），非严格 A/B、改善有限，不能推算隔离基准收益。用户同时报告批量拖拽失效，尚不能宣称 UI 全面通过。单对象查找缓存原型已撤除。详见 `research/2026-11-11-int-array-blocks.md`。
-
-框选/批量移动排查：原版 ItemMultiSelectHandler 自带此功能，本 Mod 不重写批量移动。已补单件拖拽、群组拖拽及按键未释放的框选/待拖拽统一门控（自动/闭店/手动捕获及恢复）；静态选区不阻塞建点，回溯通过预检后、业务写入前调用原版 Cancel 清除旧 selectedHomes/高亮，不调用 EndGroupDrag 提交操作。只在群组拖拽开始/结束记录计数和异常，不逐帧打印或吞掉原版异常。用户已确认恢复可用；18:43 会话回溯前后各 3 次完整群组拖拽，2/4 件均正常结束，无相关异常；一次回溯最终零差异。此次没有命中静态选区清理日志或忙态拒绝，不能据此证明原始触发根因或所有边界已覆盖。详见 `research/2026-11-11-multi-select-rewind.md`。
-
-已部署只读 Census 优化（19:10）：`Snapshot.SemanticTagCensus=true` 对精确 TagState、完整匹配的九字段描述，直接消费同九字段临时值，代替六次通用标量读；三个引用仍逐槽走原身份发现，子类/筛选根/描述或原生结构不匹配走旧路径。捕获载荷、第一次/第二次写回、预检、最终校验不变，无持久值/块进入普查。RESTORE 的 census 追加 exactTagProbes，Session 追加开关。219 项回归、原生覆盖/预算/身份/来源/回退对照通过；两次隔离基准 Census 约快 6-8%、少分配约 1.12 MiB，不推算 Unity 或整次回溯收益。引用数组载荷、值令牌索引表两个原型因收益不稳或捕获/写回退化已完全撤除，未部署。详见 `research/2026-11-11-exact-tag-census.md`，本轮待实机验收。
-
-19:27 会话已检查：5 次捕获、3 次内存恢复（含手动）均成功，exactTagProbes=16212-16782，最终 diff=0，无最终全图回退。Census 中位数 127 ms（18:31 为 127.5 ms），实机未证明提速；整次恢复中位数 697 ms 也不能据非 A/B 样本归因。3 对群组拖拽均在恢复前；恢复后群拖、至少 6 次往返、非默认议价及实机全图回退未覆盖。随后“开业前”文件回溯在原生 OnDisable -> CloseUI -> AudioSource.Play 出现一次空 source 异常，但读档收尾完成；独立记录，不认定为 Census 回归，也不忽略。详见同一普查文档。
-
-已部署普通标量免写（19:40）：`Snapshot.SkipUnchangedScalars=true` 仍逐槽读取，只有 null/框架 primitive/enum/decimal 与捕获值精确相同时才省去真实写入，浮点按位比较；自定义 nullable 结构体无条件写入，不新增其 Equals 调用。不同值仍递归复制写回，块、引用、捕获、普查、预检/最终完整校验及 owner/full 回退保持。Session 追加开关，RESTORE 追加本次 ordinaryScalarWrites(checked/skipped)，仅计普通标量调用、不含块/引用。两次原生隔离开关对照写回约快 30-32%，少分配约 1.04 MiB；大量变化样本快约 15.6%但多分配约 1.21 MiB，不代表 Unity 或整次恢复收益。226 项回归及原生兼容通过，待实机，详见 `research/2026-11-11-unchanged-scalar-writes.md`。局部递归改静态递归候选无收益，已撤除。
+当前基线：**373 项**离线测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
-最新复核：已阅读 DS 的 `research/2026-11-12-semantic-backend-review-ds.md`，接受 `b99864b` 的旧 pilot 恢复 DevelopmentChecks 总门控修复；不额外清理旧节点载荷，按说明重启关闭开发模式即可。关闭开关不立即释放旧载荷，已有节点只读诊断仍可能运行，不能宣传中途切换后立即零诊断成本。N4 正常离店仅隐藏共享 clientGameObject，非必然缺失视图；保留真正缺视图时安全拒绝。N2/N3 无新热点证据先不改，N1 留待兼容迁移补可见性，N5/N6保持。本轮未新增生产逻辑，构建0警告/错误、373项及57挂点/76字段/原生夹具通过；没有针对完整Unity恢复入口执行中途切换专项。部署2026-11-12 03:03:15，备份`out/full-release-deploy-20261112-030315`，DLL SHA256 `3F3D2AACE4554BA8005C1A525C5C6EE0F826275D92E5CDCF8C722225644DA58B`，79存档区文件未变，未改设置/启动游戏/推送，版本0.8.15；待用户短测该门控修复。未来加载器退役能力迁移尚未实现，不将当前HardFlags为空当作前向兼容。详见`research/2026-11-12-semantic-backend-review-followup.md`。
-
-最新收尾：用户确认单次遍历候选看起来正常，要求关闭包括旧阶段在内的冗余测试和日志。02:24:26.305 会话有8次成功捕获/8次恢复，全部最终diff=0、releaseOk=True、owners/eligible，无最终回退/schema失败；首及手动2次捕获/4次恢复独立旧图对照MATCH，所有节点实体块实际启用，29对群拖完成。普通捕获281-378ms、首1652ms（oracle938）、手动1015ms（oracle756），恢复中位636.5ms，非A/B。另一次手动建点在顾客路径未停稳时安全失败（id8，265ms），非零失败会话，不隐藏此记录；非默认议价仍未验收。Player.log含启动TLS网络错误及InventoryScene watchdog，不能归因于快照。
-
-已部署收尾提交 `8b44b02`：默认详细日志关闭；等待状态探测、额外物品几何诊断遍历、顾客frame+2观察、议价字段转储、正常群拖/几何/计数/读者统计转为verbose按需开启。保留主CAPTURE/RESTORE计时/规模/后端、节点清除、拒绝/失败/异常、真实full回退及其差异来源；成功owner修复不再重复输出长来源。旧鉴定/酿酒/自动快进/+5s/+20s观察也降噪，业务历史文件和轮转保留，不默认重复广播事务摘要。完整预检/校验/Census/预算/修复及实际几何/顾客恢复未关闭，离线测试未删。373项回归及原生兼容/新增日志开关独立性夹具通过，57挂点/76字段、扫描HardFlags/Error为空。
-
-最新部署：2026-11-12 02:40:27，备份 `out/full-release-deploy-20261112-024027`，DLL SHA256 `907804B9EF758E3FFBAF03D654AD7AF5778146BF54CD6738205668BF3C19D391`。关闭游戏后部署，部署时78文件未变；随后仅将本机 `Snapshot.SemanticDevelopmentChecks=False`，保留 `SemanticEntityBlocks=True`、`Logging.Verbose=False` 及Debug开关False。旧各pilot/shadow选项True不绕过开发总门控，无重复捕获或旧试点执行。未启动游戏/推送，版本0.8.15。现在等用户重启后短测：首/普通/手动节点往返、恢复后群拖及顾客贴图/成交/送客；应见实体块启用、developmentChecks=False、blockOracle=False/0，无SINGLEPASS对照行，最终diff=0/releaseOk=True。下方为历史阶段。
-
-最新：用户已完成上一轮并休息，要求自主推进到高完成度、不实际推送。01:50:26.494 会话3捕获/8恢复最终diff=0、releaseOk=True、无最终回退；7次独立Entity/Runtime写回和MATCH，首/手动三轮往返、普通节点和回溯后四件群拖通过，顾客即时/frame+2视觉正确。首/手动3129/2103ms、普通299ms，恢复中位710.5ms，非A/B。接续完成单次遍历实体捕获候选：五种已准入精确类型的全部Entity及Runtime字段在主图遍历中保存一次，集合/闭包/其他运行态仍完整物理存储；所有节点启用，不再生成重复实体/独立Runtime载荷和15种计划。未知类型/schema回退旧字段，预算/完整校验/预检/Census/owner与最终full修复/视觉顺序保留。`Snapshot.SemanticEntityBlocks=true`；新增开发总开关`Snapshot.SemanticDevelopmentChecks`，发布默认false，统一门控全部额外shadow/audit/records/pilot。开启时首/后续手动各保留一份独立旧图，核对逐槽拓扑并在真实候选写回后检查；旧oracle从不写入或掩盖错误。本机为待测显式开启，不代表实机已通过。373项及原生全字段、双节点、owner/full修复夹具通过。隔离基准捕获分配少约60%、读取/写回更快，但非Unity，不能宣称整次快照同比例提速。详见 `research/2026-11-12-single-pass-entity-candidate.md`。下方为历史记录。
-
-最新部署：2026-11-12 02:13:12，运行时 `1c81be2`（底层独立提交`fdecc9e`，亦已部署），备份 `out/full-release-deploy-20261112-021312`，DLL SHA256 `8A72D8428C72277E3048651237BFD23D70A81465E12FFB9FC153E4A58821F466`。关闭游戏后部署，部署时78文件未变；随后只向本机`PSTools.settings.xml`增加SemanticEntityBlocks/DevelopmentChecks两项True，XML已验证，其他77文件与部署备份哈希一致；未导入旧设置、未启动游戏，版本0.8.15、未推送。停在新捕获路径实机边界：首/手动三轮往返、普通节点、交易/容器/群拖/顾客视觉，要求SINGLEPASS匹配及完整diff=0；通过后仅关DevelopmentChecks重启，补无重复载荷的发布模式短测。同一DLL无需删代码重编译，安全校验不得关闭；尚不能宣布可推送或纯语义后端完成。
-
-最新反馈：2026-11-12 01:27:42.959 会话 3 捕获/5 恢复最终 diff=0，两个独立采样载荷 MATCH，但用户发现顾客贴图丢失，并称此前已有多次报告，不能把本轮当作画面验收通过或直接归因于双节点。暂停语义后端扩展，先修顾客视觉恢复：补原路径游标/方向/速度的静默恢复、renderer 原身份/完整局部变换链/渲染开关/属性块；先定位再激活，reconcile/fallback 后只重套顾客变换；补 leaveTimeScale 业务字段。路径 seek 暂时屏蔽原回调并 finally 归还，不重播离店/到店，不无条件强制显示。新增每节点捕获/恢复前后及一次 frame+2 的 CustomerVisual 诊断，不逐帧刷日志。347 项及正式版契约/夹具通过，实机待验；此前日志没有视觉诊断，尚未证明具体触发根因。详见 `research/2026-11-12-customer-visual-rewind.md`。下方为此前阶段记录。
-
-最新部署：2026-11-12 01:37:59，顾客视觉修复提交 `06a299e`，备份 `out/full-release-deploy-20261112-013759`，DLL SHA256 `7EB544D0BE3F41E36B037398FCD6DF8B6F6D50F9C49A6C27FAC4643F48FF1B52`。游戏已关闭才部署，78存档文件校验未变，未导入设置/启动游戏，版本0.8.15、未推送。等待顾客离店后回溯、跨顾客/手动节点三轮往返、恢复后等待待机并正常成交/送走/叫下一位及一次群拖；先确认即时与延迟贴图和正常离店行为，再继续后端扩展。
-
-当前最新：2026-11-12 01:18:14.077 联合运行态实机通过，4捕获/7恢复最终diff=0/releaseOk=True，无最终回退；首节点4次实际runtimePilot=True/483607槽、完整78095 Entity槽写回，双载荷全MATCH，恢复后四件群拖完成。首节点3553 ms（entityRecords2643含runtime882），其他315-349 ms，恢复中位数769 ms，非A/B、不归因提速；无FAILED/UNAVAILABLE，Player.log只有启动TLS/Curl网络错误。接续新增 `Snapshot.SemanticManualSample=true`，每上下文首个采样之外，再为首个后续手动节点准备独立载荷，最多两次尝试；失败/淘汰不重试，普通后续节点不扩展。341项及原生两个完整游戏类型节点六轮往返/不同字典容量/成员顺序/跨节点拒绝/释放隔离通过。待双节点实机，旧图/全部校验/修复/视觉及重复诊断保留，额外手动节点也会明显停顿；生产捕获尚未替换。详见 `research/2026-11-12-semantic-two-node-sampling.md`。以下为历史阶段记录。
-
-最新部署：2026-11-12 01:25，运行时提交 `4ec477a`，备份 `out/full-release-deploy-20261112-012544`，DLL SHA256 `EF588489BBDDF266F1C120B2EF0E4B0FEF3FC2566DF1B4A79F0381569CE05F54`。78存档文件校验未变，未导入设置/启动游戏，版本0.8.15，未推送。停止等待双节点实机：先正常建首节点，改变物品/顾客后F9建额外手动节点，两者至少三轮往返并分别群拖，检查各自成员/数量/位置/顾客状态；普通中间节点仍legacy。两个sample=primary/manual-probe都应MATCH、实际runtimePilot=True，最终diff=0。额外手动节点有诊断停顿；此验收前不扩大采样、替换生产捕获或移除诊断。
-
-当前进度：2026-11-12 01:04:53.592 库存补测通过。3捕获/4恢复最终零差异，首节点两次286库存写回和双载荷 MATCH；两次恢复首节点后的四件群拖完成，用户确认无问题。首节点3557 ms（entityRecords2482含runtime1040），后续274/316 ms；恢复中位数685.5 ms，非 A/B、不归因提速。接续新增 `Snapshot.SemanticRuntimeRestore=true` 受限联合写回：仅采样节点、完整启用实体组与独立运行态逐槽无重叠覆盖旧图才准入，首次写回不再由旧图承担，旧完整捕获/预检/最终校验/owner/full修复/视觉顺序保留。关闭必要实体开关走既有实体/旧图路径，实际写错不隐藏重试。336项及原生六轮真实运行态标签/数组/字典/闭包/回调/成员对照通过。待联合运行态首次实机，生产捕获尚未替换，重复诊断暂保留，不是完整后端。详见 `research/2026-11-12-runtime-partition-writes.md`；以下为各历史阶段记录。
-
-最新部署：2026-11-12 01:15，运行时提交 `7a35d27`，备份 `out/full-release-deploy-20261112-011552`，DLL SHA256 `CF99A5648C9774735D1559F898DC9DF926145ECB7E533608D1FEE30B77227DF5`。78存档文件校验未变，未导入设置/启动游戏，版本0.8.15，未推送。停止等待联合运行态首次实机：容器/柜台/单槽间移动、旋转/买卖、关开窗口，后续及手动节点，至少三次往返首节点并恢复后群拖；检查成员/数量/锁/顾客/贴图碰撞。仅采样节点 runtimePilot=True/runtimePilotSlots>0，其他False/0，最终diff=0、双载荷MATCH；此验收前不替换生产捕获或移除诊断。
-
-最新实机为 2026-11-12 00:54:04.901 库存会话：5 捕获（含手动）/9 恢复最终 diff=0/releaseOk=True，无最终回退；首节点三次实际 inventoryPilotOwners=286（grid107/slot179），连同物品/窗口/形状完整覆盖 78095 Entity 槽，双载荷全部 MATCH。首节点 3084 ms（entityRecords2115，包含 runtime864），其他捕获 263-345 ms，恢复中位数 711 ms，非 A/B、不宣称提速。PSTools 无失败/不可用，Player.log 见启动 TLS/Curl 网络错误，未见快照异常；非默认议价仍未覆盖。用户明确未做回溯后群拖，日志十次群拖均在首次恢复前，不能认定交互全面验收。保持 `ae2ec9c` 部署，无运行时代码变更；先补首节点恢复后 2-4 件群拖、到后续节点再返回并重复，检查成员和贴图碰撞；此缺口补齐前不开放独立运行态写回/替换生产捕获。详见库存阶段 First Live Results。
-
-00:39:03.759 物品阶段已检查：6 捕获（含手动）/9 恢复最终 diff=0/releaseOk=True，无最终回退；首节点三次实际写回 953 物品/101 窗口/2966 形状，独立实体/运行态全部 MATCH，恢复后三件群拖完成。首节点 2681 ms，其中 entityRecords=1730/runtimeCaptureVerifyMs=1009（包含关系），其他捕获 287-422 ms；恢复中位数 698 ms，非 A/B，不宣称提速。PSTools 无失败/不可用，Player.log 仅原生 ModTrustList 启动 TLS 警告；非默认议价仍未覆盖。详见物品阶段记录。
-
-接续库存实体写回：`Snapshot.SemanticInventoryRestore=true`，采样节点精确 GameGridInventory/GameSlotInventory 及完整继承链 Entity 字段作为同组原子注册，恢复原成员/父级/形状/借用窗口引用和锁；回调、标签字典、缓存与集合物理存储继续旧图，不调用库存业务方法。四类开关最多 15 个非空预验证组合，缺失类型不参与，失败保留先前组合；完整旧图/校验/owner/full 修复/视觉顺序不变。323 项及原生 30 轮全部组合、完整字段、预算、原子失败、失效预检及仅格子/仅单槽/无库存通过。五种已准入精确类型的 Entity 写回覆盖至此补齐，但仅采样节点，独立运行态仍只读、生产捕获未替换，不是完整后端。待库存首次实机，详见 `research/2026-11-12-inventory-entity-writes.md`。
-
-最新部署：2026-11-12 00:51，运行时提交 `ae2ec9c`，备份 `out/full-release-deploy-20261112-005125`，DLL SHA256 `82CC372580C54DBA8ACA1DEFB3FCD7C66F89B6C4C243F9D1AF41EC7D91DAAEC9`。78 存档文件校验不变，未导入设置/启动游戏，版本保持 0.8.15，未推送。停止等待库存首次实机：容器/柜台/单槽间移动、买卖、关闭重开容器窗口、手动及后续节点，至少三次返回首节点，恢复后群拖；检查成员/顺序/锁/窗口/贴图碰撞，首节点 inventoryPilotOwners>0，其他节点 0，最终 diff=0/双载荷 MATCH。此验收前不开放独立运行态写回或替换生产捕获。
-
-00:23:52 会话窗口阶段已检查：6 捕获（含手动）/7 恢复最终 diff=0/releaseOk=True，无最终回退；首节点三次 windowPilotOwners=101/shapePilotOwners=2966 和双载荷 MATCH，恢复后四件群拖正常，用户确认完成。首节点 2156 ms，其中 entityRecords=1207/runtimeCaptureVerifyMs=794，其他捕获 287-369 ms；恢复中位数 699 ms，非 A/B，不宣称提速。PSTools 无失败/不可用，Player.log 仅见原生 ModTrustList 启动网络异常，不归因于快照；非默认议价仍未覆盖。
-
-接续第 4 步精确 GameItemElement 完整继承链 Entity 字段写回：`Snapshot.SemanticItemRestore=true`，仅采样节点，恢复原对象的归属/数量/价值/形状/状态/特征与类型列表引用/描述与窗口关系；全部物品回调和集合物理存储继续旧图，六个几何缓存继续排除。窗口和物品共享严格字段写回器，支持字段位级比较、保活/原身份、合并预算，不调用 getter/setter/交易/库存方法或构造替代实体。三类写回器预先准备最多 7 种非空组合，注册失败不改变旧组合；完整旧图、校验、owner/full 修复、视觉顺序及诊断保留。323 项和原生 14 轮全部开关组合/全物品业务字段/共享列表/失效预检通过；待首次物品写回实机。库存实体、独立运行态仍未写回，生产捕获未替换，不能称完整后端。详见 `research/2026-11-12-item-entity-writes.md`。
-
-物品阶段部署：2026-11-12 00:37，运行时提交 `31d14b4`，备份 `out/full-release-deploy-20261112-003705`，DLL SHA256 `B64FB73A5C531DFB673550F50132E10C19443D39F1CD04DCDA9D0DC008590506`。78 存档文件校验未变，未导入设置/启动游戏，版本仍 0.8.15，未推送。已完成上述物品首次实机，接续库存阶段；此后仍不开放独立运行态写回或删除旧捕获。
-
-00:05 会话形状写回已检查：5 捕获/6 恢复最终 diff=0/releaseOk=True，首节点三次实际 shapePilotOwners=2966，三次实体/运行态 MATCH，恢复后四件群拖正常；用户确认完成。首节点 2119 ms，其中 entityRecords=1216 / runtimeCaptureVerifyMs=871，后续 254-362 ms，仍是过渡诊断开销。用户明确接受开发期成本，待后端完成后移除重复诊断，不删除必要恢复保护。
-
-接续第 4 步窗口实体写回：`Snapshot.SemanticWindowRestore=true`，仅采样节点，对精确 PixelWindow 的完整 Entity 字段独立记录并直接恢复真实字段；Runtime 回调、focusStamp、headerButtons 继续旧图，Visual 不入业务图。写回协议新增完整 Entity/Legacy 字段分区与多写回器组合，必须与旧 owner 全槽精确一致，禁止部分块替换；所有写回器先预检，全部标量先于全部引用。保留完整旧捕获、校验、owner/full 修复和视觉顺序，不重建列表、不触发开关窗回调。312 项及原生全部业务字段/负零/集合别名/组合与单独开关/释放前拒绝通过；待本轮实机。物品/库存实体及独立运行态尚未正式写回，不是完整后端。详见 `research/2026-11-12-window-entity-writes.md`。
-
-窗口阶段部署：2026-11-12 00:22，运行时提交 `69f20cd`，备份 `out/full-release-deploy-20261112-002237`，DLL SHA256 `02BE83621A1A89AB0CF9B858C2C7BEF35216D38BE841ECD85FB4C860A3171C5D`。78 存档文件校验未变，未导入设置/启动游戏，版本 0.8.15，未推送。已完成上述 00:23:52 实机，接续物品实体写回阶段。
-
-23:52 会话独立运行态已通过：6 捕获（含手动）/8 恢复最终零差异，三次实体/运行态 MATCH、runtime 校验 33/33/36 ms，恢复后群拖正常。首节点总捕获 2241 ms，entityRecords=1264 / runtimeCaptureVerifyMs=893，明确增加诊断成本。接续第 4 步仅开放精确 GridShapeBuilder 形状实体写回试点：`Snapshot.SemanticShapeRestore=true`，只为每上下文采样节点准备独立七标量+原 data 引用记录，首次写回跳过对应旧槽，其余仍旧图；完整旧捕获/校验、owner/full 二次修复和视觉顺序保留。准备失败可用旧路径，实际写错不隐藏重试。302 项及原生八字段/六轮实际实体写回、共享字节数组、释放后预检拒绝通过；待实机。运行态仍禁止写回，未替换生产捕获。详见 `research/2026-11-12-shape-entity-writes.md`。
-
-形状阶段部署：2026-11-12 00:03，运行时提交 `a3484f0`，备份 `out/full-release-deploy-20261112-000339`，DLL SHA256 `72FC7D7F15DD1C049DF4C0E631C315A351697A95A7B4A6C26E929B6AD3BF8DA5`。78 存档文件校验未变，未导入设置/启动游戏，版本 0.8.15，未推送。已完成上述 00:05 实机，接续窗口写回阶段。
-
-23:39 会话完整物品/句柄已验证：5 捕获/8 恢复最终零差异，两次实体记录 MATCH 各 20 ms，全部 100969 对象/562713 槽拓扑覆盖通过；恢复后四件群拖正常。首节点记录 228 ms、总捕获 1308 ms，恢复中位数 656.5 ms，非 A/B。无手动节点/非默认议价样本。接续阶段已实现独立运行态只读值载荷：独立保活/字段/值令牌/块工厂，实体业务字段不重复捕获，实体 Runtime 字段及其余对象/集合物理存储完整保留；精确 owner/描述/引用集合及全部对象与旧图对照，旧图释放后仍可校验。实体+运行态按合并槽/字节预算，普通和块写回明确拒绝。294 项及原生标签块/六轮恢复/原图释放通过；待实机。`runtimeCut=readonly-shadow productionRuntimeCut=false`，生产恢复和视觉序列不变，不是提速，详见 `research/2026-11-11-independent-runtime-payload.md`。
-
-前次部署：23:49，运行时提交 `a86dd23`，备份 `out/full-release-deploy-20261111-234913`；DLL SHA256 `516BC5CC3EA23883F9CAF3A5854A1597C71308B74440697337CEC2EFA695439C`，78 存档文件校验未变，未导入设置/启动游戏，版本 0.8.15，未推送。已完成上述 23:52 实机检查；后续形状实体写回试点待实机。
-
-23:15 会话库存/窗口已检查：5 捕获/6 恢复最终零差异，首节点两次 RECORD RESTORE MATCH（20/16 ms），恢复后四件群拖正常。七处 reconcile 差异均属 cassettePlayer 标签字典及其底层数组，三 owner / 45 槽完整修复，无最终回退。已补齐精确 GameItemElement/GameItem/GameItemFunc 全继承链角色清单，四个派生实体字段进入只读记录、全部回调留 Runtime、六布局缓存继续 Visual 排除；覆盖改多字位图，未知物品子类不认证。276 项和原生派生字段/回调/布局排除通过，完整物品记录待实机。详见 `research/2026-11-11-complete-item-records.md`。
-
-接续阶段已实现节点隔离的原对象外部句柄、完整旧槽 Entity/Runtime 分区、运行态入口计算及仅运行态边的完整发现重放。句柄绑定原对象/精确类型/schema，拒绝跨节点/错类型/过期；Runtime 必须保留实体回调字段和集合底层。原根加所有实体出边作为运行态入口，重放必须覆盖旧图全部对象，不能漏闭包/数组；只保留句柄、入口及计数，临时邻接释放。284 项及原生同 uniqueId、跨节点、闭包/集合别名、完整槽/对象对照通过。仍 `runtimeCut=false`，没有实际运行态小图载荷、实体写回或生产捕获替换；先验收完整物品清单/句柄，下一步才进入独立小图捕获与受限写回。
-
-前次部署：23:35，运行时提交 `aacb0d8`，备份 `out/full-release-deploy-20261111-233523`；DLL SHA256 `8F3CF650922DF39673567D6C90A66D788A0AD18C37F015A9A6BF5A7FADC73C73`，78 存档文件校验未变，未导入设置/启动游戏。版本仍 0.8.15，未推送。已完成上述 23:39 日志检查，接续独立运行态载荷阶段待实机。
-
-23:01 会话首批实体记录已检查：7 捕获/6 恢复最终零差异，首节点两次 RECORD RESTORE MATCH（15/16 ms），恢复后四件群拖正常；首节点 entityRecords=209 ms、总捕获 1337 ms，仅增加诊断成本。后续阶段补齐精确库存完整继承链及 PixelWindow 的显式 Entity/Runtime/Visual 字段清单：实体记录纳入归属、锁、形状、stolenUI、父物品/链接库存/子控件等；回调/刷新缓存/集合底层仍旧图负责。逐槽检查 Entity/Runtime 都有旧覆盖，Visual 不应出现，精确 owner 未分类槽拒绝，未知 schema 只使本次诊断失败。269 项及原生十处关系变化、runtime 保留/恢复、缺 runtime 根拒绝通过，待实机。物品派生字段完整清单、外部句柄/图切分/实体写回仍未实现，详见 `research/2026-11-11-inventory-window-records.md`。
-
-库存/窗口覆盖阶段已于 23:12 部署（独立运行时提交 `e46e7d4`，0.8.15）；备份 `out/full-release-deploy-20261111-231247`，78 存档文件校验未变，未启动游戏。已完成上述 23:15 实机检查；后续完整物品清单于 23:27 部署 `6f9ba14`，备份 `out/full-release-deploy-20261111-232759`，78 存档不变，未启动游戏。
-
-22:43 会话实体边界审计已验证：7 次捕获、8 次恢复最终零差异，恢复后四件群拖正常。首节点 1236 实体/111431 实体槽，运行态入边 2750，其中闭包/委托候选 1291；首节点审计 42 ms，仅诊断成本。仍未证明可裁剪。下一阶段新增 `Snapshot.SemanticEntityRecords=true`，每上下文首节点独立记录 GameItem 全部基类字段、精确格子/单槽成员及 GridShapeBuilder 全部字段和字节，原身份/顺序/共享/浮点位，schema/旧图字段覆盖/独立预算检查；恢复后只读对照。派生字段/回调/集合底层等仍 legacy-only，未知类型不迁移；不是完整实体覆盖或实体写回。262 项及原生六轮旧图/记录恢复对照、筛选根/超限隔离通过，待实机；详见 `research/2026-11-11-entity-readonly-records.md`。
-
-实体记录首批投影已于 23:00 部署（独立运行时提交 `5d69429`，版本 0.8.15）；备份 `out/full-release-deploy-20261111-230000`，78 存档文件校验未变，未启动游戏。等待 RECORD CAPTURE/RESTORE MATCH 和 entityRecords 实机数据，不叠加运行态切分/实体写回。
-
-21:54 会话已检查普通引用直接比较：4 次捕获、6 次恢复全部 diff=0/releaseOk=True，无最终回退；采样节点两次 RESTORE MATCH，恢复后两对四件群拖正常结束。preflight/finalVerify/total 中位数 64.5/46/630.5 ms（上轮 82/54/651），非 A/B，不宣称同比例整体提速。非默认议价与实机全图回退仍未覆盖；详见直接引用比较文档。
-
-完整实体语义化的 22:10 首步 878cef9 当时尚未启用实体记录/运行态切分或实体写回：`Snapshot.SemanticEntityAudit=true` 只读边界审计，每上下文最多一次，已捕获槽完整扫描，计实体/库存、运行态/数组/闭包候选入出边，成功在主图捕获校验后输出 BOUNDARY。只保留计数及六条有界来源，索引不跨节点保留；失败不影响旧图，明确 pruningAllowed=false/restoreAllowed=false，未知/opaque/静态不认证。CAPTURE 单列 entityAudit，确实增加首节点诊断成本，不是提速。251 项及原生同 uniqueId 不同实体/格子/单槽/闭包/旧图恢复对照通过，现已完成 22:43 实机检查。路线为“原对象实体记录 + 剩余运行态小图”，完整设计见 `research/2026-11-11-entity-backend-roadmap.md`。
-
-21:39 会话已检查强类型标量比较：7 次捕获（含三个手动）、5 次恢复全部 diff=0/releaseOk=True，独立标签 CAPTURE/RESTORE MATCH，无最终回退。常规捕获 305-412 ms、首节点 1006 ms，其中比较器编译 36 ms；整次恢复中位数 651 ms（上轮 704 ms），非 A/B，不能全归因于此优化。8 对群拖都在首次恢复前，本轮恢复后群拖/六次往返/非默认议价及实机全图回退未覆盖。完整记录见强类型比较文档。
-
-已部署普通引用直接比较（21:50，fcf4c74）：`Snapshot.DirectReferenceComparisons=true` 在完整差异扫描读取普通引用后，与该节点强引用保留的目标做 ReferenceEquals，省去每槽全局弱身份查询；捕获/Census 的身份发现、全图 Validate、块/预算/写回/视觉/owner/full 回退不变。关闭并重启新节点走原 ID 比较，未知后端仍原路径。243 项回归及原生 ID oracle 完整差异对照通过；两轮原生类型隔离基准完整校验约快 32%，捕获/写回无稳定收益、分配不变，不推算 Unity 收益。Session/CAPTURE/RESTORE 增加开关和命中计数，待实机；详见 `research/2026-11-11-direct-reference-comparisons.md`。
-
-已部署普通标量比较减装箱（21:31）：`Snapshot.TypedScalarComparisons=true` 在元数据路径比较 32 次后尝试只读强类型比较器，覆盖 primitive/enum/decimal/对应 Nullable，浮点按位；自定义类型/无 reader/生成不可用回退旧比较，真实读错误传播。完整扫描、值令牌表、捕获载荷、Census、块与引用、owner/full 修复及视觉均不变。235 项回归及原生装箱 oracle 对照通过；两次隔离基准校验约快 7-14%，校验/写回各少约 1.85 MiB 临时分配，写回耗时无稳定改善；冷样本比较器编译约 1 ms，不据此保证完整游戏首节点成本。待实机；新增命中和独立编译计时，详见 `research/2026-11-11-typed-scalar-comparisons.md`。
-
-21:10 会话已验证普通标量免写：5 次恢复全部 diff=0/releaseOk=True，两次语义 RESTORE MATCH；普通标量免写率 99.831%-99.967%（非全图占比）。首次写回中位数 140 ms（上次 207 ms，非 A/B），整次恢复中位数 704 ms（上次 697 ms），不宣称整体提速。恢复后两次四件群拖正常结束。仍未覆盖非默认议价及实机全图回退；详情见免写文档。当前仍为实际负责恢复的混合后端，不是完整实体/集合语义化；统一进度见 `research/2026-11-11-semantic-backend-progress.md`。
-
-- **唯一真源**：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
-- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**（0.8.13 → 0.8.15）。
-- README / AGENT 等纯文档更新**不推进版本号**。
-- 发布流程：改两个版本号 → 构建 → 两组测试 → 部署 → 游戏内验收 → 提交 → 推送。
-- 快照优化按步骤独立提交；用户要求每轮验证通过后部署，便于游戏内测试，不自动启动游戏。未推送的测试轮次保持现有版本号。
-- 推送需要用户临时 token；网络不稳时用带超时的 `git push`，交替 `http.sslVersion`（tlsv1.2 / tlsv1.3）与 `http.version`（HTTP/1.1 / HTTP/2），必要时用 GitHub API 确认远端 HEAD。
+- 唯一真源：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
+- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.0**。
+- 纯文档提交不单独升版；推送前重新构建 → 两组测试 → 部署 → 正常 `push`（不 force）。
+- 推送使用用户临时 token，不写入文件、日志或命令历史。
 
 ---
 
-## 2. 目录与关键文件
+## 2. 回溯架构（0.9.0）
 
-```
-src/ProbablyStolenTools/           Mod 本体
-  CustomerCheckpoint.cs            顾客/手动节点：捕获、恢复、分支截断、VisualState
-  Rewind.cs                        F5/F7 文件节点（只加载不写回）
-  ManagedStateAccess.cs            业务对象图遍历与字段规则
-  StateGraph.cs                    槽位/对象/引用序列化与差异校验
-  SnapshotFieldReader.cs           只读字段读取委托（dynamic-code）
-  SemanticTagSnapshot.cs / SemanticTagShadow.cs  实验性标签语义只读对照（不负责恢复）
-  SemanticTagBlock.cs              精确原生 TagState 的无损混合字段载荷（负责自身九字段恢复）
-  SnapshotIntArrayBlock.cs         精确 int[] 的完整物理载荷（不重建集合、不裁剪容量）
-  SemanticTagOwnershipAudit.cs     仅限旧图的字典/数组/视图/枚举器别名诊断
-  SemanticEntityBoundaryAudit.cs / SemanticEntityBoundaryShadow.cs  物品/库存实体边界只读审计
-  SemanticEntitySnapshot.cs / SemanticEntityShadow.cs  独立实体字段/库存成员/完整形状只读记录
-  SemanticEntityFieldPlan.cs / SemanticInventorySchemas.cs  精确库存/窗口全字段角色清单及覆盖检查
-  SemanticItemSchemas.cs / SemanticSlotCoverage.cs  物品完整继承链及多字位图覆盖检查
-  SemanticEntityBoundaryPlan.cs / SemanticRuntimeSnapshot.cs  节点句柄/入口协议及独立运行态载荷（受限联合写回）
-  SemanticShapeWriter.cs            精确形状实体首次写回试点，保留旧图完整 oracle
-  SemanticFieldBlock.cs / SemanticEntityBlocks.cs  单次遍历精确实体完整字段载荷（发布候选）
-  SemanticCaptureOracle.cs          开发期开关控制的独立旧图对照，只检查、不写回
-  LiquidComposition.cs             成分、纯度、评级、空瓶/容量判定
-  AnnotationLabels.cs              原版水质/化学/酿酒语言键与回退文本
-  WaterQualityPatch.cs / WineAppraisal.cs / TooltipHooks.cs / TooltipNamePatch.cs
-  Panel.cs / PanelModel.cs / NativeUi.cs / LogWindow.cs
-tests/CheckpointTests/             快照往返、布局与渲染回归
-tests/ReleaseCompatibility/        对正式版 DLL 校验挂点与私有字段
-scripts/Deploy-FullRelease.ps1     备份 + 部署
-release/manifest.xml               ID、版本、能力声明
-research/                          设计、逆向、问题记录（archive/ 为历史）
-docs/workshop/                     创意工坊文本
-```
+顾客/手动节点采用**完整对象图 + 精确实体载荷**的混合后端，不是原版 SaveGame/LoadGame，也不是所有集合的逻辑重建。
 
----
+### 2.1 精确实体块
 
-## 3. 快照引擎硬规则
+`SemanticEntityBlocks` / `SemanticFieldBlock` 在主 `StateGraph` 遍历中一次捕获 owner 的全部非 Visual 字段：
 
-- **最新候选与旧试点的关系**：`SemanticEntityBlocks=true`时，主StateGraph以完整owner块保存准入实体的Entity及Runtime字段，取代这些槽的普通值令牌；其余完整图/身份/预算/最终校验仍在，不是删状态。此模式不混用旧实体/Runtime部分写回计划。下文“旧图完整捕获/试点诊断不可删”指旧独立试点路径；新候选仅在开发总开关开启时为两个采样保留独立旧oracle，发布默认关闭重复工作。必须先做新路径实机及关闭对照后的短测，不能据此前MATCH直接推送；不会因此开放集合重建或移除安全校验。
+| 类型 | 覆盖 |
+|---|---|
+| `GameItemElement` | 物品继承链业务字段、引用、Runtime 字段 |
+| `GameGridInventory` | 库存继承链、成员/归属/锁/关联引用及 Runtime |
+| `GameSlotInventory` | 单槽库存继承链及 Runtime |
+| `PixelWindow` | 窗口业务字段、关系与 Runtime |
+| `GridShapeBuilder` | 完整形状标量及原 `data` 数组引用 |
 
-- 只遍历**游戏业务对象图**。Unity 对象（`UnityEngine.*`）与纯视觉字段不进业务快照，由 `VisualState` 单独保存。
-- `GameItemElement` 的原生布局缓存**必须排除**在 Mono 业务快照之外：
-  `appliedMinX`、`appliedMinY`、`appliedOrientation`、`appliedGridSize`、`appliedFlipped`、`validateLock`。
-  只恢复这些缓存而不恢复实际 RectTransform，会让 `UpdateRectTransform()` 误判“无需布局”，表现为拖拽后回溯贴图不归位。
-- **数组偏移必须在元素内部计算** `offset = i * stride + j`，并记录 `Storage.Index = i`。把偏移提到循环外会让所有元素都读成第一个元素，而且 `diff=0` 也可能掩盖（读写共用同一错误读取器）。
-- 普通字段用反射读；同一路径累计读取 32 次后尝试生成只读委托，失败则回退。字段/类型缓存上限 4096，跨节点复用；每份快照的值/根/数组索引缓存相互隔离，卸载时清理。精确 TagState 可用下述专用无损字段载荷。
-- 普通标量比较器与读取委托分别按路径累计 32 次后尝试编译，仅 primitive/enum/decimal/对应 Nullable 许可；值从参数传入，不绑定对象/节点/数组/期望值。浮点按位，nullable 先比 HasValue，decimal 保持原 Equals 语义；自定义结构/无 reader/缓存满/生成不可用回退，真实读取异常不能吞掉。开关 `Snapshot.TypedScalarComparisons` 决定新访问器是否使用，禁用重启不影响旧载荷。比较器依附同一 4096 上限缓存，不额外无限缓存；Capture 最终校验、恢复预检/差异/最终校验、普通免写判断仍逐槽读取，不新增值令牌。编译计时单列，已包含对应阶段；不与原 walkReaderCompileMs 混算。
-- 普通引用完整比较可由 `IStateReferenceComparer` 许可直接身份比较；ManagedStateAccess 的 `Snapshot.DirectReferenceComparisons` 读取真实存储后，仅与该节点 `_retained` 目标做 ReferenceEquals（null 仍 null），不调用业务 Equals/运算符。全图 Validate 和全部扫描不变，未知后端/禁用仍旧 ID 路径；Capture/Census 引用发现、Tag 块、写回不变。扫描不再仅为比较而登记变化 live 引用的全局 ID，仍完整识别变化；读取/身份异常直接传播。referenceComparisons 是普通引用成功比较调用数，不是新身份数。
-- `Snapshot.SemanticEntityAudit` 仅在每上下文首个采样节点只读扫描旧拓扑，不调用业务 getter、Validate/Restore/Differences，不认证实体独占或覆盖完整。callback 为 delegate/CompilerGenerated 类型元数据启发式，普通目标方法不一定分类；全部其他边仍计数。数组入边不等于独占成员链接，图外/opaque/静态引用未知。禁止从零别名或有限日志批准裁剪、集合重建或实体写回；实体迁移必须另有完整字段覆盖清单、外部句柄协议和旧图 oracle。
-- `Snapshot.SemanticEntityRecords` 每上下文首个采样节点尝试独立只读记录，`Snapshot.SemanticManualSample=true` 时额外允许首个后续手动节点（最多两次尝试，失败/淘汰不重试，既有上下文/文件重载清理时重置）：精确 GameItemElement/GameItem/GameItemFunc 完整继承链、精确库存完整继承链、PixelWindow 与 GridShapeBuilder 完整字段角色清单/全部 data 字节；保留原对象和引用身份，未知子类 legacy-only。不据 MATCH 裁剪。每个实体/运行态字段必须被旧槽完整覆盖，Visual 必须排除；未知字段/超预算/读取失败只记录诊断失败，完整主图仍权威。采样节点恢复后校验句柄原身份并完整比较记录但不写入，不增加业务重试。CAPTURE entityRecords 单列诊断成本，包含句柄/分区/拓扑重放，不是提速。
-- 实体记录现扩展精确库存完整继承链与精确 PixelWindow 的 Entity/Runtime/Visual manifest，名称/精确类型/完整声明数全部检查，不给未知字段默认分区。Entity/Runtime 必须各有完整旧槽，Visual 必须未进业务图；除已明确保留额外字段的 Item 基类投影外，精确 owner 未知槽即拒绝诊断。Runtime 回调/缓存/标签等保留完整物理存储，MATCH 不认证可删；stolenUI、parent、父物品/链接库存等读取真实字段，不调用 ChildStorage/childItems/UncheckedAccept/Expel/Validate。style enum 全宽值保留；现有 VisualState 及实际恢复顺序不变。
-- `Snapshot.SemanticRuntimeRestore` 只允许完整实体组与独立 Runtime 的受限联合首次写回。绑定同一旧 checkpoint，核对全部对象、逐槽完整描述/引用身份及无重叠/缺失覆盖；准备后才允许获许可的普通真实存储和块写入，未知块拒绝。所有实体及两图/句柄/写权限先预检，全部标量先于全部引用；失效或真实写错不隐藏重试。只用捕获时冻结的完整实体组，禁用必要开关走原组合。旧图仍完整捕获、Census/预检/最终读取、owner/full二次修复不变；不得据试点删除旧载荷/诊断或重建集合。RESTORE 的 runtimePilot/runtimePilotSlots 为实际参与，runtimeScalarWrites 单列独立普通标量写入；ordinaryScalarWrites 不再代表两载荷总工作。
-- Mono 普通字段写回不生成委托：需要写入的单字段直接 FieldInfo.SetValue，标量/引用数组元素直接 Array.SetValue；引用字段保留 ReferenceEquals 守卫（不能用 Equals）。`Snapshot.SkipUnchangedScalars=true` 仅对 null/框架 primitive/enum/decimal 的普通槽先读真实存储，按与 ValueEquals 相同的比较语义（浮点按位）免写完全相同值，自定义 nullable 结构体不增加 Equals 调用；配置关闭则无条件写普通标量，配置只影响新节点访问器，关闭后重启。不同值的嵌套结构体和结构体数组保持逐层装箱、递归及父层复制回写。全图 Restore 仍访问全部槽位，普通标量/块标量/普通引用/块引用顺序不变，块不免写；二次写回可按下述 owner 规则筛选，但不能省略完整校验。新读取异常沿原失败流程，不重试无条件写入。五参数 ManagedStateAccess 构造器的 directWrites=false 默认禁用免写，仅为离线/原生夹具保留递归对照，不是新的玩家设置。
-- 快照上限可配置：`Snapshot.MaxObjects / MaxSlots / MaxBytesMB`，默认 **200000 / 3000000 / 256**。
-- 超限跳过本次捕获，释放半成品并保留旧节点；不使用不完整快照，不自动无限加大上限。面板显示失败、提示去重，日志包含实际计数、各上限及来源路径。
-- 对象上限在新身份入队前检查（包括显式根）；重复、空引用和环不重复计数。失败日志 `objects` 为已经展开的对象，`discovered` 为已发现数（对象超限时包括刚拒绝的一个），`pending` 为尚未展开的已接收对象。不能等出队时才检查，否则宽图会提前堆积超限队列。
-- 预算约束的是已发现唯一身份（含队列前沿），不是仅已展开对象；相对旧实现会更早拒绝超限图，失败时 objects 可小于 MaxObjects。对于稳定且最终对象数不超限的同一图，成功边界不变。
-- Mono 数组通过 `IBudgetedStateDescription` 在逐元素描述分配前检查剩余槽位/逻辑字节预算。提前拒绝时计数是已捕获部分，`array requires ... before expansion` 单独记录整个数组需求；不是实际内存估算。成功快照仍保留全容量，空数组和非法数组规则不变。
-- Mono 数组字节预算明确按标量 8 字节令牌 / 引用 IntPtr.Size 计算，不依赖 StateSlot.Size 的物理尺寸含义。槽位需求先以 long 计算并检查剩余预算，再转换为 int 分配；超大需求仍以 SnapshotLimitException 输出完整来源与 long 需求数。
-- 同一 Mono 访问器内，数组类型与长度都相同的只读描述可复用；缓存最多 4096 种形状、累计 65536 个描述槽，超过后正常展开，已有缓存仍可命中。每个数组的值/引用/对象身份分别保存，预算按每个数组计，不因复用打折；不跨节点共享。CAPTURE 追加 `arraySchemas(cached=...,hits=...,slotsReused=...)`，仅表示描述复用量，不是减少了业务槽位或节省了等量字节。
-- 捕获仍在同一回调同步完成；**未启用分帧快照**。任何跨帧实现须独立提交，并解决业务图一致性，不能只靠 `timeScale=0`。
-- 捕获后必须跑完整 `Differences()`；差异非空就视为恢复失败，不能再报成功。
-- Mono 标量校验走 `IStateValueComparer`，只比较捕获值，不往节点值表登记新值；float/double 按位比较，保留正负零和 NaN 差别。其他后端仍走原字节比较；差异消息达到上限也必须扫描完整图。
-- `Snapshot.OwnerReconcile=true` 仅改变同步原生刷新后的第二次写回：PrepareReconciliation 完整扫描并独立计数不同槽位，最多记录 128 个变化 owner，按其全部捕获字段（块也完整）生成最多 8192 逻辑槽的计划。仅 ManagedStateAccess / 精确 SemanticTagBlock / SnapshotIntArrayBlock 显式许可；未知访问器/块、配置禁用或规模超限时全图 Restore。不能从有限日志消息决定写入集合，不硬编码字段名、不重建字典或裁剪数组；保留普通标量 -> 块标量 -> 普通引用 -> 块引用顺序和真实存储写入。无差异不写业务字段。计划一次性、同回调立即应用，中间图扫描/写入或新计划使其失效；不支持跨帧/并发使用。局部写回后的完整最终校验若完成但有差异，最多一次全图 Restore + 全视觉/几何/最终变换 + 再次完整校验；读取/写回/视觉异常不重试。再次不一致沿原失败流程重载，清理视图必须在成功之后。
-- `Storage`、`StateGraph.Entry` 是只读值类型；普通字段索引为 `-1`，不能依赖结构体默认值 `0`。
-- `Snapshot.SemanticTagShadow=true` 默认启用标签语义只读对照：每次上下文清空或文件重载后最多尝试捕获一个节点，随节点释放。保留所有禁用/零值标签、共享对象与浮点位模式；字段结构不匹配、超预算或读取异常只记录失败，主图 StateGraph 仍为权威。原版库存等也是 TagSystem 子类，允许其**标签基类字段投影**，子类额外字段仍仅由旧字段路径覆盖；日志明确 `scope=tag-base-fields extraFields=legacy-only` 并给出子类数量及前六种类型。第三方继承链仍拒绝，错误包含实际类型/程序集与主图来源，不能因原版子类误拒整个样本。**Shadow/SemanticTagSnapshot 自身仍没有 Restore/Write API，只增加诊断工作，不是提速来源。**
-- `Snapshot.SemanticTagBlocks=true` 默认启用首轮真实混合载荷：只处理精确原生 `TagState`（包含不在字典中的独立标签），严格匹配九字段名称/类型及主图描述；子类、筛选根、不匹配结构捕获时走旧路径。每对象一个强类型字段块替代九条 Entry 与六次值令牌读/登记；仍保留全部对象/字符串身份、引用发现顺序、来源路径、逻辑槽位/字节预算以及字典 capacity/entries/buckets/version/free-list/视图/枚举器。禁止 Clear/Add 集合重建。`VisitCapturedSlots` 同时展开块内保存的九个槽，不读 live 字段。Census 仍完整走原字段普查，不创建块。
-- 字段块实际参与 Restore 与 Differences：全部普通标量和块标量先写，再写全部普通引用和块引用；三个字符串恢复真实存储字段（GC 屏障），不能用会将 null 归一化为空串的 `valueString` setter。保持浮点位和字符串引用身份。每块九字段始终完整校验，日志达到上限也继续读取；写入失败直接沿用原失败流程，不自动重试旧路径。开关只决定新节点载荷，保留节点始终由其捕获时后端解释。此轮须经实机验证后才能继续扩大范围；视觉/几何恢复顺序不变，不调用原版保存。
-- `Snapshot.IntArrayBlocks=true` 仅在 Mono 业务捕获中为精确 `GetType() == typeof(int[])` 的非空向量保存独立完整 Clone，RestoreValues 用 Array.Copy 写回原数组。不能用 `is int[]` 代替精确类型判断（CLR 对 uint[] 等存在特殊数组兼容）；空数组、其他元素类型、筛选根走普通路径。描述与全容量预算检查先于 Clone，仍按每元素一个槽 / 8 字节计逻辑字节；没有减少覆盖或修改对象发现顺序。Differences 完整逐元素计数且保留原索引名称，VisitCapturedSlots 仍展开全部捕获槽。Census 不创建块、仍读所有字段；不承诺普查提速。整数组是一个 owner，修复槽上限仍按全长度判断。关闭开关后重启让新节点走旧逐元素路径，保留节点不受后续工厂变化影响；实机验收前不扩到引用数组、结构体数组或集合重建。
-- `IStateCensusValueProbe` 只许可逻辑标量宽度为 8 字节的访问器，成功必须读取描述中的全部标量。仅 Census 使用，Capture 不调用；失败/未知描述按旧逐槽探测。ManagedStateAccess 拒绝筛选根，精确 TagState 由原九字段名称/类型及槽引用种类检查后启用；临时 SemanticTagValue 经 GC.KeepAlive 消费，不持久保留到普查对象中。引用仍原样逐槽读取、发现及计预算；不跳过任何数组/容器/子类字段，不产生恢复用块或值令牌。读异常沿原失败流程传播，不重试旧路径。`Snapshot.SemanticTagCensus=false` 回到旧普查读法，不影响已有节点载荷。
-- 语义标签字符串（Text / Identifier / DisplayName）和字典键均按捕获时的引用身份比较，不再只比较内容；同文字新字符串也算差异。此范围内与旧图的引用校验一致，但 MATCH 仍不覆盖字典底层版本、capacity、free-list、迭代器、比较器内部状态或子类额外字段。离线反例已证实“Clear + 按原键值重建”可语义匹配但旧图有差异、枚举器失效；不得据 MATCH 直接启用集合重建。
+- 集合底层数组、字典容量/版本、闭包等仍由完整图保存；不重建列表/字典。
+- 字段清单是**精确 schema**：逐 DeclaredOnly 类型字段数必须完全相等；增删字段、类型变化、未知子类都会回退 legacy，不静默漏存。
+- 块与 legacy 槽位通过 `slots.Count == Fields.Length`、槽名唯一、`IsReference`、`Size==8` 对齐；不匹配即回退。
+- 写回直接写原字段，不调用游戏业务 setter、库存移动、买卖或到店回调；引用按原身份。
+- 预算仍按对象/槽/字节逐槽计数，不因块压缩而放宽。
+
+### 2.2 生产默认值
+
+| 配置 | 默认 | 说明 |
+|---|---|---|
+| `Snapshot.SemanticEntityBlocks` | true | 单次遍历实体块 |
+| `Snapshot.SemanticDevelopmentChecks` | false | 关闭额外旧图 oracle/shadow/pilot |
+| `Snapshot.TagBlocks` | true | 精确 `TagState` 九字段块 |
+| `Snapshot.IntArrayBlocks` | true | 完整 `int[]` 块 |
+| `Snapshot.OwnerReconcile` | true | 刷新后有界 owner 二次修复 |
+| `Snapshot.SkipUnchangedScalars` | true | 未变化框架标量免写 |
+| `Snapshot.TypedScalarComparisons` | true | 强类型标量比较 |
+| `Snapshot.DirectReferenceComparisons` | true | 直接身份比较 |
+| `Logging.Verbose` | false | 详细诊断/几何/群拖日志 |
+| `Debug.Diagnostics/SelfTest/PreviewPanel` | false | 不启动自动化 |
+
+旧单项 shadow/pilot 开关即使曾持久化为 true，也必须受 `SemanticDevelopmentChecks` 总门控；恢复入口在 `CustomerCheckpoint.Restore` 重新检查该值（`b99864b`），关闭后一律走完整 `Graph.Restore()`。
+
+### 2.3 恢复顺序
+
+1. 业务图还原（必要时第二次还原）；
+2. `VisualState.Restore()`：父级、锚点/枢轴/尺寸/位置/缩放/旋转、Image sprite/color/enabled/raycast；
+3. `RestoreItemGeometry()`：按还原后的 `modifiedShape` / `modifiedXOrigin` 调原生 `UpdateRectTransform()`，写回正常层与拖拽层尺寸、锚点、背景原点；不符即抛错；
+4. `VisualState.RestoreTransforms()`：用捕获的原生几何收尾朝向，避免旋转被清零的 `modifiedShape.orientation` 覆盖；
+5. `Differences()` 全量校验；owner 修复失败则 full fallback 并再次全量校验。
+
+物品仍排除六个布局缓存：`appliedMinX`、`appliedMinY`、`appliedOrientation`、`appliedGridSize`、`appliedFlipped`、`validateLock`。
+
+顾客恢复保存原 renderer 身份、sprite、颜色/渲染开关、MaterialPropertyBlock 和完整局部变换链（含 `RightLeave` 父级）；DOTween 路径保存游标/方向/速度，seek 时屏蔽回调并在 finally 归还，不重播到店/离店。
+
+群拖/框选：单件拖拽、群组拖拽、按键未释放的框选/待拖拽统一门控；静态选区在预检通过、业务写入前调用原版 `Cancel()`，不调用 `EndGroupDrag` 提交被放弃的时间线。
 
 ---
 
-## 4. 恢复流程（当前实现）
+## 3. 多语言标注
 
-顺序不能乱：
+- 水质/纯度/评级/酿酒标注优先读取游戏原生语言键（`Mechanic` / `Item` / `UI` 表），随游戏语言切换。
+- 回退链：当前语言表 → 英语表 → 代码内英文文本；不修改原生 locale 或表。
+- 缓存键 `(locale, table, key)`，上限 2048，语言切换清空；加载中/读取失败的临时回退不缓存。
+- 中文环境缺键时回退中文文本，其他语言回退英文文本；未识别的第三方液体保留其自带名称。
+- 取词使用非阻塞 `GetTableAsync` 完成检查，不等待本地化加载；`StringTableEntry` 已有 SmartFormat，格式化使用来源 locale。
+- 名称替换只作用于悬浮说明 + 拖拽“使用/倒入”提示；背包、交易列表、任务文本保持原名。
+- 设置开关：`WaterQuality.Enabled`、`Chemistry.Enabled`、`Wine.Enabled`，默认均为 true。
 
-写入前：验证目标视觉状态；当前业务图用 `StateGraph.Census` 完整普查（同根、同引用覆盖、逐字段读取、同预算），只为寻找新增物品/窗口，不保存 Entry 或 Mono 值令牌。目标 `Differences()` 完整读取预检仍保留。普查结果禁止 Restore/Differences，失败不写入。
-
-1. 首次完整还原业务图（采样节点可用完整实体组＋独立运行态联合写回，否则既有实体/`StateGraph.Restore`）；原生 Validate/UI 刷新后完整扫描，按 owner 规则第二次还原或回退完整 Restore。
-2. `foreach (var view in target.Visuals) view.Restore();`
-   `VisualState` 保存并还原：父级、`anchorMin/anchorMax`、`pivot`、`sizeDelta`、`anchoredPosition3D`、`localScale`、`localRotation`、激活状态，以及 Image 的 sprite/color/`enabled`/`raycastTarget`。
-3. `RestoreItemGeometry(target)`：按还原后的 `modifiedShape` / `modifiedXOrigin` 调一次原生 `UpdateRectTransform()`，并写回物品正常层与拖拽层的尺寸、锚点和背景原点；若写入后仍与期望不符，直接抛异常（不要静默成功）。
-4. `foreach (var view in target.Visuals) view.RestoreTransforms();`
-   以快照捕获的原生几何作为**最终**朝向/尺寸依据。旋转物品必须靠这一步，否则 `UpdateRectTransform()` 会用被清零的 `modifiedShape.orientation` 把已旋转贴图覆盖成未旋转。
-5. 校验 `Differences()`；最后才丢弃/清理不在快照里的视图。
-
-渲染父级一律用捕获时的真实 `TreeNodeRender.parent`：库存可能通过窗口或其他视图宿主渲染，**不要**把所有物品强行挂到 `parentInventory.inner`。
-
-**不要**在恢复流程里重放库存接收、交易、顾客到达等业务回调，只刷新视觉面（`NegociationUIManager.RefreshUI()`、`BargainUIManager`）。
+液体规则速查：µL 存储（`容量 = mL×1000`）；水/酒精 **>65%** 为主成分；占比 = 成分/总量；纯度排除水、酒精、脂合剂、脂肪、物理污染物、微生物、植物质、不溶性碎屑、三种菇类糊糊；蛋白/酸/碱 ≥1000µL 才扣；化学污染物按剩余量 0.7% 封顶；还原剂不排除。评级阈值 99/90/80/60/45/30。酒精 74–76% 为医用酒精，≥99.95% 为脱水乙醇。空瓶显示尺寸；滴管/量筒/<200mL 不改名。
 
 ---
 
-## 5. 节点时机与门控
+## 4. 节点时机与门控
 
-- 顾客节点必须建立在**开场对话播完之后**（`StoreClient.isMainDialogueStarted`，8 秒兜底）。卖货顾客的商品在开场对话里才摆上柜台，抢跑会导致回溯后柜台为空。
-- **不要用 `StoreUIManager.isAboutToStartMainDialog` 当门控**：它是“0.25 秒后开主对话”的瞬态标志，游戏自己的延时回调没跑完时会长期为 true，节点永远建不出来。
-- `Snapshot.StoreState` 记录捕获时的 `store.storeState`。营业(1)/闭店(0) 允许；**手动节点允许在同一 state 下回溯**（含闭店后的早市 state=2）；自动顾客节点仍是 0/1。
-- 允许跨顾客回溯；当前顾客不同时只写 `[QuickSL/Customer] F6 cross-client rewind`，不再拦截。`currentClientInstance` 与顾客贴图一起还原。
-- 剧情/对话类顾客（`ClientIntent.DIALOGUE` 等）**跳过建节点但不清空历史**。
-- 节点上限 **20**（`CheckpointHistory<Snapshot>`），面板行数 **24**，必须同步修改。手动建立的闭店节点要正常列入面板。
-- settle 保留原生事件触发，并以 0.1 秒轮询兜底；日志按状态变化输出，未变化每 60 秒一条并统计压制次数。
-- `captureMs` / `ms(...total=...)` 才是捕获耗时；旧 `after=...s`（新名 `arrivalWaitSeconds`）是顾客到达后的等待时间，不能用来统计卡顿。
-
-### 不要挂的门控
-
-`PlayerStore.isGeneScannerScanning` 是基因扫描仪**设施开关**（设施每秒重新置 true），不是“正在扫描顾客”。任何回溯/建节点/鉴定门控都不要用它（0.8.6 起已全部移除）。
+- 顾客节点在开场对话播完后建立（`StoreClient.isMainDialogueStarted`，8 秒兜底）；不要用 `isAboutToStartMainDialog` 当门控。
+- `Snapshot.StoreState`：营业(1)/闭店(0) 允许；手动节点允许同 state 回溯（含早市 state=2）；自动顾客节点仍 0/1。
+- 允许跨顾客回溯；剧情/对话类顾客跳过建节点但不清空历史。
+- 节点上限 20，面板行数 24；闭店手动节点必须列入面板。
+- `isGeneScannerScanning` 是设施开关，不是扫描动作，禁止作为任何门控。
+- 文件节点（F5/F7）只加载不写回：快照复制为 `pstools_restore.es3`，通过 `NewGameData.saveFile` 读取；保留 `.pre_restore` 备份；不覆盖当前存档。
 
 ---
 
-## 6. 液体、纯度与酿酒
+## 5. 日志与诊断
 
-- 液体 tag 始终以**微升（µL）**存储：`容量 = mL × 1000`。界面不足 1mL 显示 µL 只是格式化；“满 1mL”阈值为 **1000**。
-- 主成分：水占比 **> 65%** 为水为主；酒精 **> 65%** 为酒精为主；否则取“水/酒精之外占比最高”的成分；只剩水+酒精且都 ≤65% 时取占比较高的一侧。
-- 显示：`成分（占比% | 纯度% | 评级）`；占比 = 该成分 ÷ 全液总量，最多两位小数。
-- 纯度排除：水、酒精、脂合剂、脂肪、物理污染物、微生物、植物质、不溶性碎屑、**梦帽菇糊糊 / 梦魇菇糊糊 / 咖啡豆糊糊**；蛋白/酸/碱 ≥1000µL 才扣；化学污染物按剩余量的 0.7% 封顶。还原剂**不排除**（不可蒸发）。产物取剩余成分中占比最高者。
-- 评级：≥99 纯品级；90–99 药用级；80–90 近药用级；60–80 街头标准级；45–60 掺兑级；30–45 垃圾级；<30 淀粉级（各有固定颜色）。
-- 酒精标签：`酒精`；酒精 **74–76%** 为 `医用酒精`；**≥99.95%** 为 `脱水乙醇`。名字与水质行使用同一标签。
-- 空瓶名字：`空瓶（迷你/小/标准/大）`（250/450/750/2000mL 档），不显示水质行。滴管、量筒/量杯、容量 <200mL 的容器**不改名**（`LiquidComposition.NoRename`）。
-- 违禁酵母只加原版样式独立一行（`mech_contraband_low`，LightRed 粗体），不要打 `CONTRABAND_ITEM_TAG`，也不要拼进名字。
+- `EventLog.Write` 品牌头：`[QuickSL]` / `[QuickSL/子系统]`；关键捕获/恢复/失败不随 verbose 关闭。
+- 默认日志：Session/语言状态、CAPTURE/RESTORE 阶段耗时与规模/后端、失败/拒绝/超限、真实 full 回退、释放错误、群拖异常。
+- `[QuickSL/Geom]` 只在物品视图异常（DESTROYED/MISSING/NOSPRITE/HIDDEN/MISPLACED）时输出。
+- `PSTools.log` 4MiB × 3 归档；独立错误日志 1MiB × 2；`PSTools_history.log` 保留并轮转。
+- 设置页「查看日志」用 `CustomUIManager.Window(...)` 构建，显示末尾 400 行。
 
 ---
 
-## 7. 工具提示
+## 6. 加载器能力弃用（前向兼容阻断项）
 
-- 追加说明行走原生 `ModHook.OnCreateTooltipLate`（`TooltipHooks`）；不要再新增 `GetTooltipBasic` / `CreateWaterFeatureTooltip` 补丁做正文追加。
-- 名称替换靠作用域：`TooltipNameScopePatch`（`GetTooltipBasic`）+ `TooltipNameScopeUsePatch`（`RichTextGenerator.UseItemOnOtherItem`）+ `TooltipNameScopeInsertPatch`（`RichTextGenerator.InsertItemInOtherItem`），作用域用**嵌套深度** `Push/Pop`。
-- 作用域退出走 Harmony **Finalizer**，通过 `__state` 只退出本次已进入的作用域；不要吞掉原生异常，也不要改回仅成功时执行的 Postfix。
-- `GameItem.GetDisplayName` 的后缀只在作用域内改名为成分名 / 空瓶尺寸 / 酒精标签；背包、交易列表、任务文本保持原名。
-- 水质、化学成分/评级与酿酒品质优先用 `AnnotationLabels` 的原版 `Mechanic` / `Item` 键，**不再按中/英文限制标注**。缺键、空翻译、读取失败时先查英语表，再回退英文文本；有效水质 0–3499 仍为沟渠水，只有小于 0 或大于 10000 才是未知。本 mod 自有预测句、莓果品相、空瓶尺寸与脱水乙醇在其他语言下回退英文，不维护额外翻译表。
-- 标注按 locale/table/key 缓存最多 2048 条，语言变化清空；加载中和读取失败的临时兜底不缓存。条目使用原生 SmartFormat 与来源语言 Formatter；不改用会 `WaitForCompletion()` 的同步取词，不强改项目 fallback 链。
-- 本地化未就绪时保留原版名称/提示，不修改游戏语言、表或存档。Mono 只读已完成的 `SelectedLocaleAsync` 和 `GetTableAsync`，仅格式化已加载的条目；不调用同步等待。成分名按当前语言重新查键，不能直接依赖 `Liquid.displayName` 的旧语言静态缓存；注意 microbe/fat/coffee_mush 等 ID 与键名不一致。
-- 双击快速鉴定只选自有 `MAGNIFYING_GLASS`，不自动使用钥匙卡；诊断也不调用其他工具的 targeting 回调。
+- 官方公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.9.0 只保证**当前游戏版本**可用，发行说明不得写“已兼容下一版”。
+- 当前源码仍依赖 `Expression.Compile` 与运行时 `GetFields/GetMethod`；只删 manifest 声明或关闭 DevelopmentChecks **不是修复**，扫描器按编译进 DLL 的方法判断。
+- 迁移四阶段与探针结果见 `research/2026-11-12-loader-capability-migration.md`；在完成迁移并把退役能力门槛加入 `ReleaseCompatibility` 之前，不得宣称前向兼容。
 
 ---
 
-## 8. 日志
+## 7. 安全与部署约束
 
-- `EventLog.Write` 统一品牌头：`[QuickSL]` 或 `[QuickSL/子系统]`（`Customer`、`Rewind`、`Shutter` 等），并转发到 `Plugin.LogSource`。
-- 文件：`%LOCALAPPDATA%Low\Questing Goose Studio\Probably Stolen\PSTools.log`、`PSTools_history.log`、`Player.log`。
-- 主日志与历史日志各按 **4 MiB + 3 份归档**（`.1`–`.3`）轮转；失败另外写 `PSTools_errors.log`（**1 MiB + 2 份归档**），不受详细日志开关控制。旧超大日志首次轮转可能大于新上限，后续自然淘汰。
-- `Logging.Verbose=false` 默认关闭额外双击/无业务上下文诊断；捕获、恢复、失败、业务上下文变化和 settle 状态变化始终保留。历史日志仍受 `History.Enabled` 与每秒 120 条限流控制，但不再达到 8 MiB 后永久停写。
-- 收集问题请同时取同次游玩的 `PSTools*.log` 及轮转归档、`PSTools.settings.xml`、`Player.log`、`mod-audit.log`，并提供操作步骤和语言代码。
-- 游戏内「设置 → 查看日志」用官方 `CustomUIManager.Window(...)` 构建（`LAYER_OVERLAY`、`BeginScrollFlexible`、`AddLabel`、`AddButton`），显示末尾 400 行。
-- `[QuickSL/Geom]` 只在物品视图异常（DESTROYED / MISSING / NOSPRITE / HIDDEN / MISPLACED）时输出，是排查贴图问题的第一入口。
-- CAPTURE 仍一行摘要：access/walk/items/verify 后补 prepareHistory/history/retain/finish，history 包含正常历史淘汰。RESTORE OK 仍一行：validate/census/preflight/write/refresh/reconcile/finalVerify/cleanup/release/total，包含当前普查释放，但不包含入口拒绝门控和摘要日志自身 I/O。失败输出 phase 与 elapsedMs。
-- CAPTURE 的 `walkReaderCompileMs` 是本次 walk 内读取委托编译时间，**已包含在 walk 中，不能再加一次**；readers 的 compileAttemptsTotal/compileMsTotal 是 ClearCache 以来的累计值，包含失败编译，只在实际编译时计时，不为每次字段读取打点，不改变读取 32 次后才编译的策略。RESTORE 同行追加 `reconcileDetail(rewrite=...,reportedDiff=...,scan=...,write=...,views=...,geometry=...,transforms=...)`；五项时间和为原 reconcile，reportedDiff 是最多 12 条诊断数而非实际差异总数，仍扫描全部字段。rewrite=False 不等于没有做最终视觉/几何处理。失败 phase 细分为 reconcile-scan/write/views/geometry/transforms。
-- RESTORE 另加 `repair(mode=owners|full|none,reason=...,changedSlots=...,trackedOwners=...,plannedSlots=...,finalFallback=...)`：changedSlots 是完整扫描的真实不同槽数（按原比较语义），trackedOwners 是有界已跟踪数而非总数，plannedSlots 为完整变化 owner 的逻辑写回槽数，full 时为全图槽数。scan 包含捕获条目索引筛选，不新增 live 扫描；write 为计划验证和写回。finalFallback=True 时 finalVerify 包含一次失败的完整校验、全图回退及视觉/几何/最终变换和再次完整校验；另记 REPAIR FULL FALLBACK 的有限无值字段名，不能将该耗时当纯扫描。未知/超限 full 模式及 none 模式不增加最终重试。
-- 刷新后的同次差异扫描使用 DifferencesWithSources，恢复结束后追加一条 RECONCILE DIFF：最多收集并展示 12 条对象身份/类型/字段/捕获来源，字段块与普通字段均覆盖；不额外扫描或重读字段，不输出业务值，不调用业务 getter/ToString。日志文本中的程序集限定泛型参数组缩写为 `<...>`，保留数组索引/字段路径；原始槽名和 SourceOf 不变。类型/字段各限 128 字符、路径限 240 字符，字段/路径超长保留尾部，保持单行；无需 Verbose。scanLimit 是诊断条数上限，绝不是扫描字段上限；仍检查全部字段并传播末尾异常。来源格式化计入 scan，日志 I/O 不计入恢复摘要；scope=captured-graph-only 不能作为集合所有权或选择性恢复的依据。
-- CAPTURE 追加 `backend=hybrid-exact-tag tagBlocks=N`（关闭时 `backend=legacy tagBlocks=0`；原生字段结构不符为 `legacy-tag-schema-mismatch`）。slots/bytes 仍是相同逻辑预算，不代表压缩后的真实内存，不能用计数不减判断没有生效。当前只减少精确 TagState 的逐字段工作，不能承诺整个捕获/恢复达到隔离 .NET 6 标签夹具的提速幅度。
-- 标签对照另记 `[SemanticTags] CAPTURE MATCH / RESTORE MATCH / ... FAILED`，按同一 `id` 对应节点。捕获摘要追加 `semanticShadow`，恢复摘要追加 `semanticVerify`，避免把实验开销混进旧后端阶段；`logicalSlots/Bytes` 只表示语义标签载荷，不是内存占用或全图替代规模。回溯采样节点才能得到 RESTORE MATCH；普通节点没有这条日志。关闭 `Snapshot.SemanticTagShadow` 可停止后续采样，已捕获样本仍随节点验证/释放。
-- 采样节点另记一条 `[SemanticTags] OWNERSHIP`，只扫描已保存的槽位/引用，不重读 live 字段、不创建字典视图。统计共享字典、外部引用、内部数组、Keys/Values 视图、独立可达标签、未知布局和相关旧图槽数；最多输出六条来源、每条路径最多 280 字符，达到日志上限仍完整计数。`scope=captured-graph-only pruningAllowed=false` 始终成立：静态、图外和不透明第三方对象的内部引用不可见，不能据此许可裁剪。`comparerState=unproven`：语义对照只保留公开比较器身份，旧访问器还会将类型名含 Comparer 的实例视为不透明，不能保证自定义比较器可变内部状态。子类额外字段仍仅旧图负责。captureVerifyMs/semanticShadow 包含本轮审计成本，OWNERSHIP 的 auditMs 单列其中耗时，不得当作语义载荷捕获本身。
-- 临时普查释放异常单独记 CENSUS RELEASE FAILED，不覆盖已经完成的业务恢复：恢复完成时仍输出 RESTORE OK，releaseOk=False 表示仅释放异常。无论释放是否成功，都恢复 timeScale/Restoring；不能把这种情况误报为写入失败或要求再次恢复。
-- 仅 `Logging.Verbose=true` 时同一摘要追加 typesBySlots：最多展开 128 种类型、输出槽位前六类，其余合计；统计对象数、槽数、数组容量与最大数组长度。只读已有描述，不调用业务属性、不新增值令牌。它不是实际内存估算，也不代表集合有效条目数。
-
----
-
-## 9. UI 维护规则（精简）
-
-完整规则见 `research/2026-10-31-snapshot-performance.md` 与 `research/archive/0.5.2-native-ui.md`，这里只列不可违反的边界：
-
-1. 原生窗框负责标题/边框/ContentRoot；只在自己的内容区手工布局。
-2. 一个 RectTransform 只能有一个外部布局控制者；手摆控件设 `LayoutElement.ignoreLayout=true`。
-3. Build 只建树，`PanelModel` 统一排全部行并计算 `ContentHeight`；新增设置要进模型。
-4. 纵向滚动量要保留；不要改键/刷新时重置到顶部。
-5. 坐标用固定参考区 `CustomUIManager.GetLayerRoot("overlay")` 做世界坐标换算，不要跨父级比较 `anchoredPosition`。
-6. 改键捕获期间仍处理窗口几何；用掉的按键同帧不能触发动作（`CheckpointPanel.SuppressHotkeys` + `Plugin.Down`）。
-
----
-
-## 10. 存档安全与硬约束
-
-- **绝不主动调用 `PlayerEngine.SaveGame()`**，不修改存档文件。
-- 顾客节点是纯内存恢复。「回到开业前 / 上一天」**只加载、不写回**：快照复制为 `pstools_restore.es3`，通过 `NewGameData.saveFile` 读取，载入结束后清理；仍保留 `.pre_restore` 备份。
-- `Rewind.MaxCheckpoints=20` 控制跨会话文件节点数量，`Rewind.MaxDiskMB=256` 仅控制本 mod 检查点总容量（与单份内存快照 `Snapshot.MaxBytesMB` 无关）；设置页只在用量、预算、错误或语言变化时格式化用量文本。每 60 秒及新建后按 LRU 清理本 mod 时间戳文件；恢复使用时更新文件时间，不改 ES3 内容。只统计/处理目录直接子文件中符合命名规则且非链接的节点，未知文件、子目录不统计也不清理；待恢复节点计入用量但不清理，不能满足预算时报告错误。
-- 部署用 `scripts/Deploy-FullRelease.ps1`：备份存档与 Mods、校验存档/游戏程序集/其他 Mod 不变、按完整路径关闭游戏、不自动启动。
+- 绝不主动调用 `PlayerEngine.SaveGame()`，不修改存档文件。
+- 顾客节点纯内存恢复；文件回溯只加载不写回。
+- 部署脚本备份存档/Mods、校验存档/游戏程序集/其他 Mod 不变、按完整路径关闭游戏、不自动启动。
 - 不 `Process.Start` / `Application.OpenURL`；不修改加载器、信任记录、Steam 类型；不打包 `0Harmony`。
-- 能力声明保持 `files`、`reflection-external`、`dynamic-code`，新增反射/动态代码必须同步清单并让用户按原生流程确认。
+- 能力声明保持 `files`、`reflection-external`、`dynamic-code`，直到迁移完成再同步清理。
 
 ---
 
-## 11. 已知坑
+## 8. 已知坑
 
 | 坑 | 结论 |
 |---|---|
-| `isAboutToStartMainDialog` 当门控 | 永久拒绝回溯；已移除 |
-| `isGeneScannerScanning` 当忙状态 | 它是设施开关，已移除 |
-| 恢复 `GameItemElement.applied*` 缓存 | `UpdateRectTransform()` 会跳过布局；必须排除 |
-| 用 `Validate()` 重排物品 | `validateLock` 残留时会整段跳过；必须直接写锚点 |
-| 恢复后调用 `UpdateInventoryStateUIImmediately()` | 会按旧布局覆盖锚点；最终锚点要写在它之后 |
-| 旋转物品回溯后变默认朝向 | 最后必须 `RestoreTransforms()` 以捕获的 pivot/rotation 收尾 |
-| 强挂 `parentInventory.inner` | 库存可能经窗口渲染；用捕获的真实父级 |
+| `GameItemElement.applied*` / `validateLock` 恢复 | `UpdateRectTransform()` 会跳过布局，必须排除 |
+| 用 `Validate()` 重排物品 | `validateLock` 残留会整段跳过，必须直接写锚点 |
+| 恢复后调用 `UpdateInventoryStateUIImmediately()` | 会按旧布局覆盖锚点，最终锚点写在它之后 |
+| 旋转物品回溯变默认朝向 | 最后必须 `RestoreTransforms()` 收尾 |
+| 实体块 schema 增删字段 | 回退 legacy，不静默；观察 `SINGLEPASS SCHEMA FALLBACK` |
+| 中途关闭 DevelopmentChecks | 旧节点不再走 pilot 写回，但已有诊断载荷不会立即释放 |
 | 数组偏移提到循环外 | 所有元素读成第一个；`diff=0` 也可能掩盖 |
-| 闭店手动节点 | 必须列入面板，不能只显示 `ClosedNode` |
-| `F8/F9` 与游戏开发者控制台 | 游戏目录有 `dev.txt` 时冲突，启动日志会提示 |
+| `F8/F9` 与游戏开发者控制台 | 游戏目录有 `dev.txt` 时冲突，启动日志提示 |
 
 ---
 
-## 12. 验收清单
+## 9. 验收清单
 
 1. `dotnet build -c Release`：0 警告 / 0 错误。
-2. `CheckpointTests` 全过；`ReleaseCompatibility` 挂点/字段/`HardFlags` 通过。
-3. 部署后启动游戏：建节点、F6 回溯、F5/F7 文件回溯、F9 手动节点、闭店/早市回溯。
-4. 物品：柜台 ↔ 物品栏移动后回溯，贴图位置与朝向正确；旋转/翻转物品回溯后保持朝向；卖出后回溯，物品回到原容器且无“空气占用”。
-5. 液体：水质行、占比/纯度/评级、空瓶、酒精标签、医用酒精、脱水乙醇、三种糊糊不计入纯度。
-6. 工具提示：悬浮说明与拖拽“使用/倒入”提示的名字替换正确；小容器不改名。
-7. 面板：拒绝原因逐条显示、损坏节点悬停原因、日志窗口、设置滚动与改键。
-8. 语言：中/英/俄/日等切换后重开提示和交易行，水质、成分、化学等级、酒品质跟随原版语言；预测句允许回退英文。缺失翻译/加载中的表不阻塞、不抛出到游戏、不显示键名。
+2. `CheckpointTests` 373 项全过；`ReleaseCompatibility` 57 挂点/76 字段/`HardFlags` 通过。
+3. 部署后：首/普通/手动节点往返、恢复后群拖、顾客贴图、正常交易/送客。
+4. 物品：售出/移动/旋转/拆分合并/嵌套容器/前柜台回溯，贴图位置与朝向正确，无“空气占用”。
+5. 多语言：切换语言后水质/纯度/评级/酿酒标签跟随；缺键回退；三个设置开关生效。
+6. 文件节点：F5/F7 只加载不写回；`.pre_restore` 备份存在。
+7. 关闭 `SemanticEntityBlocks` 的回滚模式可正常走 legacy。
 
 ---
 
-## 13. 历史资料
+## 10. 历史资料
 
-- `research/archive/AGENT-0.6.0-history.md`：旧交接文档（0.2.1–0.6.0、Demo/MelonLoader、性能优化历程）。
-- `research/2026-11-10-item-render-rewind.md`：贴图/容器回溯问题与修复记录。
-- `research/2026-11-10-native-save-rewind.md`：只加载不写回的文件回溯。
-- `research/2026-11-10-player-report.md`：报告证据、计时误读、日志/存储/语言修复与分帧暂缓理由。
-- `research/2026-11-10-native-annotation-locales.md`：后续改用原版语言键、资源表验证与英文回退。
-- `research/2026-10-31-snapshot-performance.md`：快照性能与 UI 布局规则。
-- `research/2026-11-10-snapshot-optimization-step1.md`：第一步标量校验减重、回归与隔离基准。
-- `research/2026-11-11-snapshot-optimization-step2.md`：第二步数组预算提前检查及前两步合并部署记录。
-- `research/2026-11-11-snapshot-optimization-step3.md`：本机最新耗时分布、同形数组描述复用、第三步验证和部署记录。
-- `research/2026-11-11-locale-review.md`：本轮多语言评审、英语表优先回退、标注缓存和自有检查点用量。
-- `research/2026-11-11-snapshot-optimization-step4.md`：对象发现预算提前检查。
-- `research/2026-11-11-snapshot-optimization-step5.md`：恢复前只读对象普查及对照验证。
-- `research/2026-11-11-snapshot-optimization-step6.md`：完整阶段计时、可选类型汇总与本轮停止边界。
-- `research/2026-11-11-snapshot-review-followup.md`：预算/释放异常评审跟进、下午真实游玩阶段分布与测量限制。
-- `research/2026-11-11-semantic-tags-step1.md`：标签语义只读实验、原版字段兼容验证、模型基准及启用写入前的边界。
-- `research/2026-11-11-semantic-tags-live-check.md`：首次实机采样失败、原版子类投影修正及本次真实耗时。
-- `research/2026-11-11-semantic-tags-boundary.md`：首次实机匹配、只读引用审计、集合替换风险与下一阶段门槛。
-- `research/2026-11-11-semantic-tag-blocks.md`：精确 TagState 混合字段载荷、离线/原生验证、隔离基准、部署与实机操作要求。
-- `research/2026-11-11-snapshot-write-fastpath.md`：普通字段写回减重、首节点编译计时、reconcile 子阶段计时、验证和部署。
-- `research/2026-11-11-reconcile-difference-sources.md`：刷新后差异归属诊断、完整扫描回归与下一轮实机要求。
-- `research/2026-11-11-owner-reconciliation.md`：完整变化对象的有界二次修复、全图回退、192 项回归及隔离基准，首次实机前停止边界。
-- `research/issue-2/`、`research/issue-3/`：GitHub issue 的附件与日志。
-- `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南。
+- `research/archive/AGENT-0.6.0-history.md`：旧交接文档。
+- `research/2026-11-12-single-pass-entity-candidate.md`：单次遍历实体后端设计与实机记录。
+- `research/2026-11-12-customer-visual-rewind.md`、`2026-11-11-multi-select-rewind.md`：顾客视觉与群拖。
+- `research/2026-11-12-semantic-backend-review-ds.md`、`2026-11-12-semantic-backend-review-followup.md`：本轮 DS 审查与整改。
+- `research/2026-11-12-loader-capability-migration.md`：退役能力迁移方案。
+- `research/modding-guide/ModdingGuide.zh-CN.md`：游戏 Mod API 指南（注意能力表可能落后于官方现行政策）。

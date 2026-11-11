@@ -1,0 +1,30 @@
+[h1]0.9.0: multi-language support and a semantic rewind backend[/h1]
+
+[h2]Multi-language support[/h2]
+[list]
+[*]Water quality, purity, grade and wine annotations now read the game's native localization keys and follow the selected game language instead of supporting only Chinese/English.
+[*]Missing entries fall back to the English table and then to English text; third-party liquids keep their own names.
+[*]Settings now has independent switches for "Water quality labels", "Chemistry assist" and "Wine annotations".
+[/list]
+
+[h2]Semantic rewind backend[/h2]
+[list]
+[*]Customer and manual checkpoints now use a hybrid "full object graph + exact entity payload" backend while keeping original object identities and full verification.
+[*]Tag state, complete int arrays and ordinary field comparisons are lighter; every restore still runs a full difference check and fails over to a complete restore on mismatch.
+[*]Checkpoint timing, trade replay and the in-memory rewind model are unchanged; this does not replace rewind with the vanilla save system.
+[/list]
+
+[h2]Fixes and quality of life[/h2]
+[list]
+[*]Fixed lost/misplaced customer sprites after rewind, and item sprite positions after moving items between the counter, inventory and containers.
+[*]Rotated/flipped items keep their correct orientation after restore.
+[*]Fixed interaction conflicts between group drag / box selection and rewind.
+[*]File checkpoints now load the checkpoint without overwriting the current slot, keeping a .pre_restore backup.
+[*]Checkpoint file count/size and log size are bounded and rotated so long sessions do not grow without limit.
+[/list]
+
+[h2]Notes[/h2]
+[list]
+[*]This release targets the current game version; offline tests and short in-game checks cannot cover every third-party mod combination.
+[*]If something goes wrong, open Settings -> View log and attach PSTools.log with the reproduction steps.
+[/list]

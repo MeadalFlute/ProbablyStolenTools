@@ -1,8 +1,8 @@
-﻿# Probably Stolen Tools
+# Probably Stolen Tools
 
 [English](README_EN.md) | 中文
 
-《深空当铺 / Probably Stolen》的自研辅助 Mod，适配正式版 **0.8.15**。
+《深空当铺 / Probably Stolen》的自研辅助 Mod，适配正式版 **0.9.0**。
 正式版为 Unity 2021.3.45f2 / Mono / x64（游戏 0.46D），使用游戏自带的 **IMod / Harmony** 加载器，不需要 MelonLoader 或 BepInEx。
 
 ---
@@ -19,6 +19,13 @@
 - 闭店（含开门前的早市状态）下建立的手动节点可以正常回溯。
 - 接了下一位顾客后才截断被放弃的后续分支。
 - 离店、跨天、切换场景会释放内存节点；不支持跨场景回溯。
+- **0.9.0 起**：顾客/手动节点使用「完整对象图 + 精确实体载荷」的混合后端，保留原对象身份、完整校验与失败回退；这是内存回溯后端，不是用原版存档替换回溯。
+
+### 多语言
+
+- 水质、纯度、评级、酿酒等标注直接读取游戏原生语言键，随游戏语言切换，不再只支持中/英。
+- 原生条目缺失时依次回退到英语表与英文文本；中文环境缺键回退中文文本；第三方液体保留其自带名称。
+- 设置页可分别关闭「水质标注」「化学辅助」「酿酒标注」。
 
 ### 鉴定与信息
 
@@ -106,6 +113,7 @@
 - 适用于**正式版**（Mono）；Demo / MelonLoader 路径不再维护。
 - 与不修改同一界面、不新增数据结构到游戏内的 Mod 一般可共存。
 - 快照会遍历游戏业务对象图，**向游戏内新增大量对象或自定义数据结构的 Mod** 可能导致建节点失败（面板会显示「损坏」及原因）。
+- **前向兼容提示**：官方已公告 2026-12-10 起拒绝 `dynamic-code` / `reflection-external` 能力；0.9.0 只保证**当前游戏版本**可用，迁移完成前不宣称兼容下一版加载器。详见仓库 `research/2026-11-12-loader-capability-migration.md`。
 
 ---
 
@@ -158,7 +166,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前源码基线：编译 0 警告 / 0 错误；`CheckpointTests` **373 项**通过；正式版 **57 个** Harmony 入口、**76 个**字段与官方 Mod 扫描器通过。单次遍历实体后端为待实机验收候选，离线测试不能代替游戏内验收。
+当前源码基线：编译 0 警告 / 0 错误；`CheckpointTests` **373 项**通过；正式版 **57 个** Harmony 入口、**76 个**字段与官方 Mod 扫描器通过。单次遍历实体后端已随 0.9.0 发布，离线测试不能代替游戏内验收。
 
 开发期重复快照对照由 `Snapshot.SemanticDevelopmentChecks` 统一控制，发布默认关闭；开启会增加首节点及额外手动采样的耗时和内存。关闭后完整预检、状态校验、修复及必要诊断仍保留。新后端的开关为 `Snapshot.SemanticEntityBlocks`，修改后需重启游戏。
 
@@ -167,7 +175,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 ## 版本管理
 
 - **唯一真源是 `release/manifest.xml` 的 `ModVersion`**。
-- 版本规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**（例如 0.8.14 → 0.8.15）。
+- 版本规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**（例如 0.8.15 → 0.9.0）。
 - README 文案更新不推进版本号。
 
 ---
