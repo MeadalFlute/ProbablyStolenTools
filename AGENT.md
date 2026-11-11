@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**341 项**离线测试；正式版 **57 个** Harmony 挂点、原 **74 个**快照/私有字段检查，另有实体投影 schema 原生夹具；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
+当前基线：**347 项**离线测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查，另有实体投影 schema 原生夹具及顾客路径契约；`HardFlags` 为空。离线通过 **不等于** Unity 活体验收。
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
@@ -45,6 +45,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 已部署普通标量免写（19:40）：`Snapshot.SkipUnchangedScalars=true` 仍逐槽读取，只有 null/框架 primitive/enum/decimal 与捕获值精确相同时才省去真实写入，浮点按位比较；自定义 nullable 结构体无条件写入，不新增其 Equals 调用。不同值仍递归复制写回，块、引用、捕获、普查、预检/最终完整校验及 owner/full 回退保持。Session 追加开关，RESTORE 追加本次 ordinaryScalarWrites(checked/skipped)，仅计普通标量调用、不含块/引用。两次原生隔离开关对照写回约快 30-32%，少分配约 1.04 MiB；大量变化样本快约 15.6%但多分配约 1.21 MiB，不代表 Unity 或整次恢复收益。226 项回归及原生兼容通过，待实机，详见 `research/2026-11-11-unchanged-scalar-writes.md`。局部递归改静态递归候选无收益，已撤除。
 
 ### 版本与发布
+
+最新反馈：2026-11-12 01:27:42.959 会话 3 捕获/5 恢复最终 diff=0，两个独立采样载荷 MATCH，但用户发现顾客贴图丢失，并称此前已有多次报告，不能把本轮当作画面验收通过或直接归因于双节点。暂停语义后端扩展，先修顾客视觉恢复：补原路径游标/方向/速度的静默恢复、renderer 原身份/完整局部变换链/渲染开关/属性块；先定位再激活，reconcile/fallback 后只重套顾客变换；补 leaveTimeScale 业务字段。路径 seek 暂时屏蔽原回调并 finally 归还，不重播离店/到店，不无条件强制显示。新增每节点捕获/恢复前后及一次 frame+2 的 CustomerVisual 诊断，不逐帧刷日志。347 项及正式版契约/夹具通过，实机待验；此前日志没有视觉诊断，尚未证明具体触发根因。详见 `research/2026-11-12-customer-visual-rewind.md`。下方为此前阶段记录。
 
 当前最新：2026-11-12 01:18:14.077 联合运行态实机通过，4捕获/7恢复最终diff=0/releaseOk=True，无最终回退；首节点4次实际runtimePilot=True/483607槽、完整78095 Entity槽写回，双载荷全MATCH，恢复后四件群拖完成。首节点3553 ms（entityRecords2643含runtime882），其他315-349 ms，恢复中位数769 ms，非A/B、不归因提速；无FAILED/UNAVAILABLE，Player.log只有启动TLS/Curl网络错误。接续新增 `Snapshot.SemanticManualSample=true`，每上下文首个采样之外，再为首个后续手动节点准备独立载荷，最多两次尝试；失败/淘汰不重试，普通后续节点不扩展。341项及原生两个完整游戏类型节点六轮往返/不同字典容量/成员顺序/跨节点拒绝/释放隔离通过。待双节点实机，旧图/全部校验/修复/视觉及重复诊断保留，额外手动节点也会明显停顿；生产捕获尚未替换。详见 `research/2026-11-12-semantic-two-node-sampling.md`。以下为历史阶段记录。
 

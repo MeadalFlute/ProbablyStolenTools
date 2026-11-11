@@ -30,6 +30,9 @@ namespace ProbablyStolenTools
         private static bool _faulted;
         private static long _epoch;
         private static long _callbackId;
+        private static Snapshot _visualProbe;
+        private static int _visualProbeFrame;
+        private static long _visualProbeEpoch;
 #if MONO
         private static bool _semanticShadowAttempted;
         private static bool _entityBoundaryAttempted;
@@ -156,6 +159,13 @@ namespace ProbablyStolenTools
             if (Restoring) return;
             if (Plugin.Store() != null) InspectionLocale.LogState();
             Observe();
+            if (_visualProbe != null && Time.frameCount >= _visualProbeFrame)
+            {
+                var probe = _visualProbe;
+                _visualProbe = null;
+                if (_visualProbeEpoch == _epoch && ReferenceEquals(probe, _active))
+                    probe.Customer.Log(probe.Id, "next-frame");
+            }
             if (!Enabled) { if (History.Items.Count > 0 || ClosedNode?.Graph != null) Clear("已禁用"); return; }
             if (_armed && Time.unscaledTime >= _nextCapturePoll)
             {
@@ -472,7 +482,8 @@ namespace ProbablyStolenTools
             Root(StoreShutterButton.Instance, "isClosed", "elapsedTime");
             var mono = StoreClientMono.Instance;
             Root(mono, "idleDecisionClient", "idleSuppressed", "idleShakeHorizontal", "defaultIdleAxis",
-                "defaultIdleAmplitude", "defaultIdleFrequency", "ignoreOnLeftFlag", "fadeMode", "walkingIn");
+                "defaultIdleAmplitude", "defaultIdleFrequency", "ignoreOnLeftFlag", "fadeMode", "walkingIn",
+                "leaveTimeScale");
             var idleAnimator = GameFields.Get<IdleAnimator>(mono, "idleAnimator");
             if (idleAnimator != null)
                 Root(idleAnimator, "amplitude", "frequency", "axis", "originalPosition",
@@ -587,6 +598,7 @@ namespace ProbablyStolenTools
 #endif
                 phase = "items";
                 candidate.Customer = new CustomerVisual();
+                candidate.Customer.Log(candidate.Id, "capture");
                 candidate.Shop = new ShopPhaseVisual();
                 var visualIds = new HashSet<IntPtr>();
                 if (candidate.Graph.SlotCount == 0) throw new InvalidOperationException("Empty business-state graph.");
@@ -998,6 +1010,7 @@ namespace ProbablyStolenTools
                 foreach (var view in target.Visuals) view.Validate();
                 target.Customer.Validate();
                 target.Shop.Validate();
+                target.Customer.Log(target.Id, "before-restore");
                 tValidate = timing.ElapsedMilliseconds;
                 phase = "census";
                 var access = Access(store, out var roots);
@@ -1146,6 +1159,7 @@ namespace ProbablyStolenTools
                 // 避免 UpdateRectTransform() 用被清零的 modifiedShape.orientation 覆盖旋转。
                 phase = "reconcile-transforms";
                 foreach (var view in target.Visuals) view.RestoreTransforms();
+                target.Customer.RestoreTransforms();
                 tReconcile = timing.ElapsedMilliseconds;
                 phase = "final-verify";
                 diff = target.Graph.VerifyReconciliation(reconciliation, () =>
@@ -1156,6 +1170,7 @@ namespace ProbablyStolenTools
                     RestoreItemGeometry(target);
                     phase = "final-fallback-transforms";
                     foreach (var view in target.Visuals) view.RestoreTransforms();
+                    target.Customer.RestoreTransforms();
                     phase = "final-fallback-verify";
                 }, out finalRepairFallback);
                 finalDifferences = diff.Count;
@@ -1198,6 +1213,10 @@ namespace ProbablyStolenTools
                 Status = "Restored checkpoint: " + Name(target);
                 PanelNotice.Show("已回溯至 " + Name(target));
                 TraceBargain("AFTER RESTORE");
+                target.Customer.Log(target.Id, "restored");
+                _visualProbe = target;
+                _visualProbeFrame = Time.frameCount + 2;
+                _visualProbeEpoch = _epoch;
                 tCleanup = timing.ElapsedMilliseconds;
                 completed = true;
             }
@@ -1442,6 +1461,7 @@ namespace ProbablyStolenTools
 
         private static void Clear(string reason = "场景切换")
         {
+            _visualProbe = null;
 #if MONO
             _semanticShadowAttempted = false;
             _entityBoundaryAttempted = false;
@@ -1631,37 +1651,127 @@ namespace ProbablyStolenTools
         internal sealed class CustomerVisual
         {
             private readonly StoreClientMono _mono = StoreClientMono.Instance;
+            private readonly SpriteRenderer _image;
+            private readonly Transform _parent;
+            private readonly List<CustomerTransform> _transforms = new();
             private readonly Sprite _sprite;
             private readonly Color _color;
-            private readonly Vector3 _position;
-            private readonly bool _active, _parentActive;
+            private readonly MaterialPropertyBlock _properties = new();
+            private readonly bool _enabled, _forceRenderingOff;
+#if MONO
+            private readonly CustomerPathState _mainPath, _rightPath;
+#endif
             internal CustomerVisual()
             {
+                if (_mono == null || _mono.image == null || _mono.transform.parent == null)
+                    throw new InvalidOperationException("Customer view missing.");
+                _image = _mono.image;
+                _parent = _mono.transform.parent;
+                var chain = new List<Transform>();
+                var t = _image.transform;
+                while (t != _mono.transform)
+                {
+                    if (t == null) throw new InvalidOperationException("Customer sprite is outside its view hierarchy.");
+                    chain.Add(t);
+                    t = t.parent;
+                }
+                chain.Add(_mono.transform);
+                chain.Add(_parent);
+                chain.Reverse();
+                foreach (var transform in chain) _transforms.Add(new CustomerTransform(transform));
+                _sprite = _image.sprite;
+                _color = _image.color;
+                _enabled = _image.enabled;
+                _forceRenderingOff = _image.forceRenderingOff;
+                _image.GetPropertyBlock(_properties);
+#if MONO
+                _mainPath = new CustomerPathState(GameFields.Get<DG.Tweening.DOTweenPath>(_mono, "dOTweenPath"));
+                _rightPath = new CustomerPathState(_mono.pathRight);
+#endif
                 Validate();
-                _sprite = _mono.image.sprite;
-                _color = _mono.image.color;
-                _position = _mono.transform.localPosition;
-                _active = _mono.gameObject.activeSelf;
-                _parentActive = _mono.transform.parent.gameObject.activeSelf;
             }
             internal void Validate()
             {
-                if (_mono == null || _mono.image == null || _mono.transform.parent == null)
+                if (_mono == null || StoreClientMono.Instance != _mono || _image == null
+                    || _mono.image != _image || _mono.transform.parent != _parent)
                     throw new InvalidOperationException("Customer view no longer exists.");
+                foreach (var transform in _transforms) transform.Validate();
+#if MONO
+                _mainPath.Validate();
+                _rightPath.Validate();
+#endif
             }
             internal void Restore()
             {
                 Validate();
-                _mono.transform.parent.gameObject.SetActive(_parentActive);
-                _mono.gameObject.SetActive(_active);
-                _mono.transform.localPosition = _position;
-                _mono.image.sprite = _sprite;
-                _mono.image.color = _color;
 #if MONO
-                AccessTools.Method(typeof(StoreClientMono), "SetSolidBlend").Invoke(_mono, new object[] { 0f });
-#else
-                _mono.SetSolidBlend(0f);
+                _mainPath.Restore();
+                _rightPath.Restore();
 #endif
+                // OnEnable can seed IdleAnimator from the current transform: position before activation.
+                RestoreTransforms();
+                foreach (var transform in _transforms) transform.RestoreActive();
+                RestoreTransforms();
+                _image.sprite = _sprite;
+                _image.color = _color;
+                _image.enabled = _enabled;
+                _image.forceRenderingOff = _forceRenderingOff;
+                _image.SetPropertyBlock(_properties);
+            }
+
+            internal void RestoreTransforms()
+            {
+                foreach (var transform in _transforms) transform.RestoreTransform();
+            }
+
+            internal void Log(long id, string phase)
+            {
+                try
+                {
+                    string paths = "";
+#if MONO
+                    paths = $" main=({_mainPath.Describe()}) right=({_rightPath.Describe()})";
+#endif
+                    var properties = new MaterialPropertyBlock();
+                    _image.GetPropertyBlock(properties);
+                    EventLog.Write($"[CustomerVisual] {phase} id={id} sprite={_image.sprite?.name ?? "null"} " +
+                        $"targetSprite={_sprite?.name ?? "null"} enabled={_image.enabled}/{_enabled} " +
+                        $"forceOff={_image.forceRenderingOff}/{_forceRenderingOff} " +
+                        $"active={_image.gameObject.activeSelf} hierarchy={_image.gameObject.activeInHierarchy} " +
+                        $"alpha={_image.color.a:0.###} rootLocal={_mono.transform.localPosition} " +
+                        $"imageLocal={_image.transform.localPosition} world={_image.transform.position} " +
+                        $"solidBlend={properties.GetFloat(Shader.PropertyToID("_SolidBlend")):0.###} " +
+                        $"transforms=[{string.Join(";", _transforms.Select(t => t.Describe()))}]" + paths);
+                }
+                catch (Exception e) { EventLog.Write("[CustomerVisual] diagnostic failed: " + e.Message); }
+            }
+
+            private sealed class CustomerTransform
+            {
+                private readonly Transform _transform, _parent;
+                private readonly Vector3 _position, _scale;
+                private readonly Quaternion _rotation;
+                private readonly bool _active;
+                internal CustomerTransform(Transform transform)
+                {
+                    _transform = transform; _parent = transform.parent;
+                    _position = transform.localPosition; _scale = transform.localScale;
+                    _rotation = transform.localRotation; _active = transform.gameObject.activeSelf;
+                }
+                internal void Validate()
+                {
+                    if (_transform == null || _transform.parent != _parent)
+                        throw new InvalidOperationException("Customer transform was destroyed or reparented.");
+                }
+                internal void RestoreTransform()
+                {
+                    _transform.localPosition = _position;
+                    _transform.localRotation = _rotation;
+                    _transform.localScale = _scale;
+                }
+                internal void RestoreActive() => _transform.gameObject.SetActive(_active);
+                internal string Describe() => $"{_transform.name}:local={_transform.localPosition}/target={_position}," +
+                    $"active={_transform.gameObject.activeSelf}/{_active},scale={_transform.localScale}/{_scale}";
             }
         }
 

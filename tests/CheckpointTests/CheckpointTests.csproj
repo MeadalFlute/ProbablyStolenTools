@@ -22,6 +22,7 @@
     <Compile Include="../../src/ProbablyStolenTools/SemanticCheckpointSampling.cs" Link="SemanticCheckpointSampling.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CheckpointHistory.cs" Link="CheckpointHistory.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CheckpointItemInteraction.cs" Link="CheckpointItemInteraction.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/CustomerPathState.cs" Link="CustomerPathState.cs" />
     <Compile Include="../../src/ProbablyStolenTools/PanelModel.cs" Link="PanelModel.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SaveMetadata.cs" Link="SaveMetadata.cs" />
     <Compile Include="../../src/ProbablyStolenTools/InspectionChecks.cs" Link="InspectionChecks.cs" />

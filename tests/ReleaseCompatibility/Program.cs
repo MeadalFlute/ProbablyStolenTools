@@ -95,7 +95,8 @@ var roots = new Dictionary<string, string[]>
     ["StoreUIManager"] = new[] { "isAboutToStartMainDialog", "isReportedAug", "isTyping" },
     ["StoreShutterButton"] = new[] { "isClosed", "elapsedTime", "duration" },
     ["StoreClientMono"] = new[] { "idleDecisionClient", "idleSuppressed", "idleShakeHorizontal", "defaultIdleAxis",
-        "defaultIdleAmplitude", "defaultIdleFrequency", "ignoreOnLeftFlag", "fadeMode", "walkingIn", "idleAnimator" },
+        "defaultIdleAmplitude", "defaultIdleFrequency", "ignoreOnLeftFlag", "fadeMode", "walkingIn", "idleAnimator",
+        "dOTweenPath", "leaveTimeScale" },
     ["IdleAnimator"] = new[] { "amplitude", "frequency", "axis", "originalPosition", "hasOriginal", "timer", "playing" },
     ["PhoneUIManager"] = new[] { "currentNumber", "isCalling", "callingTimer", "callTimerRoll", "isTalking", "sequenceTimer", "currentPhoneClient" },
     ["GameMaster"] = new[] { "worldTags" },
@@ -116,6 +117,27 @@ foreach (var root in roots)
     }
 }
 Console.WriteLine($"PASS {hooks} hook targets and {fields} snapshot/private fields");
+var tweenAssembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(managed, "DOTween.dll"));
+var pathAssembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(managed, "DOTweenPro.dll"));
+var tweenType = tweenAssembly.GetType("DG.Tweening.Tween", true);
+var pathType = pathAssembly.GetType("DG.Tweening.DOTweenPath", true);
+var tweenExtensions = tweenAssembly.GetType("DG.Tweening.TweenExtensions", true);
+var customerMono = game.GetType("StoreClientMono", true);
+foreach (string name in new[] { "dOTweenPath", "pathRight" })
+    if (customerMono.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.FieldType != pathType)
+        throw new Exception("Customer path contract changed: " + name);
+if (pathType.GetField("tween")?.FieldType != tweenType)
+    throw new Exception("Customer tween storage contract changed.");
+foreach (string name in new[] { "onPlay", "onPause", "onRewind", "onUpdate", "onStepComplete",
+    "onComplete", "onKill", "onWaypointChange", "timeScale", "isBackwards" })
+    if (tweenType.GetField(name, BindingFlags.Public | BindingFlags.Instance) == null)
+        throw new Exception("Missing customer tween field: " + name);
+if (tweenExtensions.GetMethod("Goto", new[] { tweenType, typeof(float), typeof(bool) }) == null
+    || tweenExtensions.GetMethod("Elapsed", new[] { tweenType, typeof(bool) }) == null
+    || tweenExtensions.GetMethod("IsActive", new[] { tweenType }) == null
+    || tweenExtensions.GetMethod("IsPlaying", new[] { tweenType }) == null)
+    throw new Exception("Customer tween seek/probe contract changed.");
+Console.WriteLine("PASS customer original-path cursor and callback suppression contracts");
 var multiSelect = game.GetType("ItemMultiSelectHandler", true);
 foreach (string property in new[] { "HasSelection", "IsGroupDragging" })
     if (multiSelect.GetProperty(property)?.PropertyType != typeof(bool))

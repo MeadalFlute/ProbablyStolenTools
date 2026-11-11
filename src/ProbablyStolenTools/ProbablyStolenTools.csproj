@@ -27,6 +27,8 @@
     <Compile Remove="NativeStateAccess.cs;ModConfig.cs" />
     <Reference Include="Assembly-CSharp" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Assembly-CSharp.dll" Private="false" />
     <Reference Include="Assembly-CSharp-firstpass" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Assembly-CSharp-firstpass.dll" Private="false" />
+    <Reference Include="DOTween" HintPath="$(GameDir)\Probably Stolen_Data\Managed\DOTween.dll" Private="false" />
+    <Reference Include="DOTweenPro" HintPath="$(GameDir)\Probably Stolen_Data\Managed\DOTweenPro.dll" Private="false" />
     <Reference Include="0Harmony" HintPath="$(GameDir)\Probably Stolen_Data\Managed\0Harmony.dll" Private="false" />
     <Reference Include="$(GameDir)\Probably Stolen_Data\Managed\UnityEngine*.dll" Private="false" />
     <Reference Include="Unity.TextMeshPro" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Unity.TextMeshPro.dll" Private="false" />
@@ -34,7 +36,7 @@
     <Reference Include="Unity.ResourceManager" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Unity.ResourceManager.dll" Private="false" />
   </ItemGroup>
   <ItemGroup Condition="'$(GameRuntime)' != 'Mono'">
-    <Compile Remove="ManagedStateAccess.cs;ManagedRuntime.cs;MonoModConfig.cs;SnapshotFieldReader.cs" />
+    <Compile Remove="ManagedStateAccess.cs;ManagedRuntime.cs;MonoModConfig.cs;SnapshotFieldReader.cs;CustomerPathState.cs" />
     <Reference Include="MelonLoader">
       <HintPath>$(MelonDir)\MelonLoader.dll</HintPath>
       <Private>false</Private>
