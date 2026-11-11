@@ -63,6 +63,8 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgSemanticInventoryRestore;
         internal static ConfigEntry<bool> CfgSemanticRuntimeRestore;
         internal static ConfigEntry<bool> CfgSemanticManualSample;
+        internal static ConfigEntry<bool> CfgSemanticEntityBlocks;
+        internal static ConfigEntry<bool> CfgSemanticDevelopmentChecks;
         internal static ConfigEntry<KeyCode> CfgKeyPrev;
         internal static ConfigEntry<KeyCode> CfgKeyManual;
         internal static ConfigEntry<KeyCode> CfgKeyDay;
@@ -296,6 +298,10 @@ namespace ProbablyStolenTools
                 "Pilot independent runtime storage writes only with a complete enabled entity partition on the sampled checkpoint. Keeps the full old capture, verification, repair and visual sequence.");
             CfgSemanticManualSample = Config.Bind("Snapshot", "SemanticManualSample", true,
                 "Prepare one additional entity/runtime sample on the first later manual checkpoint per context. At most two attempts; retains the full old graph and diagnostics for independent past/future testing.");
+            CfgSemanticEntityBlocks = Config.Bind("Snapshot", "SemanticEntityBlocks", true,
+                "Single-pass exact entity payloads with original identities and complete Runtime/collection storage. Keeps full validation and owner/full repair. Disable and restart for the previous ordinary capture backend.");
+            CfgSemanticDevelopmentChecks = Config.Bind("Snapshot", "SemanticDevelopmentChecks", false,
+                "Development-only duplicate capture/verification. With entity blocks, retains an independent old graph on the primary and optional later manual sample. Without blocks, allows the earlier shadow/audit/writer pilots. Disable and restart after acceptance to remove diagnostic overhead; mandatory safety checks remain enabled.");
             CfgKeyManual = Config.Bind("Rewind", "KeyManualCheckpoint", KeyCode.F9,
                 "Create a checkpoint immediately, without waiting for a customer.");
             CfgKeyPrev = Config.Bind("Rewind", "KeyPrevCheckpoint", KeyCode.F6,
@@ -382,7 +388,7 @@ namespace ProbablyStolenTools
             EventLog.Write($"[Session] version={Version} game={Application.version} locale=deferred " +
                 $"snapshotLimits(objects={CfgMaxObjects.Value},slots={CfgMaxSlots.Value},MiB={CfgMaxBytesMb.Value}) " +
                 $"verbose={CfgVerboseLog.Value} semanticTagShadow={CfgSemanticTagShadow.Value} semanticTagBlocks={CfgSemanticTagBlocks.Value} ownerReconcile={CfgOwnerReconcile.Value} intArrayBlocks={CfgIntArrayBlocks.Value} semanticTagCensus={CfgSemanticTagCensus.Value} skipUnchangedScalars={CfgSkipUnchangedScalars.Value} typedScalarComparisons={CfgTypedScalarComparisons.Value} directReferenceComparisons={CfgDirectReferenceComparisons.Value} semanticEntityAudit={CfgSemanticEntityAudit.Value} semanticEntityRecords={CfgSemanticEntityRecords.Value} semanticShapeRestore={CfgSemanticShapeRestore.Value}; " +
-                $"semanticWindowRestore={CfgSemanticWindowRestore.Value} semanticItemRestore={CfgSemanticItemRestore.Value} semanticInventoryRestore={CfgSemanticInventoryRestore.Value} semanticRuntimeRestore={CfgSemanticRuntimeRestore.Value} semanticManualSample={CfgSemanticManualSample.Value}; arrivalWaitSeconds is not capture duration; use captureMs");
+                $"semanticWindowRestore={CfgSemanticWindowRestore.Value} semanticItemRestore={CfgSemanticItemRestore.Value} semanticInventoryRestore={CfgSemanticInventoryRestore.Value} semanticRuntimeRestore={CfgSemanticRuntimeRestore.Value} semanticManualSample={CfgSemanticManualSample.Value} semanticEntityBlocks={CfgSemanticEntityBlocks.Value} semanticDevelopmentChecks={CfgSemanticDevelopmentChecks.Value}; arrivalWaitSeconds is not capture duration; use captureMs");
             LogSource.LogInfo("Loaded.");
         }
 

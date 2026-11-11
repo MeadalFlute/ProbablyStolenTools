@@ -262,5 +262,35 @@ internal static class SemanticFieldBlockTests
             graph.Restore();
             check(factory.BlockCount == 1 && owner.Number == 7 && owner.Text == "original" && graph.Differences().Count == 0);
         });
+        test("single-pass oracle checks exact slot names and reference edges not just matching object and byte counts", () =>
+        {
+            var item = new Item();
+            var first = Access(); first.AddRoot(ManagedObjects.Id(item), "Count");
+            using var candidate = StateGraph.Capture(first, new[] { ManagedObjects.Id(item) });
+            var second = Access(); second.AddRoot(ManagedObjects.Id(item), "Price");
+            var mismatched = StateGraph.Capture(second, new[] { ManagedObjects.Id(item) });
+            Throws<InvalidOperationException>(() => new SemanticCaptureOracle(candidate, mismatched));
+            candidate.Restore(); check(item.Count == 3);
+
+            var a = new Item(); var b = new Item(); var c = new Item(); a.Link = b;
+            using var graph = Capture(Access(Factory()), a, b, c);
+            a.Link = c;
+            Throws<InvalidOperationException>(() => new SemanticCaptureOracle(graph, Capture(Access(), a, b, c)));
+            graph.Restore(); check(ReferenceEquals(a.Link, b));
+        });
+        test("single-pass candidate and retained ordinary checkpoints can alternate without borrowing payload lifetime", () =>
+        {
+            var item = new Item();
+            var candidate = Capture(Access(Factory()), item);
+            item.Count = 29; item.Name = null;
+            using var ordinary = Capture(Access(), item);
+            for (int i = 0; i < 6; i++)
+            {
+                candidate.Restore(); check(item.Count == 3 && item.Name == "original");
+                ordinary.Restore(); check(item.Count == 29 && item.Name == null);
+            }
+            candidate.Dispose(); item.Count = 99;
+            ordinary.Restore(); check(item.Count == 29 && ordinary.Differences().Count == 0);
+        });
     }
 }

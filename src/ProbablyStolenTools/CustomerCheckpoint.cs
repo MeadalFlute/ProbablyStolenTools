@@ -107,6 +107,8 @@ namespace ProbablyStolenTools
 #if MONO
             internal SemanticTagShadow SemanticTags;
             internal SemanticEntityShadow SemanticEntities;
+            internal SemanticCaptureOracle BlockOracle;
+            internal int EntityBlockOwners, EntityBlockSlots, EntityRuntimeSlots;
 #endif
             internal readonly Dictionary<IntPtr, GameItemElement> Items = new();
             internal readonly Dictionary<IntPtr, GameItemElement> RenderedItems = new();
@@ -122,6 +124,7 @@ namespace ProbablyStolenTools
 #if MONO
                 SemanticTags?.Dispose(); SemanticTags = null;
                 SemanticEntities?.Dispose(); SemanticEntities = null;
+                BlockOracle?.Dispose(); BlockOracle = null;
 #endif
                 Items.Clear(); RenderedItems.Clear(); Windows.Clear(); Visuals.Clear();
                 Random = null; Customer = null; Shop = null;
@@ -439,7 +442,7 @@ namespace ProbablyStolenTools
             catch { return true; }
         }
 
-        private static NativeStateAccess Access(PlayerStore store, out List<IntPtr> roots)
+        private static NativeStateAccess Access(PlayerStore store, out List<IntPtr> roots, bool entityBlocks = true)
         {
 #if MONO
             var access = new NativeStateAccess(typeof(UnityEngine.Object), "Assembly-CSharp", true, true, true,
@@ -448,6 +451,7 @@ namespace ProbablyStolenTools
             access.TypedScalarComparisons = Plugin.CfgTypedScalarComparisons?.Value == true;
             access.DirectReferenceComparisons = Plugin.CfgDirectReferenceComparisons?.Value == true;
             if (Plugin.CfgSemanticTagBlocks?.Value == true) SemanticTagBlock.Enable(access);
+            if (entityBlocks && Plugin.CfgSemanticEntityBlocks?.Value == true) SemanticEntityBlocks.Enable(access);
 #else
             var access = new NativeStateAccess();
 #endif
@@ -593,6 +597,13 @@ namespace ProbablyStolenTools
                 candidate.Graph = StateGraph.Capture(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
                 long tWalk = timing.ElapsedMilliseconds;
 #if MONO
+                bool blockMode = access.EntityBlocks != null;
+                bool developmentChecks = Plugin.CfgSemanticDevelopmentChecks?.Value == true;
+                candidate.EntityBlockOwners = access.EntityBlocks?.BlockCount ?? 0;
+                candidate.EntityBlockSlots = access.EntityBlocks?.SlotCount ?? 0;
+                candidate.EntityRuntimeSlots = access.EntityBlocks?.RuntimeSlotCount ?? 0;
+                if (blockMode && SemanticEntityBlocks.SchemaFailure != null)
+                    EventLog.Write("[SemanticEntities] SINGLEPASS SCHEMA FALLBACK: " + SemanticEntityBlocks.SchemaFailure);
                 long walkReaderCompileMs = SnapshotFieldReader.CompileMilliseconds(
                     SnapshotFieldReader.CompileTicks - readerCompileBefore);
 #endif
@@ -669,7 +680,7 @@ namespace ProbablyStolenTools
                 long semanticCaptureVerifyMs = -1;
                 phase = "semantic-shadow";
 #if MONO
-                if (!_semanticShadowAttempted && Plugin.CfgSemanticTagShadow?.Value == true)
+                if (developmentChecks && !blockMode && !_semanticShadowAttempted && Plugin.CfgSemanticTagShadow?.Value == true)
                 {
                     _semanticShadowAttempted = true;
                     var shadowClock = System.Diagnostics.Stopwatch.StartNew();
@@ -690,7 +701,7 @@ namespace ProbablyStolenTools
                 phase = "entity-boundary-audit";
                 string entityAudit = null;
 #if MONO
-                if (!_entityBoundaryAttempted && Plugin.CfgSemanticEntityAudit?.Value == true)
+                if (developmentChecks && !blockMode && !_entityBoundaryAttempted && Plugin.CfgSemanticEntityAudit?.Value == true)
                 {
                     _entityBoundaryAttempted = true;
                     var auditClock = System.Diagnostics.Stopwatch.StartNew();
@@ -707,8 +718,19 @@ namespace ProbablyStolenTools
 #endif
                 long tEntityAudit = timing.ElapsedMilliseconds;
                 phase = "entity-records";
+                long blockOracleMs = 0;
 #if MONO
-                if (Plugin.CfgSemanticEntityRecords?.Value == true
+                if (developmentChecks && blockMode
+                    && EntitySamples.TryBegin(manual, Plugin.CfgSemanticManualSample?.Value == true, out entitySample))
+                {
+                    phase = "entity-block-oracle";
+                    var oracleClock = System.Diagnostics.Stopwatch.StartNew();
+                    var oracleAccess = Access(store, out var oracleRoots, false);
+                    candidate.BlockOracle = new SemanticCaptureOracle(candidate.Graph,
+                        StateGraph.Capture(oracleAccess, oracleRoots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes));
+                    blockOracleMs = oracleClock.ElapsedMilliseconds;
+                }
+                if (developmentChecks && !blockMode && Plugin.CfgSemanticEntityRecords?.Value == true
                     && EntitySamples.TryBegin(manual, Plugin.CfgSemanticManualSample?.Value == true, out entitySample))
                 {
                     var recordClock = System.Diagnostics.Stopwatch.StartNew();
@@ -800,6 +822,11 @@ namespace ProbablyStolenTools
                 if (entityAudit != null)
                     EventLog.Write($"[SemanticEntities] BOUNDARY id={candidate.Id} " + entityAudit);
 #if MONO
+                if (candidate.BlockOracle != null)
+                    EventLog.Write($"[SemanticEntities] SINGLEPASS CAPTURE MATCH id={candidate.Id} sample={entitySample} " +
+                        $"oracleMs={blockOracleMs} entityOwners={candidate.EntityBlockOwners} " +
+                        $"entitySlots={candidate.EntityBlockSlots - candidate.EntityRuntimeSlots} runtimeOwnerSlots={candidate.EntityRuntimeSlots} " +
+                        $"oldPayload=development-only actualWriter=single-pass fullCoverage=true");
                 if (candidate.SemanticEntities != null)
                     EventLog.Write($"[SemanticEntities] RECORD CAPTURE MATCH id={candidate.Id} readOnly=true " +
                         $"sample={entitySample} captureVerifyMs={tEntityRecords - tEntityAudit} {candidate.SemanticEntities.Summary}");
@@ -835,7 +862,10 @@ namespace ProbablyStolenTools
                 Status = "Checkpoint: " + Name(_active);
                 if (manual) PanelNotice.Show("已建立手动节点 #" + _active.Id);
 #if MONO
-                string readers = $" backend={access.BlockMode} tagBlocks={_active.Graph.BlockCount - access.IntArrayBlockCount} " +
+                string readers = $" backend={access.BlockMode} tagBlocks={_active.Graph.BlockCount - access.IntArrayBlockCount - _active.EntityBlockOwners} " +
+                    $"entityBlocks={_active.EntityBlockOwners} entityBlockSlots={_active.EntityBlockSlots} " +
+                    $"entityRuntimeSlots={_active.EntityRuntimeSlots} entitySchemaFallbacks={access.EntityBlocks?.FallbackCount ?? 0} " +
+                    $"developmentChecks={developmentChecks} blockOracleMs={blockOracleMs} " +
                     $"intArrayBlocks={access.IntArrayBlockCount} intArraySlots={access.IntArraySlotCount} " +
                     $"walkReaderCompileMs={walkReaderCompileMs} " +
                     $"typedComparisons={access.TypedComparisonCount} " +
@@ -1013,7 +1043,7 @@ namespace ProbablyStolenTools
                 target.Customer.Log(target.Id, "before-restore");
                 tValidate = timing.ElapsedMilliseconds;
                 phase = "census";
-                var access = Access(store, out var roots);
+                var access = Access(store, out var roots, false);
 #if MONO
                 if (Plugin.CfgSemanticTagCensus?.Value == true) SemanticTagBlock.EnableCensus(access);
 #endif
@@ -1030,6 +1060,10 @@ namespace ProbablyStolenTools
 #endif
                 phase = "target-preflight";
                 target.Graph.Differences();
+#if MONO
+                // Validate independent retention before the first business write; live differences are expected here.
+                target.BlockOracle?.ValidateRetention();
+#endif
                 TraceBargain("BEFORE RESTORE");
                 var newItems = new List<GameItemElement>();
                 var newWindows = new List<PixelWindow>();
@@ -1178,6 +1212,13 @@ namespace ProbablyStolenTools
                     throw new InvalidOperationException("Final restore differs from checkpoint: " + string.Join(", ", diff));
                 tVerify = timing.ElapsedMilliseconds;
 #if MONO
+                if (target.BlockOracle != null)
+                {
+                    phase = "entity-block-oracle-verify";
+                    target.BlockOracle.VerifyRestore();
+                    EventLog.Write($"[SemanticEntities] SINGLEPASS RESTORE MATCH id={target.Id} " +
+                        $"entityOwners={target.EntityBlockOwners} actualWriter=single-pass oracle=independent-legacy diff=0");
+                }
                 target.SemanticTags?.ObserveRestore(target.Id);
                 target.SemanticEntities?.ObserveRestore(target.Id);
 #endif
@@ -1250,7 +1291,9 @@ namespace ProbablyStolenTools
                 {
                     long tFinish = timing.ElapsedMilliseconds;
 #if MONO
-                    string comparisonDiagnostic = $" compareCompileMs={SnapshotFieldReader.CompileMilliseconds(SnapshotFieldReader.CompareCompileTicks - compareCompileBefore)}";
+                    string comparisonDiagnostic = $" compareCompileMs={SnapshotFieldReader.CompileMilliseconds(SnapshotFieldReader.CompareCompileTicks - compareCompileBefore)} " +
+                        $"entityBlocks={target.EntityBlockOwners} entityBlockSlots={target.EntityBlockSlots} " +
+                        $"entityRuntimeSlots={target.EntityRuntimeSlots} blockOracle={target.BlockOracle != null}";
 #else
                     string comparisonDiagnostic = "";
 #endif

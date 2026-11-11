@@ -1418,6 +1418,31 @@ using (var nativeBlockOracle = BlockOracle(nativeBlockGraph))
             throw new Exception("Independent block composition lost native entity schemas.");
         VerifyBlockOracle(independentOracle);
     }
+    boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 78);
+    var nativeBlockRepair = graphType.GetMethod("PrepareReconciliation", dataFlags).Invoke(nativeBlockGraph,
+        new object[] { true, 128, 8192 });
+    if ((string)nativeBlockRepair.GetType().GetProperty("Mode", dataFlags).GetValue(nativeBlockRepair) != "owners")
+        throw new Exception("Native exact entity block was not admitted to complete-owner repair.");
+    nativeBlockRepair.GetType().GetMethod("Apply", dataFlags).Invoke(nativeBlockRepair, null);
+    boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, 88);
+    int nativeBlockRefreshes = 0;
+    var nativeBlockVerifyArgs = new object[] { nativeBlockRepair, (Action)(() => nativeBlockRefreshes++), false };
+    var nativeBlockFinal = (System.Collections.ICollection)graphType.GetMethod("VerifyReconciliation", dataFlags)
+        .Invoke(nativeBlockGraph, nativeBlockVerifyArgs);
+    if (nativeBlockFinal.Count != 0 || !(bool)nativeBlockVerifyArgs[2] || nativeBlockRefreshes != 1)
+        throw new Exception("Native exact entity owner repair lost the final complete-graph fallback.");
+    VerifyBlockOracle(nativeBlockOracle);
+    var selectedBlockAccess = BlockAccess(true);
+    accessType.GetMethod("AddRoot", dataFlags).Invoke(selectedBlockAccess,
+        new object[] { Identity(boundaryItems[0]), new[] { "<unitCount>k__BackingField" } });
+    using (var selectedBlockGraph = (IDisposable)graphType.GetMethod("Capture", blockStaticFlags).Invoke(null,
+        new object[] { selectedBlockAccess, new[] { Identity(boundaryItems[0]) }, 50000, 1000000, 64L * 1024 * 1024 }))
+    {
+        var selectedFactory = accessType.GetProperty("EntityBlocks", dataFlags).GetValue(selectedBlockAccess);
+        if ((int)selectedFactory.GetType().GetProperty("BlockCount", dataFlags).GetValue(selectedFactory) != 0
+            || (int)graphType.GetProperty("SlotCount", dataFlags).GetValue(selectedBlockGraph) != 1)
+            throw new Exception("Native single-pass selected root widened its filtered surface.");
+    }
     boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 29);
     boundaryItems[0].GetType().GetProperty("parentInventory").SetValue(boundaryItems[0], boundarySlot);
     boundaryList.Clear(); boundaryList.Add(boundaryItems[1]); boundaryList.Add(boundaryItems[0]);
@@ -1436,7 +1461,7 @@ using (var nativeBlockOracle = BlockOracle(nativeBlockGraph))
         }
     graphType.GetMethod("Restore", dataFlags).Invoke(nativeBlockGraph, null);
     VerifyBlockOracle(nativeBlockOracle);
-    Console.WriteLine("PASS native single-pass exact entity blocks: all five schemas/six owners, every Entity/Runtime field, six full mutation restores, independent tag/int factories, visual exclusions and six two-node roundtrips with legacy oracle");
+    Console.WriteLine("PASS native single-pass exact entity blocks: all five schemas/six owners, every Entity/Runtime field, six full mutation restores, independent tag/int factories, selected roots, complete-owner and final full repair, visual exclusions and six two-node roundtrips with legacy oracle");
 }
 if (args.Contains("--benchmark-entity-blocks"))
 {

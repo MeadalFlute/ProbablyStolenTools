@@ -42,6 +42,12 @@ namespace ProbablyStolenTools
                 throw new InvalidOperationException("Single-pass restore differs from independent legacy oracle: "
                     + string.Join(" | ", differences));
         }
+        internal void ValidateRetention()
+        {
+            if (_graph == null) throw new ObjectDisposedException(nameof(SemanticCaptureOracle));
+            // Differences performs the old backend's complete retention validation and scan.
+            _graph.Differences(1);
+        }
         public void Dispose()
         {
             var graph = _graph;
