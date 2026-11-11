@@ -67,3 +67,12 @@ CAPTURE 的 `ms(...)` 单列 `entityAudit`，包含类型分类/临时索引/完
 - Mono Release 零警告/错误，57 挂点 / 74 字段，官方扫描 HardFlags 为空。未增加挂点或私有存储字段访问；原有 files/reflection-external/dynamic-code 能力不变。
 
 部署后只需要正常进入游戏建立首节点，并进行买卖/单件和群组移动、手动节点和六次回溯。无需 Verbose；保留 BOUNDARY、CAPTURE entityAudit 和 RESTORE 行。下一轮先核对真实边界/候选闭包来源与采样开销，再推进实体记录，不直接开放实体写回。
+
+## 部署记录
+
+2026-11-11 22:10，独立运行时提交 878cef9，标准脚本部署，版本保持 0.8.14。
+
+- 备份：`out/full-release-deploy-20261111-221025`。
+- DLL SHA256：`52D663B369A0CFA9463FF81803CB8312CF42B03FE6848AF35447B947A8223731`，部署与构建一致。
+- 78 个存档文件校验未变，SettingsImported=False，GameStarted=False。
+- 未启动游戏；等待实体边界首轮实机日志，不把边界审计称为实体语义恢复已经完成。
