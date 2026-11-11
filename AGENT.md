@@ -28,6 +28,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 普通字段写回减重已检查 16:56 会话：4 次捕获、6 次恢复最终零差异；同顾客首次恢复中位数约下降 8.4%，仍非严格 A/B。reconcile 热点为第二次全图写回（221-320 ms），几何同步仅 4-6 ms；下一步先诊断刷新后的差异归属，不据 reportedDiff=4 直接跳过或选择性写回。首节点编译仅占 walk 约 10.3%。本轮未记录手动节点，详见 `research/2026-11-11-snapshot-write-fastpath.md`。
 
+差异归属诊断已检查 17:18 会话：5 次捕获、7 次恢复（含手动及重复往返）均成功。每次 reportedDiff=7，已展示的 6 条集中于 cassettePlayer.modifiedState 的标签字典及底层数组；泛型长类型名使字段后缀截断，第七条尚未展示，不能据此直接缩小二次恢复。后续先修正诊断可读性，详见 `research/2026-11-11-reconcile-difference-sources.md`。
+
 ### 版本与发布
 
 - **唯一真源**：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
