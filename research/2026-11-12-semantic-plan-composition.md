@@ -127,3 +127,11 @@ Expected successful full groups: coveragePasses=4/compositions=11/prepared=15,
 both sampled nodes runtimePilot=True and independent MATCH, every final diff=0.
 Keep all old capture/verification/repair and diagnostic payloads. Do not replace
 production capture or widen sampling based only on the isolated benchmark.
+
+## Deployment
+
+Runtime commit `774b719`, deployed 2026-11-12 01:48:17, version 0.8.14, not pushed.
+Backup: `out/full-release-deploy-20261112-014817`.
+DLL SHA256: `72C2BBE11825647BA6C12B10592481CF33DAEC1CF5A0395CBC5BD9C21B6C4E29`.
+Game was closed; 78 existing save-area files verified unchanged.
+No settings imported, no game started. Awaiting in-game timing and acceptance.
