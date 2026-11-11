@@ -80,6 +80,17 @@ if (developmentChecks && (runtimePilot || (target.SemanticEntities != null && ..
 
 建议每项至少记录：`CAPTURE ... backend=... owners/eligible`、`RESTORE ... diff=0 releaseOk=True`、是否出现 `SINGLEPASS SCHEMA FALLBACK`、`REPAIR FULL FALLBACK`。
 
+## 5.1 加载器能力弃用（新增，发布前必须纳入门槛）
+
+交接后新增了 `research/2026-11-12-loader-capability-migration.md`，结论需要并入本次审查：
+
+- 官方已公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.8.14 的实机通过只说明**当前游戏版本**可用，不代表下一版兼容。
+- 当前源码大量依赖 `Expression.Compile`、运行时 `GetFields/GetMethod`，仅删除 manifest 声明或关闭 DevelopmentChecks **不是修复**；扫描器按编译进 DLL 的方法判断。
+- 迁移方案分四阶段：停止运行时编译 → GameFields/精确 schema 改为可静态分析路径 → 通用运行态图迁移（主要工作量）→ 发布编译与扫描验证。细节与探针结果见该文档。
+- **发布判定**：0.8.15 可以作为「当前版本发布」推送，但发行说明不得写“已兼容下一版加载器”；若目标是在 2026-12-10 后继续可用，需先完成迁移并在 ReleaseCompatibility 中加入退役能力门槛。
+
+这部分不属于本次语义化后端 review 的代码缺陷，但属于**前向兼容阻断项**，请 GPT 在下一步排期。
+
 ## 6. 发布状态与交接边界
 
 - 未推送；`origin/main` 仍为 `3fbd2a8`，本地领先 59 个提交（含 `b99864b`）。

@@ -2,6 +2,8 @@
 
 日期：2026-11-12。请先阅读本文件，再阅读仓库 `AGENT.md`。
 
+> 新增前向兼容问题：加载器警告属实，官方已公告 2026-12-10 起拒绝当前 DLL 使用的 dynamic-code / reflection-external。当前实机及 HardFlags 为空不代表下一版兼容。上传审查需加入此门槛，不能只删 manifest 声明或关闭开发开关。迁移方案及真实扫描探针见 `research/2026-11-12-loader-capability-migration.md`；生产代码尚未修改。
+
 用户最新确认：关闭额外测试和冗余日志后，实机运行“看起来没什么问题了”；现在将整体更新交给 DS 做 code review 和后续上传。本文件是人工转交材料，不通过 DeepSeek Harness 或其他代理插件执行任务。
 
 ## 1. 交接状态
