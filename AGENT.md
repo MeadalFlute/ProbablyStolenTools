@@ -30,6 +30,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 差异归属诊断已检查 17:18 会话：5 次捕获、7 次恢复（含手动及重复往返）均成功。每次 reportedDiff=7，已展示的 6 条集中于 cassettePlayer.modifiedState 的标签字典及底层数组；泛型长类型名使字段后缀截断，第七条尚未展示，不能据此直接缩小二次恢复。后续先修正诊断可读性，详见 `research/2026-11-11-reconcile-difference-sources.md`。
 
+诊断可读性已在 17:28 会话通过：6 次捕获、7 次恢复最终零差异。六次仅 cassettePlayer.modifiedState.dict 的 `_buckets/_entries/_count/_version` 变化，另一次手动节点还变了 BargainUIManager.trackedClient；样本全部显示。二次写回仍需 206-240 ms。下一阶段先独立设计/离线验证按实际差异修复的安全条件，不能硬编码四字段白名单或裁剪集合；当前仍完整二次写回。记录见同一诊断文档。
+
 ### 版本与发布
 
 - **唯一真源**：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
