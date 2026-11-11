@@ -26,6 +26,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 精确 TagState 混合载荷已完成首轮实机日志检查（2026-11-11 16:33 会话）：5 次捕获启用，4 次恢复零差异，首节点独立对照匹配。常规捕获/对应恢复中位数较上一会话下降约 24%/12%，仅小样本、非严格 A/B；首节点仍约 1 秒。尚不据此开放集合重建或视为全面稳定性验收，详见 `research/2026-11-11-semantic-tag-blocks.md`。
 
+普通字段写回减重已检查 16:56 会话：4 次捕获、6 次恢复最终零差异；同顾客首次恢复中位数约下降 8.4%，仍非严格 A/B。reconcile 热点为第二次全图写回（221-320 ms），几何同步仅 4-6 ms；下一步先诊断刷新后的差异归属，不据 reportedDiff=4 直接跳过或选择性写回。首节点编译仅占 walk 约 10.3%。本轮未记录手动节点，详见 `research/2026-11-11-snapshot-write-fastpath.md`。
+
 ### 版本与发布
 
 - **唯一真源**：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
