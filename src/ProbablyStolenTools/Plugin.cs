@@ -60,6 +60,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgSemanticShapeRestore;
         internal static ConfigEntry<bool> CfgSemanticWindowRestore;
         internal static ConfigEntry<bool> CfgSemanticItemRestore;
+        internal static ConfigEntry<bool> CfgSemanticInventoryRestore;
         internal static ConfigEntry<KeyCode> CfgKeyPrev;
         internal static ConfigEntry<KeyCode> CfgKeyManual;
         internal static ConfigEntry<KeyCode> CfgKeyDay;
@@ -287,6 +288,8 @@ namespace ProbablyStolenTools
                 "Pilot exact PixelWindow business-field writes on the sampled entity checkpoint only. Callbacks and runtime fields remain on the old graph; full verification and visual ordering are unchanged.");
             CfgSemanticItemRestore = Config.Bind("Snapshot", "SemanticItemRestore", true,
                 "Pilot exact GameItemElement business-field writes on the sampled entity checkpoint only. Keeps original identities, callbacks/collection storage on the old graph, full verification and visual ordering.");
+            CfgSemanticInventoryRestore = Config.Bind("Snapshot", "SemanticInventoryRestore", true,
+                "Pilot exact grid and slot inventory business-field writes as one atomic group on the sampled checkpoint. Keeps callbacks, caches, tags and collection storage on the old graph, with full verification.");
             CfgKeyManual = Config.Bind("Rewind", "KeyManualCheckpoint", KeyCode.F9,
                 "Create a checkpoint immediately, without waiting for a customer.");
             CfgKeyPrev = Config.Bind("Rewind", "KeyPrevCheckpoint", KeyCode.F6,
@@ -373,7 +376,7 @@ namespace ProbablyStolenTools
             EventLog.Write($"[Session] version={Version} game={Application.version} locale=deferred " +
                 $"snapshotLimits(objects={CfgMaxObjects.Value},slots={CfgMaxSlots.Value},MiB={CfgMaxBytesMb.Value}) " +
                 $"verbose={CfgVerboseLog.Value} semanticTagShadow={CfgSemanticTagShadow.Value} semanticTagBlocks={CfgSemanticTagBlocks.Value} ownerReconcile={CfgOwnerReconcile.Value} intArrayBlocks={CfgIntArrayBlocks.Value} semanticTagCensus={CfgSemanticTagCensus.Value} skipUnchangedScalars={CfgSkipUnchangedScalars.Value} typedScalarComparisons={CfgTypedScalarComparisons.Value} directReferenceComparisons={CfgDirectReferenceComparisons.Value} semanticEntityAudit={CfgSemanticEntityAudit.Value} semanticEntityRecords={CfgSemanticEntityRecords.Value} semanticShapeRestore={CfgSemanticShapeRestore.Value}; " +
-                $"semanticWindowRestore={CfgSemanticWindowRestore.Value} semanticItemRestore={CfgSemanticItemRestore.Value}; arrivalWaitSeconds is not capture duration; use captureMs");
+                $"semanticWindowRestore={CfgSemanticWindowRestore.Value} semanticItemRestore={CfgSemanticItemRestore.Value} semanticInventoryRestore={CfgSemanticInventoryRestore.Value}; arrivalWaitSeconds is not capture duration; use captureMs");
             LogSource.LogInfo("Loaded.");
         }
 

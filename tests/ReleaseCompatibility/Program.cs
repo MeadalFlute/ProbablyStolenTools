@@ -482,6 +482,8 @@ var boundaryTagMap = (System.Collections.IDictionary)Activator.CreateInstance(
     typeof(Dictionary<,>).MakeGenericType(typeof(string), boundaryTagType));
 boundaryTagMap.Add("runtime-tag", boundaryTag);
 boundaryTagSystem.GetType().GetField("<dict>k__BackingField", dataFlags).SetValue(boundaryTagSystem, boundaryTagMap);
+game.GetType("TagSystem", true).GetField("<dict>k__BackingField", dataFlags).SetValue(boundaryGrid, boundaryTagMap);
+game.GetType("TagSystem", true).GetField("<dict>k__BackingField", dataFlags).SetValue(boundarySlot, boundaryTagMap);
 game.GetType("GameItem", true).GetField("<state>k__BackingField", dataFlags).SetValue(boundaryItems[0], boundaryTagSystem);
 var boundaryRoots = new[] { boundaryGrid, boundarySlot, boundaryClosure };
 var boundaryAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
@@ -617,7 +619,7 @@ try
     if ((int)entityType.GetProperty("WindowPilotOwners", dataFlags).GetValue(entityRecords) != 1)
         throw new Exception("Exact native window was not admitted to the entity writer pilot.");
     bool RestoreWithEntities(bool shapes, bool windows) => (bool)entityType.GetMethod("TryRestoreEntities", dataFlags)
-        .Invoke(entityRecords, new object[] { boundaryGraph, shapes, windows, false });
+        .Invoke(entityRecords, new object[] { boundaryGraph, shapes, windows, false, false });
     var windowWriterType = mod.GetType("ProbablyStolenTools.SemanticWindowWriter", true);
     var writtenWindowFields = (FieldInfo[])windowWriterType.GetField("EntityFields", BindingFlags.Static | BindingFlags.NonPublic)
         .GetValue(null);
@@ -675,7 +677,7 @@ try
     if ((int)entityType.GetProperty("ItemPilotOwners", dataFlags).GetValue(entityRecords) != 2)
         throw new Exception("Native item writer lost distinct objects sharing uniqueId=0.");
     bool RestoreWithAllEntities(int mask) => (bool)entityType.GetMethod("TryRestoreEntities", dataFlags)
-        .Invoke(entityRecords, new object[] { boundaryGraph, (mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0 });
+        .Invoke(entityRecords, new object[] { boundaryGraph, (mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, (mask & 8) != 0 });
     var itemWriter = (IDisposable)entityType.GetField("_itemWriter", dataFlags).GetValue(entityRecords);
     var fieldWriterType = mod.GetType("ProbablyStolenTools.SemanticFieldEntityWriter", true);
     var writtenItemFields = (FieldInfo[])fieldWriterType.GetField("_entityFields", dataFlags).GetValue(itemWriter);
@@ -738,6 +740,139 @@ try
         }
         catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
     }
+    try
+    {
+        entityType.GetMethod("EnableInventoryRestore", dataFlags).Invoke(entityRecords,
+            new object[] { boundaryGraph, 2, 1000000, 64L * 1024 * 1024 });
+        throw new Exception("Native inventory family ignored combined owner budget.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    if ((int)entityType.GetProperty("InventoryPilotOwners", dataFlags).GetValue(entityRecords) != 0
+        || !RestoreWithAllEntities(7) || EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0)
+        throw new Exception("Failed inventory family damaged an already prepared item/window/shape combination.");
+    entityType.GetMethod("EnableInventoryRestore", dataFlags).Invoke(entityRecords,
+        new object[] { boundaryGraph, 50000, 1000000, 64L * 1024 * 1024 });
+    var gridWriter = (IDisposable)entityType.GetField("_gridWriter", dataFlags).GetValue(entityRecords);
+    var slotWriter = (IDisposable)entityType.GetField("_slotWriter", dataFlags).GetValue(entityRecords);
+    var gridFields = (FieldInfo[])fieldWriterType.GetField("_entityFields", dataFlags).GetValue(gridWriter);
+    var slotFields = (FieldInfo[])fieldWriterType.GetField("_entityFields", dataFlags).GetValue(slotWriter);
+    if ((int)entityType.GetProperty("GridPilotOwners", dataFlags).GetValue(entityRecords) != 1
+        || (int)entityType.GetProperty("SlotPilotOwners", dataFlags).GetValue(entityRecords) != 1
+        || (long)entityType.GetProperty("PilotSlots", dataFlags).GetValue(entityRecords)
+            != Convert.ToInt64(boundaryPlanType.GetProperty("EntitySlots", dataFlags).GetValue(boundaryPlan)))
+        throw new Exception("Native inventory family did not complete the exact entity field partition.");
+    var inventoryFunctionType = game.GetType("GameInventoryFunc", true);
+    var inventoryCallback = inventoryFunctionType.GetField("<onSlotAddItemFunc>k__BackingField", dataFlags);
+    var inventoryThrowMethod = typeof(NativeEntityCallbackFixture).GetMethod("ThrowInventory", BindingFlags.Static | BindingFlags.Public)
+        .MakeGenericMethod(game.GetType("GameItem", true), game.GetType("GameInventory", true), game.GetType("SlotMarker", true));
+    var neverInvokeInventoryCallback = Delegate.CreateDelegate(inventoryCallback.FieldType, inventoryThrowMethod);
+    var inventoryDict = game.GetType("TagSystem", true).GetField("<dict>k__BackingField", dataFlags);
+    for (int iteration = 0; iteration < 30; iteration++)
+    {
+        foreach (var pair in new[] { (Target: boundaryGrid, Fields: gridFields), (Target: boundarySlot, Fields: slotFields) })
+        {
+            foreach (var field in pair.Fields)
+            {
+                var type = field.FieldType;
+                object changed = type == typeof(bool) ? !(bool)field.GetValue(pair.Target)
+                    : type == typeof(int) ? 31 + iteration
+                    : type == typeof(float) ? BitConverter.Int32BitsToSingle(unchecked((int)0x7fc01234))
+                    : type == typeof(string) ? new string("inventory-mutated".ToCharArray())
+                    : field.GetValue(pair.Target) != null ? null
+                    : type.IsGenericType ? Activator.CreateInstance(type)
+                    : type.IsInstanceOfType(boundaryWindow) ? boundaryWindow
+                    : type.IsInstanceOfType(boundaryShape) ? boundaryShape : boundaryItems[1];
+                field.SetValue(pair.Target, changed);
+            }
+            inventoryCallback.SetValue(pair.Target, neverInvokeInventoryCallback);
+            inventoryDict.SetValue(pair.Target, Activator.CreateInstance(inventoryDict.FieldType));
+        }
+        foreach (string name in new[] { "_lastShapeWidth", "_lastShapeHeight", "_lastShapeHash" })
+            boundaryGrid.GetType().GetField(name, dataFlags).SetValue(boundaryGrid, 71);
+        boundaryGrid.GetType().GetField("_lastRenderDynamicBackground", dataFlags).SetValue(boundaryGrid, true);
+        boundarySlot.GetType().GetField("validateLock", dataFlags).SetValue(boundarySlot, true);
+        boundaryList.Clear();
+        for (int i = 0; i < 12; i++) boundaryList.Add(boundaryItems[1]);
+        boundaryItems[0].GetType().GetProperty("parentInventory").SetValue(boundaryItems[0], boundarySlot);
+        boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 77);
+        boundaryShape.GetType().GetProperty("orientation").SetValue(boundaryShape, 2);
+        windowType.GetField("isLocked", dataFlags).SetValue(boundaryWindow, true);
+        int mask = iteration % 15 + 1;
+        if (!RestoreWithAllEntities(mask) || EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0
+            || boundaryList.Count != 2 || !ReferenceEquals(boundaryList[0], boundaryItems[0])
+            || !ReferenceEquals(boundaryGrid.GetType().GetField("items", dataFlags).GetValue(boundaryGrid), boundaryList)
+            || !ReferenceEquals(boundarySlot.GetType().GetField("currentItem", dataFlags).GetValue(boundarySlot), boundaryItems[0])
+            || !ReferenceEquals(boundaryItems[0].GetType().GetProperty("parentInventory").GetValue(boundaryItems[0]), boundaryGrid)
+            || !ReferenceEquals(inventoryDict.GetValue(boundaryGrid), boundaryTagMap)
+            || !ReferenceEquals(inventoryDict.GetValue(boundarySlot), boundaryTagMap)
+            || inventoryCallback.GetValue(boundaryGrid) != null || inventoryCallback.GetValue(boundarySlot) != null
+            || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                .Invoke(boundaryGraph, new object[] { 12 })).Count != 0)
+            throw new Exception("Native inventory writer lost inherited fields, list storage, aliases or runtime state, mask=" + mask);
+    }
+    Console.WriteLine("PASS native inventory family: complete grid/slot inherited business fields, original member storage, borrowing/parent/shape links, shared tags, runtime caches and callbacks, thirty cycles covering all fifteen writer combinations");
+    var inventoryWriterType = mod.GetType("ProbablyStolenTools.SemanticInventoryWriter", true);
+    foreach (var pair in new[] { (Type: boundaryGrid.GetType(), Fields: gridFields), (Type: boundarySlot.GetType(), Fields: slotFields) })
+        foreach (var limits in new[] { (Objects: 0, Slots: 1000000, Bytes: 64L * 1024 * 1024),
+            (Objects: 50000, Slots: pair.Fields.Length - 1, Bytes: 64L * 1024 * 1024),
+            (Objects: 50000, Slots: 1000000, Bytes: (long)pair.Fields.Length * 8 - 1) })
+        {
+            try
+            {
+                using var unexpected = (IDisposable)inventoryWriterType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+                    .Invoke(null, new object[] { boundaryGraph, pair.Type, limits.Objects, limits.Slots, limits.Bytes });
+                throw new Exception("Native inventory writer accepted incomplete object/slot/byte budget.");
+            }
+            catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+        }
+    gridWriter.Dispose(); slotWriter.Dispose();
+    boundaryItems[0].GetType().GetProperty("unitCount").SetValue(boundaryItems[0], 77);
+    boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, 81);
+    windowType.GetField("isLocked", dataFlags).SetValue(boundaryWindow, true);
+    try
+    {
+        RestoreWithAllEntities(15);
+        throw new Exception("Disposed empty-owner inventory writers bypassed preflight.");
+    }
+    catch (TargetInvocationException e) when (e.InnerException is ObjectDisposedException) { }
+    if ((int)boundaryItems[0].GetType().GetProperty("unitCount").GetValue(boundaryItems[0]) != 77
+        || (int)boundaryShape.GetType().GetProperty("minX").GetValue(boundaryShape) != 81
+        || !(bool)windowType.GetField("isLocked", dataFlags).GetValue(boundaryWindow)
+        || !RestoreWithAllEntities(7) || EntityDifferences(entityRecords) != 0 || RuntimeDifferences(entityRecords) != 0)
+        throw new Exception("Inventory preflight wrote earlier state or damaged inventory-disabled plans.");
+    Console.WriteLine("PASS native inventory family budgets, atomic registration, both disposed writers checked before every business write and original writer combinations retained");
+    foreach (string rootName in new[] { "GameGridInventory", "GameSlotInventory", "PixelWindow" })
+    {
+        var root = Data(rootName);
+        var singleAccess = accessType.GetConstructor(dataFlags, null, new[] { typeof(Type), typeof(string) }, null)
+            .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp" });
+        accessType.GetMethod("AddRoot", dataFlags).Invoke(singleAccess, new object[] { Identity(root), Array.Empty<string>() });
+        using var singleGraph = (IDisposable)graphType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { singleAccess, new[] { Identity(root) }, 50000, 1000000, 64L * 1024 * 1024 });
+        using var singleRecords = (IDisposable)entityType.GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { singleGraph, 50000, 1000000, 64L * 1024 * 1024 });
+        entityType.GetMethod("EnableInventoryRestore", dataFlags).Invoke(singleRecords,
+            new object[] { singleGraph, 50000, 1000000, 64L * 1024 * 1024 });
+        bool hasInventory = rootName != "PixelWindow";
+        if ((int)entityType.GetProperty("GridPilotOwners", dataFlags).GetValue(singleRecords)
+                != (rootName == "GameGridInventory" ? 1 : 0)
+            || (int)entityType.GetProperty("SlotPilotOwners", dataFlags).GetValue(singleRecords)
+                != (rootName == "GameSlotInventory" ? 1 : 0))
+            throw new Exception("Single-type inventory family admitted missing types: " + rootName);
+        var changedField = hasInventory ? inventoryType.GetField("overrideLockInsert", dataFlags)
+            : windowType.GetField("isLocked", dataFlags);
+        changedField.SetValue(root, true);
+        bool restored = (bool)entityType.GetMethod("TryRestoreEntities", dataFlags)
+            .Invoke(singleRecords, new object[] { singleGraph, false, false, false, true });
+        if (restored != hasInventory || (!restored && !(bool)changedField.GetValue(root)))
+            throw new Exception("Empty inventory family wrote state or single-type family was unavailable: " + rootName);
+        if (!restored) graphType.GetMethod("Restore", dataFlags).Invoke(singleGraph, null);
+        if ((bool)changedField.GetValue(root) || EntityDifferences(singleRecords) != 0 || RuntimeDifferences(singleRecords) != 0
+            || ((System.Collections.ICollection)graphType.GetMethod("Differences", dataFlags)
+                .Invoke(singleGraph, new object[] { 12 })).Count != 0)
+            throw new Exception("Single-type inventory family lost complete original state: " + rootName);
+    }
+    Console.WriteLine("PASS native inventory family admits grid-only and slot-only roots independently, and absent inventories leave ordinary restoration available without writes");
     itemWriter.Dispose();
     boundaryShape.GetType().GetProperty("minX").SetValue(boundaryShape, 81);
     windowType.GetField("isLocked", dataFlags).SetValue(boundaryWindow, true);
@@ -1473,4 +1608,6 @@ if (args.Contains("--benchmark-tags") || args.Contains("--benchmark-writes") || 
 public static class NativeEntityCallbackFixture
 {
     public static void Throw<T>(T item) => throw new Exception("Item business callback must not run.");
+    public static void ThrowInventory<TItem, TInventory, TSlot>(TItem item, TInventory inventory, TSlot slot)
+        => throw new Exception("Inventory business callback must not run.");
 }

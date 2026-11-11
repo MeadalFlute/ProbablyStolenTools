@@ -112,3 +112,32 @@ Backup: out/full-release-deploy-20261112-003705.
 DLL SHA256: B64FB73A5C531DFB673550F50132E10C19443D39F1CD04DCDA9D0DC008590506.
 78 save files verified unchanged; settings not imported, game not started.
 Awaiting the first live complete item-field writer validation above.
+
+## Live Acceptance
+
+2026-11-12 00:39:03.759 session, user reports completed.
+Six captures including manual id6 and nine restores; all final diff=0,
+releaseOk=True, finalFallback=False. Three sampled id1 restores actually used
+953 item, 101 window and 2966 shape writers. Independent entity/runtime records
+all MATCH with runtimeDiffSamples=0. Other nodes used zero entity pilot owners.
+Entity checks took 18/17/27 ms and runtime checks 37/35/38 ms.
+Three-item group drag completed after restoration at 00:43:43.988-44.378.
+
+First capture 2681 ms: access3, walk580, items96, semanticShadow163,
+entityAudit45, entityRecords1730, verify57, prepareHistory6; runtimeCaptureVerifyMs
+1009 is included in entityRecords, not added again. Other captures
+308/422/287/333/347 ms. Restore totals 706/655/698/692/786/668/588/734/716 ms,
+median698 ms. Non-A/B; no measured overall speedup attributed to item writes.
+
+Sample partition: 78095 entity slots and 486324 runtime slots, 564419 total.
+Item/window/shape pilot slots total73947; remaining4148 are the 107 grid and
+179 slot inventory entities. Reconcile remains owner repair: cassettePlayer
+tag dictionary/storage seven slots across three owners, plus
+BargainUIManager.trackedClient for manual id6 (eight slots/four owners).
+No FAILED/UNAVAILABLE in this session. Player.log has only the native
+ModTrustList startup TLS warning among exception/error matches; not attributed
+to snapshots. Bargain flags remain default; nondefault bargaining and real
+full-fallback recovery still not covered. Logs do not independently prove
+every buy/sell/count or rendering scenario.
+
+Proceed to the separately scoped inventory writer phase.

@@ -16,27 +16,34 @@ namespace ProbablyStolenTools
         private SemanticShapeWriter _shapeWriter;
         private SemanticWindowWriter _windowWriter;
         private SemanticItemWriter _itemWriter;
-        private readonly Dictionary<int, IStateEntityWriter> _writers = new();
+        private SemanticInventoryWriter _gridWriter, _slotWriter;
+        private readonly Dictionary<int, IStateEntityWriter[]> _writers = new();
         private readonly Dictionary<int, StateGraph.EntityRestorePlan> _restorePlans = new();
         internal int ShapePilotOwners => _shapeWriter?.Owners.Count ?? 0;
         internal int WindowPilotOwners => _windowWriter?.Owners.Count ?? 0;
         internal int ItemPilotOwners => _itemWriter?.Owners.Count ?? 0;
-        private long PilotSlots => ShapePilotOwners * 8L + (_windowWriter?.LogicalSlots ?? 0) + (_itemWriter?.LogicalSlots ?? 0);
+        internal int GridPilotOwners => _gridWriter?.Owners.Count ?? 0;
+        internal int SlotPilotOwners => _slotWriter?.Owners.Count ?? 0;
+        internal int InventoryPilotOwners => GridPilotOwners + SlotPilotOwners;
+        private long PilotSlots => ShapePilotOwners * 8L + (_windowWriter?.LogicalSlots ?? 0) + (_itemWriter?.LogicalSlots ?? 0)
+            + (_gridWriter?.LogicalSlots ?? 0) + (_slotWriter?.LogicalSlots ?? 0);
         private long PilotBytes => ShapePilotOwners * (7 * 8L + IntPtr.Size)
-            + (_windowWriter?.LogicalBytes ?? 0) + (_itemWriter?.LogicalBytes ?? 0);
-        private bool RegisterWriter(StateGraph graph, int bit, IStateEntityWriter writer, int maxObjects, int maxSlots)
+            + (_windowWriter?.LogicalBytes ?? 0) + (_itemWriter?.LogicalBytes ?? 0)
+            + (_gridWriter?.LogicalBytes ?? 0) + (_slotWriter?.LogicalBytes ?? 0);
+        private bool RegisterWriters(StateGraph graph, int bit, IStateEntityWriter[] writers, int maxObjects, int maxSlots)
         {
             if (_writers.ContainsKey(bit)) throw new InvalidOperationException("Entity writer already prepared.");
-            if (writer.Owners.Count == 0) return false;
+            var admitted = writers.Where(writer => writer.Owners.Count != 0).ToArray();
+            if (admitted.Length == 0) return false;
             var pending = new Dictionary<int, StateGraph.EntityRestorePlan>();
             foreach (int mask in _restorePlans.Keys.Concat(new[] { 0 }))
             {
                 var group = _writers.OrderBy(pair => pair.Key).Where(pair => (pair.Key & mask) != 0)
-                    .Select(pair => pair.Value).Append(writer);
+                    .SelectMany(pair => pair.Value).Concat(admitted);
                 pending.Add(mask | bit, graph.PrepareEntityRestores(group, maxObjects, maxSlots));
             }
             // Publish only after every combination passes; a failed candidate cannot damage existing plans.
-            _writers.Add(bit, writer);
+            _writers.Add(bit, admitted);
             foreach (var pair in pending) _restorePlans.Add(pair.Key, pair.Value);
             return true;
         }
@@ -48,14 +55,14 @@ namespace ProbablyStolenTools
                 maxBytes - _snapshot.LogicalBytes - _runtime.ByteCount - PilotBytes);
             try
             {
-                if (!RegisterWriter(graph, 1, writer, maxObjects, maxSlots)) { writer.Dispose(); return; }
+                if (!RegisterWriters(graph, 1, new IStateEntityWriter[] { writer }, maxObjects, maxSlots)) { writer.Dispose(); return; }
                 _shapeWriter = writer;
             }
             catch { writer.Dispose(); throw; }
         }
         internal bool TryRestoreShapes(StateGraph graph)
         {
-            return TryRestoreEntities(graph, true, false, false);
+            return TryRestoreEntities(graph, true, false, false, false);
         }
         internal void EnableWindowRestore(StateGraph graph, int maxObjects, int maxSlots, long maxBytes)
         {
@@ -65,7 +72,7 @@ namespace ProbablyStolenTools
                 maxBytes - _snapshot.LogicalBytes - _runtime.ByteCount - PilotBytes);
             try
             {
-                if (!RegisterWriter(graph, 2, writer, maxObjects, maxSlots)) { writer.Dispose(); return; }
+                if (!RegisterWriters(graph, 2, new IStateEntityWriter[] { writer }, maxObjects, maxSlots)) { writer.Dispose(); return; }
                 _windowWriter = writer;
             }
             catch { writer.Dispose(); throw; }
@@ -78,15 +85,35 @@ namespace ProbablyStolenTools
                 maxBytes - _snapshot.LogicalBytes - _runtime.ByteCount - PilotBytes);
             try
             {
-                if (!RegisterWriter(graph, 4, writer, maxObjects, maxSlots)) { writer.Dispose(); return; }
+                if (!RegisterWriters(graph, 4, new IStateEntityWriter[] { writer }, maxObjects, maxSlots)) { writer.Dispose(); return; }
                 _itemWriter = writer;
             }
             catch { writer.Dispose(); throw; }
         }
-        internal bool TryRestoreEntities(StateGraph graph, bool shapes, bool windows, bool items)
+        internal void EnableInventoryRestore(StateGraph graph, int maxObjects, int maxSlots, long maxBytes)
+        {
+            if (_gridWriter != null || _slotWriter != null)
+                throw new InvalidOperationException("Inventory writers already prepared.");
+            SemanticInventoryWriter grid = null, slot = null;
+            try
+            {
+                int remainingSlots = checked((int)(maxSlots - _snapshot.LogicalSlots - _runtime.SlotCount - PilotSlots));
+                long remainingBytes = maxBytes - _snapshot.LogicalBytes - _runtime.ByteCount - PilotBytes;
+                grid = SemanticInventoryWriter.Capture(graph, typeof(GameGridInventory), maxObjects, remainingSlots, remainingBytes);
+                slot = SemanticInventoryWriter.Capture(graph, typeof(GameSlotInventory), maxObjects - grid.Owners.Count,
+                    remainingSlots - grid.LogicalSlots, remainingBytes - grid.LogicalBytes);
+                if (!RegisterWriters(graph, 8, new IStateEntityWriter[] { grid, slot }, maxObjects, maxSlots))
+                { grid.Dispose(); slot.Dispose(); return; }
+                if (grid.Owners.Count == 0) grid.Dispose(); else _gridWriter = grid;
+                if (slot.Owners.Count == 0) slot.Dispose(); else _slotWriter = slot;
+            }
+            catch { slot?.Dispose(); grid?.Dispose(); throw; }
+        }
+        internal bool TryRestoreEntities(StateGraph graph, bool shapes, bool windows, bool items, bool inventories)
         {
             int mask = (shapes && _shapeWriter != null ? 1 : 0) | (windows && _windowWriter != null ? 2 : 0)
-                | (items && _itemWriter != null ? 4 : 0);
+                | (items && _itemWriter != null ? 4 : 0)
+                | (inventories && (_gridWriter != null || _slotWriter != null) ? 8 : 0);
             if (!_restorePlans.TryGetValue(mask, out var plan)) return false;
             plan.Apply(graph);
             return true;
@@ -199,6 +226,8 @@ namespace ProbablyStolenTools
             $"shapePilotOwners={ShapePilotOwners} shapePilotSlots={ShapePilotOwners * 8L} " +
             $"windowPilotOwners={WindowPilotOwners} windowPilotSlots={_windowWriter?.LogicalSlots ?? 0} " +
             $"itemPilotOwners={ItemPilotOwners} itemPilotSlots={_itemWriter?.LogicalSlots ?? 0} " +
+            $"inventoryPilotOwners={InventoryPilotOwners} gridPilotOwners={GridPilotOwners} slotPilotOwners={SlotPilotOwners} " +
+            $"inventoryPilotSlots={(_gridWriter?.LogicalSlots ?? 0) + (_slotWriter?.LogicalSlots ?? 0)} " +
             $"pilotCombinedSlots={_snapshot.LogicalSlots + _runtime.SlotCount + PilotSlots} " +
             $"pilotCombinedBytes={_snapshot.LogicalBytes + _runtime.ByteCount + PilotBytes} " +
             "collectionStorage=legacy-only callbacks=legacy-only tags=legacy-hybrid";
@@ -230,6 +259,8 @@ namespace ProbablyStolenTools
             _shapeWriter?.Dispose(); _shapeWriter = null;
             _windowWriter?.Dispose(); _windowWriter = null;
             _itemWriter?.Dispose(); _itemWriter = null;
+            _gridWriter?.Dispose(); _gridWriter = null;
+            _slotWriter?.Dispose(); _slotWriter = null;
             _runtime.Dispose(); _boundary.Dispose(); _snapshot.Dispose();
         }
     }
