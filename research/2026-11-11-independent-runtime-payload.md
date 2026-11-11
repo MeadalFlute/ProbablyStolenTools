@@ -114,3 +114,12 @@ restricted typed in-place entity writes and paired runtime restore behind a
 separate switch, with original full graph oracle retained. Then measure before
 production capture replacement. No complete semantic backend or runtime restore
 is claimed in this stage.
+
+## Deployment
+
+2026-11-11 23:49, runtime commit a86dd23, version 0.8.14, no push.
+Backup: out/full-release-deploy-20261111-234913.
+DLL SHA256: 516BC5CC3EA23883F9CAF3A5854A1597C71308B74440697337CEC2EFA695439C.
+78 save files verified unchanged; SettingsImported=False; GameStarted=False.
+Pending first live independent runtime payload acceptance, not further
+production cutover in this deployment.
