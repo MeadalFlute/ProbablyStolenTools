@@ -48,6 +48,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 23:52 会话独立运行态已通过：6 捕获（含手动）/8 恢复最终零差异，三次实体/运行态 MATCH、runtime 校验 33/33/36 ms，恢复后群拖正常。首节点总捕获 2241 ms，entityRecords=1264 / runtimeCaptureVerifyMs=893，明确增加诊断成本。接续第 4 步仅开放精确 GridShapeBuilder 形状实体写回试点：`Snapshot.SemanticShapeRestore=true`，只为每上下文采样节点准备独立七标量+原 data 引用记录，首次写回跳过对应旧槽，其余仍旧图；完整旧捕获/校验、owner/full 二次修复和视觉顺序保留。准备失败可用旧路径，实际写错不隐藏重试。302 项及原生八字段/六轮实际实体写回、共享字节数组、释放后预检拒绝通过；待实机。运行态仍禁止写回，未替换生产捕获。详见 `research/2026-11-12-shape-entity-writes.md`。
 
+最新部署：2026-11-12 00:03，运行时提交 `a3484f0`，备份 `out/full-release-deploy-20261112-000339`，DLL SHA256 `72FC7D7F15DD1C049DF4C0E631C315A351697A95A7B4A6C26E929B6AD3BF8DA5`。78 存档文件校验未变，未导入设置/启动游戏，版本 0.8.14，未推送。等待首个实际实体写回实机：旋转/翻转、移动、售出后回溯首节点至少三次，穿插后续/手动节点及恢复后群拖；确认贴图/碰撞位置、首节点 RESTORE OK shapePilotOwners>0、其他节点为 0，最终 diff=0 且独立双载荷匹配。此验收前不扩大实体类型或开放运行态载荷写回。
+
 23:39 会话完整物品/句柄已验证：5 捕获/8 恢复最终零差异，两次实体记录 MATCH 各 20 ms，全部 100969 对象/562713 槽拓扑覆盖通过；恢复后四件群拖正常。首节点记录 228 ms、总捕获 1308 ms，恢复中位数 656.5 ms，非 A/B。无手动节点/非默认议价样本。接续阶段已实现独立运行态只读值载荷：独立保活/字段/值令牌/块工厂，实体业务字段不重复捕获，实体 Runtime 字段及其余对象/集合物理存储完整保留；精确 owner/描述/引用集合及全部对象与旧图对照，旧图释放后仍可校验。实体+运行态按合并槽/字节预算，普通和块写回明确拒绝。294 项及原生标签块/六轮恢复/原图释放通过；待实机。`runtimeCut=readonly-shadow productionRuntimeCut=false`，生产恢复和视觉序列不变，不是提速，详见 `research/2026-11-11-independent-runtime-payload.md`。
 
 前次部署：23:49，运行时提交 `a86dd23`，备份 `out/full-release-deploy-20261111-234913`；DLL SHA256 `516BC5CC3EA23883F9CAF3A5854A1597C71308B74440697337CEC2EFA695439C`，78 存档文件校验未变，未导入设置/启动游戏，版本 0.8.14，未推送。已完成上述 23:52 实机检查；后续形状实体写回试点待实机。

@@ -106,3 +106,11 @@ final diff=0 and RECORD RESTORE MATCH / runtimeDiffSamples=0.
 Stop at this first actual entity-write Unity boundary before enabling another
 type or paired runtime restoration. Preserve logs and compare write/total times
 without treating this non-A/B run as proof of speed.
+
+## Deployment
+
+2026-11-12 00:03, runtime a3484f0, version 0.8.14, no push.
+Backup: out/full-release-deploy-20261112-000339.
+DLL SHA256: 72FC7D7F15DD1C049DF4C0E631C315A351697A95A7B4A6C26E929B6AD3BF8DA5.
+78 save files verified unchanged, SettingsImported=False, GameStarted=False.
+Pending the first actual shape entity-write Unity acceptance described above.
