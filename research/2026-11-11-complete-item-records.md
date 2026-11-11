@@ -81,3 +81,11 @@ and exact full object/slot coverage. Release build zero warnings/errors;
 
 No independent runtime graph value capture or entity writer is enabled.
 Topology replay is a migration precondition, not the actual cutover.
+
+Deployment 2: commit aacb0d8, 23:35, backup
+out/full-release-deploy-20261111-233523, DLL
+8F3CF650922DF39673567D6C90A66D788A0AD18C37F015A9A6BF5A7FADC73C73.
+78 save files unchanged; settings not imported; game not started. Version 0.8.14,
+no push. Pending live acceptance: normal trade and container/window interaction,
+rotated/sold items, manual checkpoint, at least six backward/forward restores
+and post-restore group drag. Keep RECORD CAPTURE/RESTORE lines and captureMs.

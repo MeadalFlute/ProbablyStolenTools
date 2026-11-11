@@ -50,6 +50,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 接续阶段已实现节点隔离的原对象外部句柄、完整旧槽 Entity/Runtime 分区、运行态入口计算及仅运行态边的完整发现重放。句柄绑定原对象/精确类型/schema，拒绝跨节点/错类型/过期；Runtime 必须保留实体回调字段和集合底层。原根加所有实体出边作为运行态入口，重放必须覆盖旧图全部对象，不能漏闭包/数组；只保留句柄、入口及计数，临时邻接释放。284 项及原生同 uniqueId、跨节点、闭包/集合别名、完整槽/对象对照通过。仍 `runtimeCut=false`，没有实际运行态小图载荷、实体写回或生产捕获替换；先验收完整物品清单/句柄，下一步才进入独立小图捕获与受限写回。
 
+最新部署：23:35，运行时提交 `aacb0d8`，备份 `out/full-release-deploy-20261111-233523`；DLL SHA256 `8F3CF650922DF39673567D6C90A66D788A0AD18C37F015A9A6BF5A7FADC73C73`，78 存档文件校验未变，未导入设置/启动游戏。版本仍 0.8.14，未推送。等待完整物品/句柄及拓扑重放首次实机，保留 RECORD CAPTURE/RESTORE、captureMs，测试买卖/容器窗口/旋转及售出物品、手动节点、至少六次往返回溯和恢复后群拖。
+
 23:01 会话首批实体记录已检查：7 捕获/6 恢复最终零差异，首节点两次 RECORD RESTORE MATCH（15/16 ms），恢复后四件群拖正常；首节点 entityRecords=209 ms、总捕获 1337 ms，仅增加诊断成本。后续阶段补齐精确库存完整继承链及 PixelWindow 的显式 Entity/Runtime/Visual 字段清单：实体记录纳入归属、锁、形状、stolenUI、父物品/链接库存/子控件等；回调/刷新缓存/集合底层仍旧图负责。逐槽检查 Entity/Runtime 都有旧覆盖，Visual 不应出现，精确 owner 未分类槽拒绝，未知 schema 只使本次诊断失败。269 项及原生十处关系变化、runtime 保留/恢复、缺 runtime 根拒绝通过，待实机。物品派生字段完整清单、外部句柄/图切分/实体写回仍未实现，详见 `research/2026-11-11-inventory-window-records.md`。
 
 库存/窗口覆盖阶段已于 23:12 部署（独立运行时提交 `e46e7d4`，0.8.14）；备份 `out/full-release-deploy-20261111-231247`，78 存档文件校验未变，未启动游戏。已完成上述 23:15 实机检查；后续完整物品清单于 23:27 部署 `6f9ba14`，备份 `out/full-release-deploy-20261111-232759`，78 存档不变，未启动游戏。
