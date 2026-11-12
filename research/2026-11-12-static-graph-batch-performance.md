@@ -82,3 +82,13 @@ dotnet run --no-build -c Release --project tests/CapabilityMigrationProbe/MonoHo
 4. 保留同一会话的 CAPTURE captureMs 和 RESTORE ms(...) 行；确认 diff=0、releaseOk=True，没有新增 schema fallback/超限/能力错误。
 
 本批完成的是所有已识别的保守优化项，不声称消除了固定 FieldInfo 读取成本，也不承诺恢复到旧动态编译后端的速度。进一步替代私有字段反射需要新的架构/兼容性验证，不在本次无实机协助的批次中冒进。
+
+## 部署记录
+
+- 实现独立提交：`e6447a3`，可按整个批次回滚；未升版、未推送。
+- 2026-11-12 15:55 确认游戏已关闭后仅部署一次，没有终止或启动游戏进程。
+- 备份：`out/full-release-deploy-20261112-155549`，包含原 Mod 和存档目录副本；部署详情见该目录 `deployment.json`。
+- 主 DLL SHA256：`9B8059C27021BE03CF522EC441014AD0B9AD568C2B348DC9900900E93551D2A0`。
+- 静态表 SHA256 未变：`F2096125D20042E3609E56636FC17A566A5446A2E5B9209CB8059C34EAE70DC0`。
+- 79 个现有存档目录文件、游戏程序集、其他 Mod 校验未变；没有导入或改写设置。
+- 仅发布两个正式 DLL、manifest 和 preview；离线夹具、基准、Cecil、net8 宿主表均未部署。Unity 实机验收待用户集中测试。
