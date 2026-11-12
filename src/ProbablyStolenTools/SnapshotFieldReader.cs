@@ -16,13 +16,37 @@ namespace ProbablyStolenTools
         private static readonly Dictionary<(Type Owner, string Name), SnapshotFieldReader> Cache = new();
         private readonly FieldInfo[] _path;
         private readonly bool _element;
+        private readonly Func<object, int, object> _readElement;
         private readonly Type _scalar;
         private SnapshotFieldReader(Type owner, FieldInfo[] path, bool element)
         {
             _path = path;
             _element = element;
+            _readElement = element ? VectorReader(owner) : null;
             var scalar = path.Length == 0 ? (element ? owner.GetElementType() : owner) : path[path.Length - 1].FieldType;
             _scalar = Nullable.GetUnderlyingType(scalar) ?? scalar;
+        }
+        private static object ReadVector<T>(object owner, int index) => ((T[])owner)[index];
+        private static Func<object, int, object> VectorReader(Type owner)
+        {
+            // Only SZ vectors enter this path. Keep struct/enum and nonvector arrays reflective.
+            var element = owner.GetElementType();
+            if (element == null || owner != element.MakeArrayType()) return null;
+            if (!element.IsValueType) return ReadVector<object>;
+            if (owner == typeof(byte[])) return ReadVector<byte>;
+            if (owner == typeof(bool[])) return ReadVector<bool>;
+            if (owner == typeof(int[])) return ReadVector<int>;
+            if (owner == typeof(float[])) return ReadVector<float>;
+            if (owner == typeof(double[])) return ReadVector<double>;
+            if (owner == typeof(long[])) return ReadVector<long>;
+            if (owner == typeof(uint[])) return ReadVector<uint>;
+            if (owner == typeof(ulong[])) return ReadVector<ulong>;
+            if (owner == typeof(short[])) return ReadVector<short>;
+            if (owner == typeof(ushort[])) return ReadVector<ushort>;
+            if (owner == typeof(sbyte[])) return ReadVector<sbyte>;
+            if (owner == typeof(char[])) return ReadVector<char>;
+            if (owner == typeof(decimal[])) return ReadVector<decimal>;
+            return null;
         }
         internal static SnapshotFieldReader Get(Type ownerType, string name, FieldInfo[] path, bool element)
         {
@@ -38,7 +62,8 @@ namespace ProbablyStolenTools
         }
         internal bool TryRead(object owner, int index, out object value)
         {
-            value = _element ? ((Array)owner).GetValue(index) : owner;
+            value = !_element ? owner : _readElement != null
+                ? _readElement(owner, index) : ((Array)owner).GetValue(index);
             foreach (var field in _path) value = field.GetValue(value);
             return true;
         }

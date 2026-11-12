@@ -110,6 +110,7 @@ public static class OfflineMonoFixture
         const BindingFlags statics = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
         var game = Assembly.Load("Assembly-CSharp");
         var unity = Assembly.Load("UnityEngine.CoreModule");
+        CheckVectorReaders(mod);
         object Data(string name) => System.Runtime.Serialization.FormatterServices.GetUninitializedObject(game.GetType(name, true));
         var accessType = mod.GetType("ProbablyStolenTools.ManagedStateAccess", true);
         var graphType = mod.GetType("ProbablyStolenTools.StateGraph", true);
@@ -317,6 +318,166 @@ public static class OfflineMonoFixture
     }
 
     private sealed class UnknownMutable { public int Value; }
+
+    private delegate bool VectorRead(object owner, int index, out object value);
+    private delegate bool VectorEquals(object owner, int index, object expected, out bool same);
+
+    private static void CheckVectorReaders(Assembly mod)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
+        var type = mod.GetType("ProbablyStolenTools.SnapshotFieldReader", true);
+        var get = type.GetMethod("Get", flags);
+        var readMethod = type.GetMethod("TryRead", flags);
+        var equalsMethod = type.GetMethod("TryEquals", flags);
+        var direct = type.GetField("_readElement", flags);
+        object Reader(Array array, FieldInfo[] path) => get.Invoke(null,
+            new object[] { array.GetType(), "vector-test:" + string.Join(".", path.Select(field => field.Name)), path, true });
+        object shared = new object();
+        var arrays = new Array[]
+        {
+            new byte[] { 0, 1, 255 }, new bool[] { false, true, false },
+            new int[] { int.MinValue, 0, int.MaxValue }, new uint[] { 0, 7, uint.MaxValue },
+            new long[] { long.MinValue, 0, long.MaxValue }, new ulong[] { 0, 7, ulong.MaxValue },
+            new short[] { short.MinValue, 0, short.MaxValue }, new ushort[] { 0, 7, ushort.MaxValue },
+            new sbyte[] { sbyte.MinValue, 0, sbyte.MaxValue }, new char[] { '\0', 'a', '\uffff' },
+            new float[] { BitConverter.Int32BitsToSingle(unchecked((int)0x80000000)), 0,
+                BitConverter.Int32BitsToSingle(unchecked((int)0x7fc00001)),
+                BitConverter.Int32BitsToSingle(unchecked((int)0x7fc00002)), float.PositiveInfinity },
+            new double[] { BitConverter.Int64BitsToDouble(unchecked((long)0x8000000000000000)), 0,
+                BitConverter.Int64BitsToDouble(unchecked((long)0x7ff8000000000001)),
+                BitConverter.Int64BitsToDouble(unchecked((long)0x7ff8000000000002)), double.NegativeInfinity },
+            new decimal[] { decimal.MinValue, 0, decimal.MaxValue },
+            new object[] { null, shared, shared }, new string[] { null, "one", "two" },
+            new byte[][] { null, new byte[] { 1 }, new byte[] { 2, 3 } },
+            new int?[] { null, 0, int.MaxValue }, new DayOfWeek[] { DayOfWeek.Sunday, DayOfWeek.Monday }
+        };
+        foreach (var array in arrays)
+        {
+            var reader = Reader(array, Array.Empty<FieldInfo>());
+            var read = (VectorRead)Delegate.CreateDelegate(typeof(VectorRead), reader, readMethod);
+            var compare = (VectorEquals)Delegate.CreateDelegate(typeof(VectorEquals), reader, equalsMethod);
+            bool fallback = array.GetType() == typeof(int?[]) || array.GetType() == typeof(DayOfWeek[]);
+            if ((direct.GetValue(reader) == null) != fallback)
+                throw new Exception("Wrong vector reader selection: " + array.GetType());
+            for (int i = 0; i < array.Length; i++)
+            {
+                object expected = array.GetValue(i);
+                if (!read(array, i, out var actual) || !Exact(expected, actual))
+                    throw new Exception("Vector reader mismatch: " + array.GetType() + " index=" + i);
+                bool scalar = array.GetType().GetElementType().IsValueType;
+                bool compared = compare(array, i, expected, out bool same);
+                if (compared != scalar || scalar && !same)
+                    throw new Exception("Vector comparison mismatch: " + array.GetType());
+                if (scalar)
+                {
+                    object changed = array.GetValue((i + 1) % array.Length);
+                    if (!compare(array, i, changed, out same) || same != Exact(expected, changed))
+                        throw new Exception("Vector changed comparison mismatch: " + array.GetType());
+                }
+            }
+        }
+        bool Exact(object left, object right)
+        {
+            if (left is float f) return right is float other && BitConverter.SingleToInt32Bits(f) == BitConverter.SingleToInt32Bits(other);
+            if (left is double d) return right is double other && BitConverter.DoubleToInt64Bits(d) == BitConverter.DoubleToInt64Bits(other);
+            if (left == null || !left.GetType().IsValueType) return ReferenceEquals(left, right);
+            return Equals(left, right);
+        }
+        var pairs = new[] { new KeyValuePair<int, object>(1, shared), new KeyValuePair<int, object>(2, null) };
+        var path = new[] { typeof(KeyValuePair<int, object>).GetField("value", BindingFlags.Instance | BindingFlags.NonPublic) };
+        var nestedReader = Reader(pairs, path);
+        var nested = (VectorRead)Delegate.CreateDelegate(typeof(VectorRead), nestedReader, readMethod);
+        if (direct.GetValue(nestedReader) != null || !nested(pairs, 0, out var first) || !ReferenceEquals(first, shared)
+            || !nested(pairs, 1, out var second) || second != null)
+            throw new Exception("Struct vector reflective path changed.");
+        var nonvector = Array.CreateInstance(typeof(int), new[] { 2 }, new[] { 1 });
+        var nonvectorReader = Reader(nonvector, Array.Empty<FieldInfo>());
+        var nonvectorRead = (VectorRead)Delegate.CreateDelegate(typeof(VectorRead), nonvectorReader, readMethod);
+        nonvector.SetValue(17, 1);
+        if (direct.GetValue(nonvectorReader) != null || !nonvectorRead(nonvector, 1, out var nonvectorValue)
+            || !Equals(nonvectorValue, 17))
+            throw new Exception("Nonvector array did not retain reflective indexing.");
+
+        var vectorRoots = arrays.Cast<object>().Concat(new object[] { pairs }).ToArray();
+        var allArrays = arrays.Concat(new Array[] { pairs }).ToArray();
+        var originals = allArrays.Select(array => (Array)array.Clone()).ToArray();
+        var accessType = mod.GetType("ProbablyStolenTools.ManagedStateAccess", true);
+        var graphType = mod.GetType("ProbablyStolenTools.StateGraph", true);
+        var id = (IntPtr)mod.GetType("ProbablyStolenTools.ManagedObjects", true).GetMethod("Id", flags)
+            .Invoke(null, new object[] { vectorRoots });
+        object Capture(bool fast)
+        {
+            var access = accessType.GetConstructor(flags, null,
+                new[] { typeof(Type), typeof(string), typeof(bool) }, null)
+                .Invoke(new object[] { Assembly.Load("UnityEngine.CoreModule").GetType("UnityEngine.Object"), "Assembly-CSharp", fast });
+            accessType.GetMethod("AddRoot", flags).Invoke(access, new object[] { id, Array.Empty<string>() });
+            return graphType.GetMethod("Capture", flags).Invoke(null,
+                new object[] { access, new[] { id }, 10000, 100000, 16L * 1024 * 1024 });
+        }
+        var ordinary = Capture(false);
+        object fastGraph = null;
+        try
+        {
+            fastGraph = Capture(true);
+            foreach (string name in new[] { "ObjectCount", "SlotCount", "ByteCount" })
+                if (!Equals(graphType.GetProperty(name, flags).GetValue(ordinary),
+                    graphType.GetProperty(name, flags).GetValue(fastGraph)))
+                    throw new Exception("Vector graph budget parity failed: " + name);
+            for (int cycle = 0; cycle < 3; cycle++)
+                foreach (var graph in new[] { ordinary, fastGraph })
+                {
+                    foreach (var array in allArrays)
+                    {
+                        var element = array.GetType().GetElementType();
+                        object zero = element.IsValueType ? Activator.CreateInstance(element) : null;
+                        for (int i = 0; i < array.Length; i++) array.SetValue(zero, i);
+                    }
+                    var before = (ICollection)graphType.GetMethod("Differences", flags).Invoke(graph, new object[] { 12 });
+                    if (before.Count == 0) throw new Exception("Vector graph mutations were not detected.");
+                    graphType.GetMethod("Restore", flags).Invoke(graph, null);
+                    var after = (ICollection)graphType.GetMethod("Differences", flags).Invoke(graph, new object[] { 12 });
+                    if (after.Count != 0) throw new Exception("Vector graph did not restore completely.");
+                    for (int a = 0; a < allArrays.Length; a++)
+                        for (int i = 0; i < allArrays[a].Length; i++)
+                            if (!Exact(originals[a].GetValue(i), allArrays[a].GetValue(i)))
+                                throw new Exception("Restored vector bits/identities mismatch.");
+                }
+        }
+        finally
+        {
+            if (fastGraph != null) ((IDisposable)fastGraph).Dispose();
+            ((IDisposable)ordinary).Dispose();
+        }
+
+        foreach (var array in new Array[] { new byte[4096], new object[4096] })
+        {
+            var reader = Reader(array, Array.Empty<FieldInfo>());
+            var read = (VectorRead)Delegate.CreateDelegate(typeof(VectorRead), reader, readMethod);
+            bool Reflect(object owner, int index, out object value) { value = ((Array)owner).GetValue(index); return true; }
+            double Measure(VectorRead operation)
+            {
+                object sink = null;
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                for (int repeat = 0; repeat < 64; repeat++)
+                    for (int i = 0; i < array.Length; i++) operation(array, i, out sink);
+                watch.Stop();
+                GC.KeepAlive(sink);
+                return watch.ElapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            }
+            Measure(read);
+            Measure(Reflect);
+            var baseline = new double[5];
+            var optimized = new double[5];
+            for (int i = 0; i < 5; i++) { baseline[i] = Measure(Reflect); optimized[i] = Measure(read); }
+            Array.Sort(baseline);
+            Array.Sort(optimized);
+            Console.WriteLine("VECTOR_READ_BENCH runtime=game-Mono-offline-not-Unity type=" + array.GetType().Name
+                + " elements=262144 samples=5 reflectiveMs=" + baseline[2].ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+                + " vectorMs=" + optimized[2].ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        Console.WriteLine("PASS actual game Mono vector readers: primitives, nullable/enum fallbacks, float bits, null/shared/covariant/jagged references, nested struct fields; ordinary/fast graph budget parity and six full mutation restores.");
+    }
+
     private static void CheckItemLayout(Assembly mod, Assembly game, object item)
     {
         const BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
