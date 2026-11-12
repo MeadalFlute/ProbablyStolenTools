@@ -17,14 +17,16 @@ namespace ProbablyStolenTools
         private readonly FieldInfo[] _path;
         private readonly bool _element;
         private readonly Func<object, int, object> _readElement;
-        private readonly Type _scalar;
+        private readonly bool _canCompare;
         private SnapshotFieldReader(Type owner, FieldInfo[] path, bool element)
         {
             _path = path;
             _element = element;
             _readElement = element ? VectorReader(owner) : null;
             var scalar = path.Length == 0 ? (element ? owner.GetElementType() : owner) : path[path.Length - 1].FieldType;
-            _scalar = Nullable.GetUnderlyingType(scalar) ?? scalar;
+            scalar = Nullable.GetUnderlyingType(scalar) ?? scalar;
+            _canCompare = (scalar.IsPrimitive || scalar.IsEnum || scalar == typeof(decimal))
+                && scalar != typeof(IntPtr) && scalar != typeof(UIntPtr);
         }
         private static object ReadVector<T>(object owner, int index) => ((T[])owner)[index];
         private static Func<object, int, object> VectorReader(Type owner)
@@ -70,8 +72,7 @@ namespace ProbablyStolenTools
         internal bool TryEquals(object owner, int index, object expected, out bool same)
         {
             same = false;
-            if ((!_scalar.IsPrimitive && !_scalar.IsEnum && _scalar != typeof(decimal))
-                || _scalar == typeof(IntPtr) || _scalar == typeof(UIntPtr)) return false;
+            if (!_canCompare) return false;
             TryRead(owner, index, out var actual);
             if (actual is float single)
                 same = expected is float other && BitConverter.SingleToInt32Bits(single) == BitConverter.SingleToInt32Bits(other);

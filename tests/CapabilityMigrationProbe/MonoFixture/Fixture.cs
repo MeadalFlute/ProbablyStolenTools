@@ -111,6 +111,7 @@ public static class OfflineMonoFixture
         var game = Assembly.Load("Assembly-CSharp");
         var unity = Assembly.Load("UnityEngine.CoreModule");
         CheckVectorReaders(mod);
+        CheckScalarComparisons(mod);
         object Data(string name) => System.Runtime.Serialization.FormatterServices.GetUninitializedObject(game.GetType(name, true));
         var accessType = mod.GetType("ProbablyStolenTools.ManagedStateAccess", true);
         var graphType = mod.GetType("ProbablyStolenTools.StateGraph", true);
@@ -321,6 +322,90 @@ public static class OfflineMonoFixture
 
     private delegate bool VectorRead(object owner, int index, out object value);
     private delegate bool VectorEquals(object owner, int index, object expected, out bool same);
+
+    private sealed class ComparisonSample
+    {
+        public int Number = 17;
+        public bool Flag = true;
+        public float Single = BitConverter.Int32BitsToSingle(unchecked((int)0x80000000));
+        public double Double = BitConverter.Int64BitsToDouble(unchecked((long)0x7ff8000000000001));
+        public decimal Money = 17.25m;
+        public DayOfWeek Enum = DayOfWeek.Friday;
+        public int? Nullable = 17;
+        public float? NullableSingle = BitConverter.Int32BitsToSingle(unchecked((int)0x80000000));
+        public object Reference = new object();
+        public IntPtr Pointer = new IntPtr(17);
+        public UIntPtr UnsignedPointer = new UIntPtr(17);
+        public RejectEquals Custom = new RejectEquals();
+    }
+
+    private struct RejectEquals
+    {
+        public override bool Equals(object other) => throw new Exception("Custom Equals must not run in typed comparisons.");
+        public override int GetHashCode() => 0;
+    }
+
+    private static void CheckScalarComparisons(Assembly mod)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+        var type = mod.GetType("ProbablyStolenTools.SnapshotFieldReader", true);
+        var sample = new ComparisonSample();
+        VectorEquals Compare(string name)
+        {
+            var field = typeof(ComparisonSample).GetField(name);
+            var reader = type.GetMethod("Get", flags).Invoke(null, new object[] {
+                typeof(ComparisonSample), "scalar-test:" + name, new[] { field }, false });
+            return (VectorEquals)Delegate.CreateDelegate(typeof(VectorEquals), reader, type.GetMethod("TryEquals", flags));
+        }
+        foreach (var entry in new (string Name, object Changed)[]
+        {
+            ("Number", 18), ("Flag", false), ("Single", 0f),
+            ("Double", BitConverter.Int64BitsToDouble(unchecked((long)0x7ff8000000000002))),
+            ("Money", 18.25m), ("Enum", DayOfWeek.Monday), ("Nullable", null), ("NullableSingle", 0f)
+        })
+        {
+            var field = typeof(ComparisonSample).GetField(entry.Name);
+            var compare = Compare(entry.Name);
+            object expected = field.GetValue(sample);
+            if (!compare(sample, -1, expected, out bool same) || !same
+                || !compare(sample, -1, entry.Changed, out same) || same)
+                throw new Exception("Scalar comparison semantics changed: " + entry.Name);
+            field.SetValue(sample, entry.Changed);
+            if (!compare(sample, -1, expected, out same) || same
+                || !compare(sample, -1, entry.Changed, out same) || !same)
+                throw new Exception("Changed/null scalar comparison failed: " + entry.Name);
+            field.SetValue(sample, expected);
+        }
+        foreach (string name in new[] { "Reference", "Pointer", "UnsignedPointer", "Custom" })
+        {
+            object value = typeof(ComparisonSample).GetField(name).GetValue(sample);
+            if (Compare(name)(sample, -1, value, out _))
+                throw new Exception("Unsupported scalar comparer was enabled: " + name);
+        }
+        foreach (string name in new[] { "Number", "Single", "Nullable" })
+        {
+            var compare = Compare(name);
+            object expected = typeof(ComparisonSample).GetField(name).GetValue(sample);
+            double Measure()
+            {
+                int matched = 0;
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                for (int i = 0; i < 262144; i++)
+                    if (compare(sample, -1, expected, out bool same) && same) matched++;
+                watch.Stop();
+                if (matched != 262144) throw new Exception("Scalar benchmark failed equality.");
+                return watch.ElapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            }
+            Measure();
+            var times = new double[5];
+            for (int i = 0; i < times.Length; i++) times[i] = Measure();
+            Array.Sort(times);
+            Console.WriteLine("SCALAR_GATE_BENCH runtime=game-Mono-offline-not-Unity field=" + name
+                + " comparisons=262144 samples=5 medianMs=" + times[2].ToString("F2",
+                    System.Globalization.CultureInfo.InvariantCulture));
+        }
+        Console.WriteLine("PASS actual game Mono scalar comparison gates: primitive/enum/decimal/nullable, null transitions, float bits; reference/pointer/custom struct refused without custom Equals.");
+    }
 
     private static void CheckVectorReaders(Assembly mod)
     {

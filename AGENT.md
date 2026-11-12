@@ -131,6 +131,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 布局修复后实机 7 次恢复平均约 1.26 秒（此前约 2.31 秒），geometry 降至 3–4 ms，全部 diff=0。下一候选为静态读取器的常见 SZ 数组下标读取，其他字段路径和所有校验保持；完整离线测试及扫描通过，整次实机收益待确认。详见 `research/2026-11-12-static-vector-read-performance.md`。
 
+数组候选后实机仅 3 次，平均约 1.31 秒、全部 diff=0，未证明整次提速。最新小候选将静态读取器的标量比较准入类型判断缓存到初始化，原有比较及全部校验不变；完整离线测试/扫描通过，局部基准只有小幅收益，不能宣传已恢复旧后端速度。详见 `research/2026-11-12-static-scalar-gate-performance.md`。
+
 - 技术依据：`research/2026-11-12-static-type-token-proof.md` 证明构建时固定 ldtoken 可表达私有泛型 Entry/Slot。窄探针之后已完成生产源码替换及离线完整图测试，尚无本轮实机验收；工具/原生离线宿主绝不随 Mod 发布。
 - 官方公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.9.0 只保证**当前游戏版本**可用，发行说明不得写“已兼容下一版”。
 - 迁移前源码依赖 `Expression.Compile` 与计算类型 `GetFields/GetMethod`；只删 manifest 声明或关闭 DevelopmentChecks **不是修复**，扫描器按编译进 DLL 的方法判断。现已从 Mono 发布编译排除此类路径，离线参考源码仍保留。
