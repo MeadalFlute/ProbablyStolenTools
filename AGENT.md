@@ -1,6 +1,6 @@
-# Probably Stolen Tools — 交接文档
+﻿# Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.9.1**（2026-11-12）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
+> 适用源码：正式版 **0.9.2**（2026-11-13）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
 > 旧版本文档（0.2.1–0.6.0、Demo、早期性能优化过程）归档在 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
 本文只写当前仍成立的事实。实现细节以源码为准，阶段记录与实验数据看 `research/`。
@@ -27,7 +27,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 ### 版本与发布
 
 - 唯一真源：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
-- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.1**。
+- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.2**。
 - 纯文档提交不单独升版；推送前重新构建 → 两组测试 → 部署 → 正常 `push`（不 force）。
 - 推送使用用户临时 token，不写入文件、日志或命令历史。
 
@@ -125,7 +125,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ## 6. 加载器兼容迁移
 
-**0.9.1 的 Mono 发布路径已使用构建时静态布局表**，详见 `research/2026-11-12-static-runtime-graph-migration.md` 与 `research/2026-11-12-loader-migration-review-handoff.md`。构建时生成目标 Mono 字段表，包含私有 Entry/Slot 固定类型令牌；版本严格 MVID 门控，未知布局不动态回退。Mono 编译排除旧表达式生成路径，通用 GameFields 用官方 ModReflect；恢复字段/集合物理存储与安全检查不减。两个发布 DLL 均列入 manifest，仅声明/检测 files；ReleaseCompatibility 的退役能力门槛已加入，net8 宿主表隔离于 out。`scripts/Test-StaticLayouts.ps1` 全套通过；实机仍只覆盖简单节点回溯，完整功能矩阵和多 Mod 组合未验收。下方为迁移过程中的性能记录。
+**0.9.2 的 Mono 发布路径已使用构建时静态布局表**，详见 `research/2026-11-12-static-runtime-graph-migration.md` 与 `research/2026-11-12-loader-migration-review-handoff.md`。构建时生成目标 Mono 字段表，包含私有 Entry/Slot 固定类型令牌；版本严格 MVID 门控，未知布局不动态回退。Mono 编译排除旧表达式生成路径，通用 GameFields 用官方 ModReflect；恢复字段/集合物理存储与安全检查不减。两个发布 DLL 均列入 manifest，仅声明/检测 files；ReleaseCompatibility 的退役能力门槛已加入，net8 宿主表隔离于 out。`scripts/Test-StaticLayouts.ps1` 全套通过；实机仍只覆盖简单节点回溯，完整功能矩阵和多 Mod 组合未验收。下方为迁移过程中的性能记录。
 
 后续实机反馈：基本回溯未发现功能异常，但明显变慢。已独立优化批量物品布局的字段访问：两个固定私有缓存字段采用字面 FieldInfo，公开原点属性直接读取；其他低频访问仍用 ModReflect。完整离线测试及能力扫描通过，后续实机结果见下。该项耗时分布与边界见 `research/2026-11-12-static-layout-restore-performance.md`。
 
