@@ -1,8 +1,8 @@
-# Probably Stolen Tools
+﻿# Probably Stolen Tools
 
 English | [中文](README.md)
 
-A helper mod for **Probably Stolen**, targeting the full release **0.9.0**.
+A helper mod for **Probably Stolen**, targeting the full release **0.9.1**.
 The full release runs Unity 2021.3.45f2 / Mono / x64 (game 0.46D) and provides its own **IMod / Harmony** loader — MelonLoader and BepInEx are not required.
 
 ---
@@ -111,7 +111,7 @@ Requires the `files`, `reflection-external` and `dynamic-code` capabilities; no 
 - Built for the **full release** (Mono); Demo / MelonLoader paths are no longer maintained.
 - Generally compatible with mods that don't modify the same UI or add new data structures to the game.
 - Snapshots walk the game's business object graph, so mods that add a very large object graph **can** make capture fail (the panel then shows a "Damaged" row with the reason).
-- **Forward-compatibility note**: the loader has announced that `dynamic-code` / `reflection-external` will be refused from 2026-12-10. 0.9.0 is only verified for the **current game version**; do not claim next-loader compatibility until the migration lands (see `research/2026-11-12-loader-capability-migration.md`).
+- **Forward-compatibility note**: the loader has announced that `dynamic-code` / `reflection-external` will be refused from 2026-12-10. 0.9.1 is only verified for the **current game version**; do not claim next-loader compatibility until the migration lands (see `research/2026-11-12-loader-capability-migration.md`).
 
 ---
 
@@ -164,7 +164,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **373** tests; the release build passes **57** Harmony targets, **76** fields and the official mod scanner. The single-pass entity backend ships with 0.9.0; offline tests are not a substitute for in-game verification.
+Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **380** tests; the release build passes **57** Harmony targets, **76** fields and the official mod scanner. The single-pass entity backend ships with 0.9.0; offline tests are not a substitute for in-game verification.
 
 `Snapshot.SemanticDevelopmentChecks` gates duplicate development snapshots and defaults to false for release. Enabling it adds time and memory to the primary and extra manual sample. Disabling it preserves complete preflight, verification, repair and necessary diagnostics. `Snapshot.SemanticEntityBlocks` controls the new backend. Restart the game after changing these settings.
 

@@ -1,6 +1,6 @@
 # Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.9.0**（2026-11-12）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
+> 适用源码：正式版 **0.9.1**（2026-11-12）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
 > 旧版本文档（0.2.1–0.6.0、Demo、早期性能优化过程）归档在 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
 本文只写当前仍成立的事实。实现细节以源码为准，阶段记录与实验数据看 `research/`。
@@ -123,9 +123,9 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ---
 
-## 6. 加载器兼容迁移候选
+## 6. 加载器兼容迁移
 
-**当前源码已接入静态图迁移候选**，详见 `research/2026-11-12-static-runtime-graph-migration.md`。构建时生成目标 Mono 字段表，包含私有 Entry/Slot 固定类型令牌；版本严格 MVID 门控，未知布局不动态回退。Mono 编译排除旧表达式生成路径，通用 GameFields 用官方 ModReflect；恢复字段/集合物理存储与安全检查不减。两个发布 DLL 均列入 manifest，仅声明/检测 files；ReleaseCompatibility 的退役能力门槛已加入，net8 宿主表隔离于 out。`scripts/Test-StaticLayouts.ps1` 全套通过，完整 Unity 活体验收仍未完成。下方旧阻断记录为历史，不再代表生产源码当前仍含命中。
+**0.9.1 的 Mono 发布路径已使用构建时静态布局表**，详见 `research/2026-11-12-static-runtime-graph-migration.md` 与 `research/2026-11-12-loader-migration-review-handoff.md`。构建时生成目标 Mono 字段表，包含私有 Entry/Slot 固定类型令牌；版本严格 MVID 门控，未知布局不动态回退。Mono 编译排除旧表达式生成路径，通用 GameFields 用官方 ModReflect；恢复字段/集合物理存储与安全检查不减。两个发布 DLL 均列入 manifest，仅声明/检测 files；ReleaseCompatibility 的退役能力门槛已加入，net8 宿主表隔离于 out。`scripts/Test-StaticLayouts.ps1` 全套通过；实机仍只覆盖简单节点回溯，完整功能矩阵和多 Mod 组合未验收。下方为迁移过程中的性能记录。
 
 后续实机反馈：基本回溯未发现功能异常，但明显变慢。已独立优化批量物品布局的字段访问：两个固定私有缓存字段采用字面 FieldInfo，公开原点属性直接读取；其他低频访问仍用 ModReflect。完整离线测试及能力扫描通过，后续实机结果见下。该项耗时分布与边界见 `research/2026-11-12-static-layout-restore-performance.md`。
 
@@ -137,7 +137,9 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 该批实机 5 次平均 1286 ms，同样未明显提速。恢复阶段现另有精简候选：静态固定布局 `CensusForRestore` 仅遍历完整引用拓扑并保留所有布局/预算检查，不再探测当前标量；目标 `ValidateRestore` 对显式稳定存储及已批准块只验证原 owner 保留身份，不计算被丢弃的写前差异；未知后端/块保持原完整读取。owner 修复计划并入同一次完整差异扫描，消除后续全槽规划遍历。原生刷新后扫描及最终全量校验/失败 full fallback 保留；日志用 `censusMode` / `preflightMode` 识别实际路径。同夹具三组离线对照中普查 427→303 ms、预检 275→20 ms，恢复相关阶段合计中位数 1599→1237 ms（约 -22.6%），不含 Unity 刷新，实机待验收。证明、回退边界及验证见 `research/2026-11-12-restore-stage-consolidation.md`；不能把写前稳定存储证明推广成恢复后免校验。
 
-- 技术依据：`research/2026-11-12-static-type-token-proof.md` 证明构建时固定 ldtoken 可表达私有泛型 Entry/Slot。窄探针之后已完成生产源码替换及离线完整图测试，尚无本轮实机验收；工具/原生离线宿主绝不随 Mod 发布。
+最新阶段精简后的 16:37 会话简单节点测试：5 次恢复平均 **1004.8 ms**，上一批为 1285.8 ms，约缩短 21.9%；全部 diff=0 / releaseOk=True，走 topology / retained-storage，无 finalFallback。不是严格同操作 A/B，亦不是完整功能矩阵验收。首节点仍 1479 ms，初始化卡顿没有解决。暂未发现低风险且明确显著的进一步阶段删减，停止追加性能候选，转入审查。完整范围及风险清单见 `research/2026-11-12-loader-migration-review-handoff.md`。
+
+- 技术依据：`research/2026-11-12-static-type-token-proof.md` 证明构建时固定 ldtoken 可表达私有泛型 Entry/Slot。窄探针之后已完成生产源码替换及离线完整图测试，已有基本节点实机反馈，但完整功能矩阵仍待验收；工具/原生离线宿主绝不随 Mod 发布。
 - 官方公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.9.0 只保证**当前游戏版本**可用，发行说明不得写“已兼容下一版”。
 - 迁移前源码依赖 `Expression.Compile` 与计算类型 `GetFields/GetMethod`；只删 manifest 声明或关闭 DevelopmentChecks **不是修复**，扫描器按编译进 DLL 的方法判断。现已从 Mono 发布编译排除此类路径，离线参考源码仍保留。
 - 历史方案与普通 C# 查找链阻断见 `research/2026-11-12-loader-capability-migration.md`、`research/2026-11-12-runtime-graph-migration-feasibility.md` 与 `tests/CapabilityMigrationProbe/README.md`。其中集合阻断已由构建时令牌解决；ModReflect.Set 拒绝 readonly 的限制仍在，图写回继续使用固定 FieldInfo，不用 Clear/Add 偷换原存储语义。
