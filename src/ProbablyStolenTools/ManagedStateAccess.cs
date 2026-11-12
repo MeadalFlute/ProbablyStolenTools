@@ -289,8 +289,8 @@ namespace ProbablyStolenTools
             var value = _retained[id];
             var type = value.GetType();
             bool root = _roots.TryGetValue(id, out var selected);
-            if (root && ProtectedOwner(type))
-                throw new InvalidOperationException("Protected snapshot root: " + type.FullName);
+            if (root && ExcludedGameOwner(type))
+                throw new InvalidOperationException("Excluded snapshot root: " + type.FullName);
             if (!root)
             {
                 if (!_traversable.TryGetValue(type, out bool traversable))
@@ -490,7 +490,7 @@ namespace ProbablyStolenTools
 
         private bool Traversable(Type type)
         {
-            if (ProtectedOwner(type)) return false;
+            if (ExcludedGameOwner(type)) return false;
             if (type == typeof(string) || type == typeof(object) || type.FullName.Contains("Comparer")) return false;
             if (_unityObject != null && _unityObject.IsAssignableFrom(type)) return false;
             if (type.IsArray || typeof(Delegate).IsAssignableFrom(type) || type.IsValueType
@@ -515,11 +515,11 @@ namespace ProbablyStolenTools
             throw new InvalidOperationException("Uncovered mutable type: " + type.FullName);
         }
 
-        private bool ProtectedOwner(Type type)
+        private bool ExcludedGameOwner(Type type)
         {
             if (type.Assembly.GetName().Name != _gameAssembly) return false;
             while (type.DeclaringType != null) type = type.DeclaringType;
-            return SnapshotTraversalBoundary.IsProtectedOwner(type.Name);
+            return SnapshotTraversalBoundary.IsExcludedGameOwner(type.Name);
         }
 
         private static readonly HashSet<string> _opaqueWarned = new HashSet<string>(StringComparer.Ordinal);
@@ -568,7 +568,7 @@ namespace ProbablyStolenTools
         }
 
         private static bool HasReferences(Type type)
-            => !type.IsValueType || !type.IsPrimitive && !type.IsEnum
+            => !type.IsValueType || !type.IsPrimitive && !type.IsEnum && type != typeof(decimal)
                 && DeclaredFields(type)
                     .Any(field => HasReferences(field.FieldType));
 

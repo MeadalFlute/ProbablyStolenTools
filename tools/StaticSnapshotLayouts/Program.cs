@@ -37,16 +37,17 @@ TypeDefinition Outer(TypeDefinition t) => t.DeclaringType == null ? t : Outer(t.
 bool GameType(TypeDefinition t)
 {
     var outer = Outer(t);
-    return t.Name != "<Module>" && !ProbablyStolenTools.SnapshotTraversalBoundary.IsProtectedOwner(outer.Name)
-        && !outer.Name.StartsWith("ES3", StringComparison.Ordinal);
+    return t.Name != "<Module>" && !ProbablyStolenTools.SnapshotTraversalBoundary.IsExcludedGameOwner(outer.Name);
 }
 bool FrameworkType(TypeDefinition t)
 {
     var outer = Outer(t);
-    return outer.Namespace == "System.Collections.Generic"
+    return t.IsEnum && t.Namespace == "System" || outer.Namespace == "System.Collections.Generic"
         || outer.Namespace == "System" && (outer.Name.StartsWith("Tuple`", StringComparison.Ordinal)
             || outer.Name.StartsWith("ValueTuple", StringComparison.Ordinal)
-            || new[] { "Random", "Object", "ValueType", "Enum", "DateTime", "DateTimeOffset", "TimeSpan", "Guid" }
+            || new[] { "Random", "Object", "ValueType", "Enum", "DateTime", "DateTimeOffset", "TimeSpan", "Guid",
+                "Boolean", "Byte", "SByte", "Int16", "UInt16", "Int32", "UInt32", "Int64", "UInt64",
+                "Single", "Double", "Char", "Decimal" }
                 .Contains(outer.Name));
 }
 bool UnityType(TypeDefinition t) => t.IsValueType && t.Namespace == "UnityEngine"

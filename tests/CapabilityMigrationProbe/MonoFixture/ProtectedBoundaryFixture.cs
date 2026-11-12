@@ -77,7 +77,7 @@ public static partial class OfflineMonoFixture
                     throw new Exception("Protected explicit root accepted.");
                 }
                 catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException
-                    && e.InnerException.Message.StartsWith("Protected snapshot root:", StringComparison.Ordinal)) { }
+                    && e.InnerException.Message.StartsWith("Excluded snapshot root:", StringComparison.Ordinal)) { }
             }
             finally { ((IDisposable)rejected).Dispose(); }
         }
