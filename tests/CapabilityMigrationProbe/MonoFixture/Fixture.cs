@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
-public static class OfflineMonoFixture
+public static partial class OfflineMonoFixture
 {
     public static void Run(string path)
     {
@@ -112,6 +112,7 @@ public static class OfflineMonoFixture
         var unity = Assembly.Load("UnityEngine.CoreModule");
         CheckVectorReaders(mod);
         CheckScalarComparisons(mod);
+        CheckReadPassAndSharing(mod);
         object Data(string name) => System.Runtime.Serialization.FormatterServices.GetUninitializedObject(game.GetType(name, true));
         var accessType = mod.GetType("ProbablyStolenTools.ManagedStateAccess", true);
         var graphType = mod.GetType("ProbablyStolenTools.StateGraph", true);

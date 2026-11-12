@@ -66,14 +66,31 @@ namespace ProbablyStolenTools
         {
             value = !_element ? owner : _readElement != null
                 ? _readElement(owner, index) : ((Array)owner).GetValue(index);
+            return TryReadFields(value, out value);
+        }
+        internal bool TryReadFields(object owner, out object value)
+        {
+            value = owner;
             foreach (var field in _path) value = field.GetValue(value);
             return true;
         }
+        internal bool SupportsComparison => _canCompare;
         internal bool TryEquals(object owner, int index, object expected, out bool same)
         {
             same = false;
             if (!_canCompare) return false;
             TryRead(owner, index, out var actual);
+            return Compare(actual, expected, out same);
+        }
+        internal bool TryEqualsFields(object owner, object expected, out bool same)
+        {
+            same = false;
+            if (!_canCompare) return false;
+            TryReadFields(owner, out var actual);
+            return Compare(actual, expected, out same);
+        }
+        private static bool Compare(object actual, object expected, out bool same)
+        {
             if (actual is float single)
                 same = expected is float other && BitConverter.SingleToInt32Bits(single) == BitConverter.SingleToInt32Bits(other);
             else if (actual is double number)

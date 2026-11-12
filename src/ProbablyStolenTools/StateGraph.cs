@@ -45,6 +45,26 @@ namespace ProbablyStolenTools
         int ProbeValue(IntPtr id, StateSlot slot);
     }
 
+    // A read pass may reuse temporary boxes, but never across passes, owners or writes.
+    internal interface IStateReadPass
+    {
+        void BeginReadPass();
+        void ResetReadObject();
+        void EndReadPass();
+    }
+
+    internal readonly struct StateReadPass : IDisposable
+    {
+        private readonly IStateReadPass _access;
+        internal StateReadPass(IStateAccess access)
+        {
+            _access = access as IStateReadPass;
+            _access?.BeginReadPass();
+        }
+        internal void ResetObject() => _access?.ResetReadObject();
+        public void Dispose() => _access?.EndReadPass();
+    }
+
     internal interface IStateScalarWriteDiagnostics
     {
         (long Checked, long Skipped) ScalarWrites { get; }
@@ -398,6 +418,7 @@ namespace ProbablyStolenTools
             int maxObjects, int maxSlots, long maxBytes, bool captureValues)
         {
             var graph = new StateGraph(access, captureValues);
+            using var readPass = new StateReadPass(access);
             try
             {
                 var pending = new Queue<IntPtr>();
@@ -421,6 +442,7 @@ namespace ProbablyStolenTools
                     Discover(root, IntPtr.Zero, "root");
                 while (pending.Count != 0)
                 {
+                    readPass.ResetObject();
                     var id = pending.Dequeue();
                     graph._objects.Add(id);
                     access.Retain(id);
@@ -627,6 +649,7 @@ namespace ProbablyStolenTools
             RequireCheckpoint();
             _revision++;
             var result = new List<string>();
+            using var readPass = new StateReadPass(_access);
             var comparer = _access as IStateValueComparer;
             var references = _access as IStateReferenceComparer;
             _access.Validate();
@@ -651,6 +674,7 @@ namespace ProbablyStolenTools
             }
             foreach (var block in _blocks)
             {
+                readPass.ResetObject();
                 int start = result.Count;
                 int changed = block.Payload.CollectDifferences(result, max);
                 if (changed < 0 || changed > block.Slots.Count)

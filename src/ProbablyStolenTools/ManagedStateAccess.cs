@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
-    internal sealed class ManagedStateAccess : IStateAccess, IIndependentStateAccess, IStateValueComparer, IStateReferenceComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe, IStateScalarWriteDiagnostics, IStateComparisonDiagnostics
+    internal sealed class ManagedStateAccess : IStateAccess, IIndependentStateAccess, IStateValueComparer, IStateReferenceComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe, IStateScalarWriteDiagnostics, IStateComparisonDiagnostics, IStateReadPass
     {
         private readonly struct Storage
         {
@@ -19,7 +19,7 @@ namespace ProbablyStolenTools
             { Index = index; Path = path; Target = target; Reader = reader; }
         }
 
-        // Only immutable field descriptions are shared; values and array indices remain per capture.
+        // Only immutable field descriptions are shared; business values and ownership stay per capture.
         private sealed class TypeSchema
         {
             internal readonly StateSlot[] Slots;
@@ -33,6 +33,14 @@ namespace ProbablyStolenTools
         private const int ArraySchemaLimit = 4096;
         private const int ArraySchemaSlotLimit = 65536;
         private const int ValueTokenBytes = sizeof(long);
+#if STATIC_SNAPSHOT_LAYOUTS
+        private const int SharedSchemaLimit = 4096;
+        private const int SharedSchemaSlotLimit = 65536;
+        private static readonly Dictionary<(Type Type, Type Unity, bool Fast, bool Element), TypeSchema> SharedTypes = new();
+        private static readonly Dictionary<(Type Type, int Length, bool Fast), TypeSchema> SharedArrays = new();
+        private static int _sharedTypeSlots, _sharedArraySlots;
+        internal bool SharedDescriptions { get; set; } = true;
+#endif
         private readonly Dictionary<IntPtr, object> _retained = new();
         private readonly Dictionary<IntPtr, HashSet<string>> _roots = new();
         private readonly Dictionary<IntPtr, Storage[]> _storage = new();
@@ -47,6 +55,63 @@ namespace ProbablyStolenTools
         private readonly Dictionary<long, object> _savedValues = new();
         private long _nextValue;
         private static readonly object NullValue = new();
+#if STATIC_SNAPSHOT_LAYOUTS
+        private int _readPassDepth;
+        private Array _readArray;
+        private int _readArrayIndex;
+        private object _readArrayElement;
+        private IntPtr _storageOwnerId;
+        private object _storageOwner;
+        private Storage[] _ownerStores;
+        internal bool ScopedStructReads { get; set; } = true;
+        internal long ArrayElementLoads { get; private set; }
+        internal long ArrayElementReuses { get; private set; }
+#endif
+
+        void IStateReadPass.BeginReadPass()
+        {
+#if STATIC_SNAPSHOT_LAYOUTS
+            _readPassDepth++;
+#endif
+            ResetReadObject();
+        }
+        void IStateReadPass.ResetReadObject() => ResetReadObject();
+        void IStateReadPass.EndReadPass()
+        {
+            ResetReadObject();
+#if STATIC_SNAPSHOT_LAYOUTS
+            _readPassDepth--;
+#endif
+        }
+        private void ResetReadObject()
+        {
+#if STATIC_SNAPSHOT_LAYOUTS
+            _readArray = null;
+            _readArrayElement = null;
+#endif
+        }
+#if STATIC_SNAPSHOT_LAYOUTS
+        private bool ReuseStructElement(Storage storage) => ScopedStructReads && _fastReads
+            && _readPassDepth > 0 && storage.Index >= 0 && storage.Path.Length > 0 && storage.Reader != null;
+        private object ReadStructElement(object owner, int index)
+        {
+            if (ReferenceEquals(_readArray, owner) && _readArrayIndex == index)
+            {
+                ArrayElementReuses++;
+                return _readArrayElement;
+            }
+            var array = (Array)owner;
+            var value = array.GetValue(index);
+            ArrayElementLoads++;
+            _readArray = array;
+            _readArrayIndex = index;
+            return _readArrayElement = value;
+        }
+        private bool MayRunValueCallback(Storage storage) => _readPassDepth > 0
+            && (storage.Reader == null || !storage.Reader.SupportsComparison);
+#else
+        private bool MayRunValueCallback(Storage storage) => false;
+#endif
         internal Func<object, IReadOnlyList<StateSlot>, IStateBlock> BlockCapture;
         internal SemanticFieldBlockFactory EntityBlocks { get; set; }
         internal Action<ManagedStateAccess> ConfigureIndependentBlocks;
@@ -184,6 +249,10 @@ namespace ProbablyStolenTools
                 TypedScalarComparisons = TypedScalarComparisons,
                 DirectReferenceComparisons = DirectReferenceComparisons
             };
+#if STATIC_SNAPSHOT_LAYOUTS
+            result.ScopedStructReads = ScopedStructReads;
+            result.SharedDescriptions = SharedDescriptions;
+#endif
             try
             {
                 foreach (var root in _roots)
@@ -210,6 +279,9 @@ namespace ProbablyStolenTools
 
         private IReadOnlyList<StateSlot> DescribeWithinBudget(IntPtr id, int remainingSlots, long remainingBytes)
         {
+#if STATIC_SNAPSHOT_LAYOUTS
+            ResetStorageOwner();
+#endif
             var value = _retained[id];
             var type = value.GetType();
             bool root = _roots.TryGetValue(id, out var selected);
@@ -235,13 +307,7 @@ namespace ProbablyStolenTools
                 }
                 var elementType = type.GetElementType();
                 if (!_elementSchemas.TryGetValue(elementType, out var element))
-                {
-                    var elementSlots = new List<StateSlot>();
-                    var elementStores = new List<Storage>();
-                    Flatten(elementType, new List<FieldInfo>(), -1, "", elementSlots, elementStores, 0);
-                    PrepareReaders(elementType.MakeArrayType(), elementSlots, elementStores, true);
-                    _elementSchemas.Add(elementType, element = new TypeSchema(elementSlots, elementStores));
-                }
+                    _elementSchemas.Add(elementType, element = ElementSchema(elementType));
                 bool vector = type == elementType.MakeArrayType();
                 int stride = element.Stores.Length;
                 long requiredSlots = (long)array.Length * stride;
@@ -263,6 +329,18 @@ namespace ProbablyStolenTools
                     _arraySlotsReused += count;
                     return cached.Slots;
                 }
+#if STATIC_SNAPSHOT_LAYOUTS
+                if (_reuseArraySchemas && SharedDescriptions)
+                    lock (SharedArrays)
+                        if (SharedArrays.TryGetValue((type, array.Length, _fastReads), out cached))
+                        {
+                            _storage[id] = cached.Stores;
+                            _arraySchemaHits++;
+                            _arraySlotsReused += count;
+                            CacheArraySchema(key, cached);
+                            return cached.Slots;
+                        }
+#endif
                 var slots = new StateSlot[count];
                 var stores = new Storage[slots.Length];
                 for (int i = 0; i < array.Length; i++)
@@ -279,12 +357,18 @@ namespace ProbablyStolenTools
                 }
                 _storage[id] = stores;
                 // Only immutable offsets/paths/readers are shared, never an array or its values.
-                if (_reuseArraySchemas && _arraySchemas.Count < ArraySchemaLimit
-                    && count <= ArraySchemaSlotLimit - _arraySchemaSlots)
-                {
-                    _arraySchemas.Add(key, new TypeSchema(slots, stores));
-                    _arraySchemaSlots += count;
-                }
+                var arraySchema = new TypeSchema(slots, stores);
+                CacheArraySchema(key, arraySchema);
+#if STATIC_SNAPSHOT_LAYOUTS
+                if (_reuseArraySchemas && SharedDescriptions)
+                    lock (SharedArrays)
+                        if (SharedArrays.Count < SharedSchemaLimit && !SharedArrays.ContainsKey((type, array.Length, _fastReads))
+                            && count <= SharedSchemaSlotLimit - _sharedArraySlots)
+                        {
+                            SharedArrays.Add((type, array.Length, _fastReads), arraySchema);
+                            _sharedArraySlots += count;
+                        }
+#endif
                 return slots;
             }
             if (value is Delegate action)
@@ -309,8 +393,56 @@ namespace ProbablyStolenTools
             return schema.Slots;
         }
 
+        private void CacheArraySchema((Type Type, int Length) key, TypeSchema schema)
+        {
+            if (_reuseArraySchemas && _arraySchemas.Count < ArraySchemaLimit
+                && schema.Slots.Length <= ArraySchemaSlotLimit - _arraySchemaSlots)
+            {
+                _arraySchemas.Add(key, schema);
+                _arraySchemaSlots += schema.Slots.Length;
+            }
+        }
+
+        private TypeSchema ElementSchema(Type type)
+        {
+#if STATIC_SNAPSHOT_LAYOUTS
+            var key = (type, (Type)null, _fastReads, true);
+            if (SharedDescriptions)
+                lock (SharedTypes)
+                    if (SharedTypes.TryGetValue(key, out var cached)) return cached;
+#endif
+            var slots = new List<StateSlot>();
+            var stores = new List<Storage>();
+            Flatten(type, new List<FieldInfo>(), -1, "", slots, stores, 0);
+            PrepareReaders(type.MakeArrayType(), slots, stores, true);
+            var result = new TypeSchema(slots, stores);
+#if STATIC_SNAPSHOT_LAYOUTS
+            if (SharedDescriptions) ShareType(key, result);
+#endif
+            return result;
+        }
+
+#if STATIC_SNAPSHOT_LAYOUTS
+        private static void ShareType((Type Type, Type Unity, bool Fast, bool Element) key, TypeSchema schema)
+        {
+            lock (SharedTypes)
+                if (SharedTypes.Count < SharedSchemaLimit && !SharedTypes.ContainsKey(key)
+                    && schema.Slots.Length <= SharedSchemaSlotLimit - _sharedTypeSlots)
+                {
+                    SharedTypes.Add(key, schema);
+                    _sharedTypeSlots += schema.Slots.Length;
+                }
+        }
+#endif
+
         private TypeSchema ObjectSchema(Type type, HashSet<string> selected)
         {
+#if STATIC_SNAPSHOT_LAYOUTS
+            var key = (type, _unityObject, _fastReads, false);
+            if (selected == null && SharedDescriptions)
+                lock (SharedTypes)
+                    if (SharedTypes.TryGetValue(key, out var cached)) return cached;
+#endif
             var slots = new List<StateSlot>();
             var stores = new List<Storage>();
             for (var current = type; current != null && !IsUnity(current); current = current.BaseType)
@@ -329,7 +461,11 @@ namespace ProbablyStolenTools
                         || s.Name.Contains("." + name + ".", StringComparison.Ordinal)))
                         throw new InvalidOperationException("Required snapshot field missing: " + name);
             PrepareReaders(type, slots, stores, false);
-            return new TypeSchema(slots, stores);
+            var result = new TypeSchema(slots, stores);
+#if STATIC_SNAPSHOT_LAYOUTS
+            if (selected == null && SharedDescriptions) ShareType(key, result);
+#endif
+            return result;
         }
 
         private void PrepareReaders(Type owner, List<StateSlot> slots, List<Storage> stores, bool element)
@@ -440,9 +576,44 @@ namespace ProbablyStolenTools
 
         private object Read(IntPtr id, StateSlot slot)
         {
-            var storage = _storage[id][slot.Offset];
+            var stores = StoresFor(id, out var owner);
+            return ReadStorage(owner, stores[slot.Offset]);
+        }
+
+        private Storage[] StoresFor(IntPtr id, out object owner)
+        {
+#if STATIC_SNAPSHOT_LAYOUTS
+            if (_storageOwnerId == id && _ownerStores != null)
+            {
+                owner = _storageOwner;
+                return _ownerStores;
+            }
+#endif
+            var stores = _storage[id];
+            owner = _retained[id];
+#if STATIC_SNAPSHOT_LAYOUTS
+            _storageOwnerId = id;
+            _storageOwner = owner;
+            _ownerStores = stores;
+#endif
+            return stores;
+        }
+#if STATIC_SNAPSHOT_LAYOUTS
+        private void ResetStorageOwner()
+        {
+            _storageOwnerId = IntPtr.Zero;
+            _storageOwner = null;
+            _ownerStores = null;
+        }
+#endif
+
+        private object ReadStorage(object value, Storage storage)
+        {
             if (storage.Anchor) return storage.Target;
-            object value = _retained[id];
+#if STATIC_SNAPSHOT_LAYOUTS
+            if (ReuseStructElement(storage)
+                && storage.Reader.TryReadFields(ReadStructElement(value, storage.Index), out var cached)) return cached;
+#endif
             if (storage.Reader != null && storage.Reader.TryRead(value, storage.Index, out var fast)) return fast;
             if (storage.Index >= 0) value = ((Array)value).GetValue(storage.Index);
             foreach (var field in storage.Path) value = field.GetValue(value);
@@ -451,14 +622,14 @@ namespace ProbablyStolenTools
 
         private void Write(IntPtr id, StateSlot slot, object value)
         {
-            var storage = _storage[id][slot.Offset];
+            ResetReadObject();
+            var storage = StoresFor(id, out var owner)[slot.Offset];
             if (storage.Anchor)
             {
                 if (!ReferenceEquals(storage.Target, value))
                     throw new InvalidOperationException("Immutable delegate target changed.");
                 return;
             }
-            object owner = _retained[id];
             if (_directWrites)
             {
                 // Scalar/reference array elements have no nested fields to read or copy back.
@@ -504,7 +675,19 @@ namespace ProbablyStolenTools
 
         public byte[] ReadValue(IntPtr id, StateSlot slot)
         {
-            object value = Read(id, slot) ?? NullValue;
+            var storage = StoresFor(id, out var owner)[slot.Offset];
+            if (MayRunValueCallback(storage))
+            {
+                ResetReadObject();
+                try { return InternValue(ReadStorage(owner, storage)); }
+                finally { ResetReadObject(); }
+            }
+            return InternValue(ReadStorage(owner, storage));
+        }
+
+        private byte[] InternValue(object value)
+        {
+            value ??= NullValue;
             object key = value is float single ? (object)(typeof(float), BitConverter.SingleToInt32Bits(single))
                 : value is double number ? (object)(typeof(double), BitConverter.DoubleToInt64Bits(number)) : value;
             if (!_values.TryGetValue(key, out var saved))
@@ -526,18 +709,35 @@ namespace ProbablyStolenTools
 
         private bool ValueEquals(IntPtr id, StateSlot slot, object expected)
         {
+            var storage = StoresFor(id, out var owner)[slot.Offset];
             if (TypedScalarComparisons)
             {
-                var storage = _storage[id][slot.Offset];
-                if (!storage.Anchor && storage.Reader != null && storage.Reader.TryEquals(_retained[id],
-                    storage.Index, ReferenceEquals(expected, NullValue) ? null : expected, out bool same))
+                bool same;
+                object comparable = ReferenceEquals(expected, NullValue) ? null : expected;
+                bool compared = false;
+                if (!storage.Anchor && storage.Reader != null)
+                {
+#if STATIC_SNAPSHOT_LAYOUTS
+                    if (ReuseStructElement(storage))
+                        compared = storage.Reader.TryEqualsFields(ReadStructElement(owner, storage.Index), comparable, out same);
+                    else
+#endif
+                        compared = storage.Reader.TryEquals(owner, storage.Index, comparable, out same);
+                }
+                else same = false;
+                if (compared)
                 {
                     TypedComparisonCount++;
                     return same;
                 }
             }
-            object actual = Read(id, slot) ?? NullValue;
-            return ScalarEquals(expected, actual);
+            if (MayRunValueCallback(storage))
+            {
+                ResetReadObject();
+                try { return ScalarEquals(expected, ReadStorage(owner, storage) ?? NullValue); }
+                finally { ResetReadObject(); }
+            }
+            return ScalarEquals(expected, ReadStorage(owner, storage) ?? NullValue);
         }
 
         private static bool ScalarEquals(object expected, object actual)
@@ -570,6 +770,7 @@ namespace ProbablyStolenTools
         }
         public void WriteValue(IntPtr id, StateSlot slot, byte[] bytes)
         {
+            ResetReadObject();
             var value = _savedValues[BitConverter.ToInt64(bytes, 0)];
             // Only framework scalars: never introduce custom struct Equals callbacks during writes.
             if (SkipUnchangedScalars && (ReferenceEquals(value, NullValue)
@@ -594,6 +795,10 @@ namespace ProbablyStolenTools
         }
         public void Dispose()
         {
+            ResetReadObject();
+#if STATIC_SNAPSHOT_LAYOUTS
+            ResetStorageOwner();
+#endif
             _retained.Clear(); _storage.Clear(); _roots.Clear(); _values.Clear(); _savedValues.Clear();
             _schemas.Clear(); _elementSchemas.Clear(); _traversable.Clear();
             _arraySchemas.Clear();

@@ -133,6 +133,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 数组候选后实机仅 3 次，平均约 1.31 秒、全部 diff=0，未证明整次提速。最新小候选将静态读取器的标量比较准入类型判断缓存到初始化，原有比较及全部校验不变；完整离线测试/扫描通过，局部基准只有小幅收益，不能宣传已恢复旧后端速度。详见 `research/2026-11-12-static-scalar-gate-performance.md`。
 
+随后按用户要求将剩余保守优化合为一批：扫描内结构体数组单元素拆箱复用、逐槽 owner/存储描述复用、有界跨节点只读字段/数组布局共享、按模块去重 MVID 初始化验证。字段值/节点令牌仍独立，部分根字段不共享，写入/异常/释放边界有专门游戏 Mono 测试，所有普查/预检/修复/最终校验保留。全套离线验证通过；8 万对象/72.8 万槽的三组新旧大图对照全部 diff=0，但恢复相关阶段合计中位数旧 1649 ms / 新 1665 ms，**未证明显著提速**。详见 `research/2026-11-12-static-graph-batch-performance.md`，统一部署后再一次性实机验收。
+
 - 技术依据：`research/2026-11-12-static-type-token-proof.md` 证明构建时固定 ldtoken 可表达私有泛型 Entry/Slot。窄探针之后已完成生产源码替换及离线完整图测试，尚无本轮实机验收；工具/原生离线宿主绝不随 Mod 发布。
 - 官方公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.9.0 只保证**当前游戏版本**可用，发行说明不得写“已兼容下一版”。
 - 迁移前源码依赖 `Expression.Compile` 与计算类型 `GetFields/GetMethod`；只删 manifest 声明或关闭 DevelopmentChecks **不是修复**，扫描器按编译进 DLL 的方法判断。现已从 Mono 发布编译排除此类路径，离线参考源码仍保留。

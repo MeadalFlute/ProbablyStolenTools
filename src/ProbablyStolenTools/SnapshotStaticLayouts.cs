@@ -23,10 +23,12 @@ namespace ProbablyStolenTools
             var expected = new Dictionary<string, Guid>(StringComparer.Ordinal);
             for (int i = 0; i < modules.Length; i += 2) expected.Add(modules[i], new Guid(modules[i + 1]));
             var result = new Dictionary<Type, MethodInfo>();
+            var checkedModules = new HashSet<Module>();
             for (int i = 0; i < types.Length; i++)
             {
                 var module = types[i].Module;
-                if (!expected.TryGetValue(module.ScopeName, out var version) || module.ModuleVersionId != version)
+                if (checkedModules.Add(module)
+                    && (!expected.TryGetValue(module.ScopeName, out var version) || module.ModuleVersionId != version))
                     throw new InvalidOperationException("Snapshot layout build does not match loaded module: " + module.ScopeName);
                 result.Add(types[i], methods[i]);
             }
