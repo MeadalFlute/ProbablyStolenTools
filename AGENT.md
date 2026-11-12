@@ -162,6 +162,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 后续边界复查 `79cab6e`：游戏 owner 排除规则（含 ES3 前缀）已由生成器与运行时共享同一函数。目标程序集 111 个被排除类型/嵌套类型全部不展开，其余游戏类型均有表；不表示所有字段组合都支持。另修复 decimal? 的引用检查误入 Decimal 字段，以及 object 集合中的基本装箱标量/顶层 System 枚举缺表；保留原装箱身份及字段恢复，不降级为空对象。全套通过，最终双 DLL 已部署，实机待测；当前审查交接见 `research/snapshot-boundary-review-handoff.md`。第三方自动适配及独立生成器分发按用户要求搁置。
 
+DS 边界代码审查通过。部署哈希疑点已复核：原 FDC 与 DS 的 CB 主 DLL 在 3026 项类型/字段/方法记录（含 IL）中无差异，内嵌 Git informational version 不同，不能据哈希或提交时间断定旧包缺少代码。现从干净 `970e8c955f510e2bf88202cd8f77029bbfa81606` 完整验证、重复 Rebuild 并重部署，主 DLL `197099BB...`、helper `CBB8F36A...`；完整哈希与来源见 `research/2026-11-13-snapshot-artifact-provenance-followup.md`。后续交接同时记录构建提交号/干净状态/双哈希；纯文档提交变化也可能改变重建哈希，不要要求旧包始终等于文档更新后的 HEAD 构建。
+
 | 坑 | 结论 |
 |---|---|
 | `GameItemElement.applied*` / `validateLock` 恢复 | `UpdateRectTransform()` 会跳过布局，必须排除 |
