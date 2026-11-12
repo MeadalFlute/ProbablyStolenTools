@@ -8,6 +8,26 @@ namespace ProbablyStolenTools
     // IL2CPP proxies expose private fields; Mono requires explicit field access.
     internal static class GameFields
     {
+#if MONO
+        private static readonly FieldInfo ItemValidateLock = typeof(GameItemElement).GetField("validateLock",
+            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+            ?? throw new MissingFieldException("GameItemElement", "validateLock");
+        private static readonly FieldInfo ItemAppliedGridSize = typeof(GameItemElement).GetField("appliedGridSize",
+            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+            ?? throw new MissingFieldException("GameItemElement", "appliedGridSize");
+#endif
+
+        internal static void ResetItemLayout(GameItemElement item)
+        {
+#if MONO
+            // Fixed game fields avoid per-item ModReflect caller-stack authorization.
+            ItemValidateLock.SetValue(item, false);
+            ItemAppliedGridSize.SetValue(item, -1);
+#else
+            Set(item, "validateLock", false);
+#endif
+        }
+
 #if STATIC_SNAPSHOT_LAYOUTS
         internal static T Get<T>(object owner, string name) => ModReflect.Get<T>(owner, name);
         internal static void Set<T>(object owner, string name, T value) => ModReflect.Set(owner, name, value);

@@ -117,6 +117,7 @@ public static class OfflineMonoFixture
         IntPtr Id(object value) => (IntPtr)idMethod.Invoke(null, new[] { value });
         var root = Data("PlayerStore");
         var item = Data("GameItemElement");
+        CheckItemLayout(mod, game, item);
         var tag = Data("TagState");
         var tagType = tag.GetType();
         var unit = item.GetType().GetProperty("unitCount");
@@ -316,6 +317,66 @@ public static class OfflineMonoFixture
     }
 
     private sealed class UnknownMutable { public int Value; }
+    private static void CheckItemLayout(Assembly mod, Assembly game, object item)
+    {
+        const BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+        var itemType = game.GetType("GameItemElement", true);
+        var validate = itemType.GetField("validateLock", instance);
+        var grid = itemType.GetField("appliedGridSize", instance);
+        var minX = itemType.GetField("appliedMinX", instance);
+        var originX = itemType.GetProperty("modifiedXOrigin");
+        var originY = itemType.GetProperty("modifiedYOrigin");
+        var reset = mod.GetType("ProbablyStolenTools.GameFields", true)
+            .GetMethod("ResetItemLayout", BindingFlags.Static | BindingFlags.NonPublic);
+        validate.SetValue(item, true);
+        grid.SetValue(item, 32);
+        minX.SetValue(item, 71);
+        originX.SetValue(item, 3);
+        originY.SetValue(item, -7);
+        reset.Invoke(null, new[] { item });
+        if ((bool)validate.GetValue(item) || (int)grid.GetValue(item) != -1
+            || (int)minX.GetValue(item) != 71 || (int)originX.GetValue(item) != 3
+            || (int)originY.GetValue(item) != -7)
+            throw new Exception("Fixed item layout reset changed the wrong state.");
+
+        // Measure the same four game-field operations, without Unity rendering or save access.
+        var officialGet = game.GetType("ModReflect").GetMethods()
+            .Single(method => method.Name == "Get" && !method.IsGenericMethod);
+        var officialSet = game.GetType("ModReflect").GetMethod("Set");
+        const int count = 1000;
+        var resetArgs = new[] { item };
+        var lockArgs = new object[] { item, "validateLock", false };
+        var gridArgs = new object[] { item, "appliedGridSize", -1 };
+        var xArgs = new object[] { item, "modifiedXOrigin" };
+        var yArgs = new object[] { item, "modifiedYOrigin" };
+        officialSet.Invoke(null, lockArgs);
+        officialGet.Invoke(null, xArgs);
+        var timing = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < count; i++)
+        {
+            officialSet.Invoke(null, lockArgs);
+            officialSet.Invoke(null, gridArgs);
+            officialGet.Invoke(null, xArgs);
+            officialGet.Invoke(null, yArgs);
+        }
+        long officialTicks = timing.ElapsedTicks;
+        timing.Restart();
+        for (int i = 0; i < count; i++)
+        {
+            reset.Invoke(null, resetArgs);
+            originX.GetValue(item);
+            originY.GetValue(item);
+        }
+        long fixedTicks = timing.ElapsedTicks;
+        Console.WriteLine("PASS actual game Mono fixed layout reset: only two cache fields changed, origins retained; "
+            + "LAYOUT_ACCESS_BENCH items=" + count + " officialMs="
+            + (officialTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency).ToString("F2",
+                System.Globalization.CultureInfo.InvariantCulture)
+            + " fixedMs=" + (fixedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency).ToString("F2",
+                System.Globalization.CultureInfo.InvariantCulture)
+            + " runtime=game-Mono-offline-reflection-harness-not-Unity");
+    }
+
     public static void RunVersionMismatch(string path)
     {
         var mod = Assembly.LoadFrom(path);

@@ -1148,10 +1148,7 @@ namespace ProbablyStolenTools
                 LogItemGeometry(target, "restore-pre");
                 foreach (var item in target.RenderedItems.Values)
                 {
-                    GameFields.Set(item, "validateLock", false);
-#if MONO
-                    GameFields.Set(item, "appliedGridSize", -1);
-#endif
+                    GameFields.ResetItemLayout(item);
                     item.ValidatePartialSprite();
                     item.Validate();
                 }
@@ -1397,18 +1394,14 @@ namespace ProbablyStolenTools
                     throw new InvalidOperationException("Checkpoint item view is unavailable: " + item.identifier);
                 var shape = item.modifiedShape;
                 var size = new Vector2(shape.width * grid, shape.height * grid);
-                var origin = new Vector2(GameFields.Get<int>(item, "modifiedXOrigin") * grid,
-                    GameFields.Get<int>(item, "modifiedYOrigin") * grid);
+                var origin = new Vector2(item.modifiedXOrigin * grid, item.modifiedYOrigin * grid);
                 item.handler.rectTransform.anchoredPosition = Vector2.zero;
                 item.middle.rectTransform.sizeDelta = size;
                 item.rotator.rectTransform.sizeDelta = size;
                 item.fakeMiddle.rectTransform.sizeDelta = size;
                 item.fakeRotator.rectTransform.sizeDelta = size;
-#if MONO
                 // A forced native layout restores flip/pivot/rotation as well as position.
-                GameFields.Set(item, "appliedGridSize", -1);
-#endif
-                GameFields.Set(item, "validateLock", false);
+                GameFields.ResetItemLayout(item);
                 item.UpdateRectTransform();
                 // Keep the final anchor write after all UI callbacks and graph restores.
                 var position = new Vector2(shape.minX * grid, -shape.minY * grid);
@@ -1457,8 +1450,8 @@ namespace ProbablyStolenTools
                         if (!destroyed && !missing && !noSprite && !misplaced && !hidden) continue;
                         string shapeText = shape == null ? "null"
                             : $"({shape.minX},{shape.minY} {shape.width}x{shape.height} rot={shape.orientation} flip={shape.flipped})";
-                        int xo = GameFields.Get<int>(item, "modifiedXOrigin");
-                        int yo = GameFields.Get<int>(item, "modifiedYOrigin");
+                        int xo = item.modifiedXOrigin;
+                        int yo = item.modifiedYOrigin;
                         string parent = handler != null && handler.parent != null ? handler.parent.name : "-";
                         string inv = item.parentInventory == null ? "null" : item.parentInventory.GetType().Name;
                         string flags = (destroyed ? "DESTROYED " : "") + (missing ? "MISSING " : "")

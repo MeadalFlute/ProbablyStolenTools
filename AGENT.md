@@ -125,7 +125,9 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ## 6. 加载器兼容迁移候选
 
-**当前源码已接入静态图迁移候选**，详见 `research/2026-11-12-static-runtime-graph-migration.md`。构建时生成目标 Mono 字段表，包含私有 Entry/Slot 固定类型令牌；版本严格 MVID 门控，未知布局不动态回退。Mono 编译排除旧表达式生成路径，GameFields 用官方 ModReflect；恢复字段/集合物理存储与安全检查不减。两个发布 DLL 均列入 manifest，仅声明/检测 files；ReleaseCompatibility 的退役能力门槛已加入，net8 宿主表隔离于 out。`scripts/Test-StaticLayouts.ps1` 全套通过，暂无 Unity 活体/实际性能验收，用户离开期间不启动游戏测试。下方旧阻断记录为历史，不再代表生产源码当前仍含命中。
+**当前源码已接入静态图迁移候选**，详见 `research/2026-11-12-static-runtime-graph-migration.md`。构建时生成目标 Mono 字段表，包含私有 Entry/Slot 固定类型令牌；版本严格 MVID 门控，未知布局不动态回退。Mono 编译排除旧表达式生成路径，通用 GameFields 用官方 ModReflect；恢复字段/集合物理存储与安全检查不减。两个发布 DLL 均列入 manifest，仅声明/检测 files；ReleaseCompatibility 的退役能力门槛已加入，net8 宿主表隔离于 out。`scripts/Test-StaticLayouts.ps1` 全套通过，完整 Unity 活体验收仍未完成。下方旧阻断记录为历史，不再代表生产源码当前仍含命中。
+
+后续实机反馈：基本回溯未发现功能异常，但明显变慢。已独立优化批量物品布局的字段访问：两个固定私有缓存字段采用字面 FieldInfo，公开原点属性直接读取；其他低频访问仍用 ModReflect。完整离线测试及能力扫描通过，新候选的实机收益待确认。耗时分布与边界见 `research/2026-11-12-static-layout-restore-performance.md`。
 
 - 技术依据：`research/2026-11-12-static-type-token-proof.md` 证明构建时固定 ldtoken 可表达私有泛型 Entry/Slot。窄探针之后已完成生产源码替换及离线完整图测试，尚无本轮实机验收；工具/原生离线宿主绝不随 Mod 发布。
 - 官方公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.9.0 只保证**当前游戏版本**可用，发行说明不得写“已兼容下一版”。
