@@ -57,3 +57,11 @@ scripts/Test-StaticLayouts.ps1 全套通过，输出为仓库 out/static-scalar-
 ## 后续
 
 新候选的整次实机性能仍待确认。对比恢复总耗时及 census/preflight/write/reconcileDetail.scan/finalVerify，不用降低校验强度或删除物理集合字段掩盖剩余回退。
+
+## 部署记录
+
+- 独立实现提交：`06b839f`。2026-11-12 15:23（本地时间）确认游戏未运行后部署，未关闭或启动游戏。
+- 主 DLL SHA256：`95F9239EB2F5B35C44FD5AE0007399D8D7C64FF5B6E462E5431C24F2AF2088BA`。
+- 静态表 SHA256 未变：`F2096125D20042E3609E56636FC17A566A5446A2E5B9209CB8059C34EAE70DC0`。
+- 备份及部署记录：仓库 `out/full-release-deploy-20261112-152313`，旧 Mod 为上一轮数组读取候选。
+- 79 个现有存档目录文件、游戏程序集和其他 Mod 校验未变；未导入设置，未升版/推送。
