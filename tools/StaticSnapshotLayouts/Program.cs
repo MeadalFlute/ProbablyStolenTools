@@ -33,17 +33,11 @@ var getMethod = module.ImportReference(Core("System.Reflection.MethodBase").Meth
     && m.Parameters.Count == 1));
 
 // These types belong to the game's trust layer, not gameplay snapshot state.
-var guards = new HashSet<string>(StringComparer.Ordinal)
-{
-    "ModLoader", "ModTrust", "ModTrustRecord", "ModFingerprint", "ModTrustList", "ModScanner",
-    "ModCapability", "ModSecurityDebug", "ModSteamRules", "ModSteamGuard", "ModSteamAuth",
-    "ModWorkshop", "SteamManager", "PaperBookRegistry", "ModReflect"
-};
 TypeDefinition Outer(TypeDefinition t) => t.DeclaringType == null ? t : Outer(t.DeclaringType);
 bool GameType(TypeDefinition t)
 {
     var outer = Outer(t);
-    return t.Name != "<Module>" && !guards.Contains(outer.Name)
+    return t.Name != "<Module>" && !ProbablyStolenTools.SnapshotTraversalBoundary.IsProtectedOwner(outer.Name)
         && !outer.Name.StartsWith("ES3", StringComparison.Ordinal);
 }
 bool FrameworkType(TypeDefinition t)

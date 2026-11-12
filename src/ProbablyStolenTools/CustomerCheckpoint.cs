@@ -894,6 +894,7 @@ namespace ProbablyStolenTools
                 Boundary.Invalidate();
                 Status = "Capture failed: " + e.Message;
                 EventLog.Write($"[Customer] CAPTURE FAILED phase={phase} elapsedMs={timing.ElapsedMilliseconds} " +
+                    $"manual={manual} closed={closed} " +
                     $"limits(objects={MaxSnapshotObjects},slots={MaxSnapshotSlots},bytes={MaxSnapshotBytes}): " + e);
                 RecordFailure(closed, manual, e);
             }

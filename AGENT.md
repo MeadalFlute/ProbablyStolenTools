@@ -158,6 +158,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ## 8. 已知坑
 
+0.9.1 玩家报告 `Uncovered static snapshot layout: PaperBookRegistry+<>c`：生成器排除注册/信任组件，但运行时按游戏程序集继续展开其闭包。现以共享 `SnapshotTraversalBoundary` 统一边界，受保护引用只保留身份、不读写字段，显式受保护根拒绝；其他未知布局仍拒绝。游戏 Mono 回归和全套测试通过，已部署，玩家实机待测。详情见 `research/2026-11-12-protected-registry-capture-fix.md`；失败日志现含 manual/closed，另一份无日志的自动节点问题尚不能确认同因。
+
 | 坑 | 结论 |
 |---|---|
 | `GameItemElement.applied*` / `validateLock` 恢复 | `UpdateRectTransform()` 会跳过布局，必须排除 |

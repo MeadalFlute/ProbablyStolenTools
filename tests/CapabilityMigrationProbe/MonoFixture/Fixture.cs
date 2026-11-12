@@ -113,6 +113,7 @@ public static partial class OfflineMonoFixture
         CheckVectorReaders(mod);
         CheckScalarComparisons(mod);
         CheckReadPassAndSharing(mod);
+        CheckProtectedBoundary(mod, game);
         object Data(string name) => System.Runtime.Serialization.FormatterServices.GetUninitializedObject(game.GetType(name, true));
         var accessType = mod.GetType("ProbablyStolenTools.ManagedStateAccess", true);
         var graphType = mod.GetType("ProbablyStolenTools.StateGraph", true);
