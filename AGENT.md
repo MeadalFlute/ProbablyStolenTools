@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**373 项**离线参考测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态迁移候选另有游戏 Mono 下 2807 类型/8027 字段精确对照、完整图六轮往返及版本拒绝测试。离线通过 **不等于** Unity 活体验收。
+当前基线：**380 项**离线参考测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态迁移候选另有游戏 Mono 下 2807 类型/8027 字段精确对照、完整图六轮往返及版本拒绝测试。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
@@ -135,6 +135,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 随后按用户要求将剩余保守优化合为一批：扫描内结构体数组单元素拆箱复用、逐槽 owner/存储描述复用、有界跨节点只读字段/数组布局共享、按模块去重 MVID 初始化验证。字段值/节点令牌仍独立，部分根字段不共享，写入/异常/释放边界有专门游戏 Mono 测试，所有普查/预检/修复/最终校验保留。全套离线验证通过；8 万对象/72.8 万槽的三组新旧大图对照全部 diff=0，但恢复相关阶段合计中位数旧 1649 ms / 新 1665 ms，**未证明显著提速**。详见 `research/2026-11-12-static-graph-batch-performance.md`，统一部署后再一次性实机验收。
 
+该批实机 5 次平均 1286 ms，同样未明显提速。恢复阶段现另有精简候选：静态固定布局 `CensusForRestore` 仅遍历完整引用拓扑并保留所有布局/预算检查，不再探测当前标量；目标 `ValidateRestore` 对显式稳定存储及已批准块只验证原 owner 保留身份，不计算被丢弃的写前差异；未知后端/块保持原完整读取。owner 修复计划并入同一次完整差异扫描，消除后续全槽规划遍历。原生刷新后扫描及最终全量校验/失败 full fallback 保留；日志用 `censusMode` / `preflightMode` 识别实际路径。同夹具三组离线对照中普查 427→303 ms、预检 275→20 ms，恢复相关阶段合计中位数 1599→1237 ms（约 -22.6%），不含 Unity 刷新，实机待验收。证明、回退边界及验证见 `research/2026-11-12-restore-stage-consolidation.md`；不能把写前稳定存储证明推广成恢复后免校验。
+
 - 技术依据：`research/2026-11-12-static-type-token-proof.md` 证明构建时固定 ldtoken 可表达私有泛型 Entry/Slot。窄探针之后已完成生产源码替换及离线完整图测试，尚无本轮实机验收；工具/原生离线宿主绝不随 Mod 发布。
 - 官方公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.9.0 只保证**当前游戏版本**可用，发行说明不得写“已兼容下一版”。
 - 迁移前源码依赖 `Expression.Compile` 与计算类型 `GetFields/GetMethod`；只删 manifest 声明或关闭 DevelopmentChecks **不是修复**，扫描器按编译进 DLL 的方法判断。现已从 Mono 发布编译排除此类路径，离线参考源码仍保留。
@@ -170,7 +172,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 ## 9. 验收清单
 
 1. `dotnet build -c Release`：0 警告 / 0 错误。
-2. `CheckpointTests` 373 项全过；`ReleaseCompatibility` 57 挂点/76 字段/`HardFlags` 通过。
+2. `CheckpointTests` 380 项全过；`ReleaseCompatibility` 57 挂点/76 字段/`HardFlags` 通过。
 3. 部署后：首/普通/手动节点往返、恢复后群拖、顾客贴图、正常交易/送客。
 4. 物品：售出/移动/旋转/拆分合并/嵌套容器/前柜台回溯，贴图位置与朝向正确，无“空气占用”。
 5. 多语言：切换语言后水质/纯度/评级/酿酒标签跟随；缺键回退；三个设置开关生效。

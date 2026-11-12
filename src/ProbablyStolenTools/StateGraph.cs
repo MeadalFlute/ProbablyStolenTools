@@ -90,6 +90,11 @@ namespace ProbablyStolenTools
     internal interface IStateOwnerRepairAccess { }
     internal interface IStateOwnerRepairBlock { }
 
+    // Opt-in only: retained CLR owners, fixed validated field paths and immutable array bounds.
+    // Eight-byte scalar tokens; readability cannot change with values. No getters/callbacks/external storage.
+    internal interface IStateStableStorageAccess { }
+    internal interface IStateStableStorageBlock { }
+
     // Explicitly gated remaining-partition storage, not permission for owner repair.
     internal interface IStatePartitionWriteAccess
     {
@@ -153,6 +158,7 @@ namespace ProbablyStolenTools
         private readonly record struct Entry(IntPtr Owner, StateSlot Slot, byte[] Bytes, IntPtr Reference);
         private readonly IStateAccess _access;
         private readonly bool _captureValues;
+        private readonly bool _probeValues;
         private readonly List<Entry> _entries = new();
         private readonly List<(IntPtr Owner, IReadOnlyList<StateSlot> Slots, IStateBlock Payload)> _blocks = new();
         private readonly HashSet<IntPtr> _objects = new();
@@ -163,6 +169,7 @@ namespace ProbablyStolenTools
         internal int SlotCount { get; private set; }
         internal long ByteCount { get; private set; }
         internal int BlockCount => _blocks.Count;
+        internal string CensusMode => _probeValues ? "full-read" : "topology";
         internal (long Checked, long Skipped) ScalarWrites
             => (_access as IStateScalarWriteDiagnostics)?.ScalarWrites ?? default;
         internal long TypedComparisonCount => (_access as IStateComparisonDiagnostics)?.TypedComparisonCount ?? 0;
@@ -185,6 +192,7 @@ namespace ProbablyStolenTools
             internal readonly HashSet<IntPtr> Owners = new();
             internal readonly List<int> Entries = new(), Blocks = new();
             internal readonly int MaxOwners;
+            internal readonly int MaxSlots;
             internal bool Used;
             internal long AppliedRevision = -1;
             internal string Reason { get; set; }
@@ -195,8 +203,8 @@ namespace ProbablyStolenTools
             internal string Mode => ChangedSlots == 0 ? "none" : Reason.Length == 0 ? "owners" : "full";
             internal int TrackedOwners => Owners.Count;
 
-            internal Reconciliation(StateGraph graph, long revision, string reason, int maxOwners)
-            { Graph = graph; Revision = revision; Reason = reason; MaxOwners = maxOwners; }
+            internal Reconciliation(StateGraph graph, long revision, string reason, int maxOwners, int maxSlots)
+            { Graph = graph; Revision = revision; Reason = reason; MaxOwners = maxOwners; MaxSlots = maxSlots; }
 
             internal void Changed(IntPtr owner, int slots)
             {
@@ -204,6 +212,22 @@ namespace ProbablyStolenTools
                 if (Reason.Length != 0 || Owners.Contains(owner)) return;
                 if (Owners.Count >= MaxOwners) { Reason = "owner-limit"; return; }
                 Owners.Add(owner);
+            }
+
+            internal void AddEntries(IntPtr owner, int start, int end)
+            {
+                if (Reason.Length != 0 || !Owners.Contains(owner)) return;
+                if (end - start > MaxSlots - PlannedSlots) { Reason = "slot-limit"; return; }
+                for (int i = start; i < end; i++) Entries.Add(i);
+                PlannedSlots += end - start;
+            }
+
+            internal void AddBlock(IntPtr owner, int index, int slots)
+            {
+                if (Reason.Length != 0 || !Owners.Contains(owner)) return;
+                if (slots > MaxSlots - PlannedSlots) { Reason = "slot-limit"; return; }
+                Blocks.Add(index);
+                PlannedSlots += slots;
             }
 
             // Single-use, synchronous only; any intervening graph scan/write invalidates the plan.
@@ -226,8 +250,8 @@ namespace ProbablyStolenTools
             return _sources.TryGetValue(id, out var source) && source.Parent == IntPtr.Zero;
         }
 
-        private StateGraph(IStateAccess access, bool captureValues)
-        { _access = access; _captureValues = captureValues; }
+        private StateGraph(IStateAccess access, bool captureValues, bool probeValues = true)
+        { _access = access; _captureValues = captureValues; _probeValues = probeValues; }
 
         internal sealed class EntityRestorePlan
         {
@@ -414,17 +438,23 @@ namespace ProbablyStolenTools
             int maxObjects = 200000, int maxSlots = 3000000, long maxBytes = 256L * 1024 * 1024)
             => Walk(access, roots, maxObjects, maxSlots, maxBytes, false);
 
+        // Restore only needs reachable identities and exact logical budgets, not current scalar values.
+        internal static StateGraph CensusForRestore(IStateAccess access, IEnumerable<IntPtr> roots,
+            int maxObjects = 200000, int maxSlots = 3000000, long maxBytes = 256L * 1024 * 1024)
+            => Walk(access, roots, maxObjects, maxSlots, maxBytes, false,
+                probeValues: access is not IStateStableStorageAccess);
+
         private static StateGraph Walk(IStateAccess access, IEnumerable<IntPtr> roots,
-            int maxObjects, int maxSlots, long maxBytes, bool captureValues)
+            int maxObjects, int maxSlots, long maxBytes, bool captureValues, bool probeValues = true)
         {
-            var graph = new StateGraph(access, captureValues);
+            var graph = new StateGraph(access, captureValues, probeValues);
             using var readPass = new StateReadPass(access);
             try
             {
                 var pending = new Queue<IntPtr>();
                 var budgeted = access as IBudgetedStateDescription;
-                var probe = captureValues ? null : access as IStateValueProbe;
-                var censusValues = captureValues ? null : access as IStateCensusValueProbe;
+                var probe = captureValues || !probeValues ? null : access as IStateValueProbe;
+                var censusValues = captureValues || !probeValues ? null : access as IStateCensusValueProbe;
                 var blockAccess = captureValues ? access as IStateBlockAccess : null;
                 void Discover(IntPtr id, IntPtr parent, string field)
                 {
@@ -477,7 +507,7 @@ namespace ProbablyStolenTools
                         }
                         else
                         {
-                            if (block != null || valuesProbed)
+                            if (block != null || valuesProbed || !captureValues && !probeValues)
                                 graph.ByteCount += sizeof(long);
                             else if (probe != null)
                                 graph.ByteCount += probe.ProbeValue(id, slot);
@@ -559,32 +589,30 @@ namespace ProbablyStolenTools
         internal IReadOnlyList<string> DifferencesWithSources(int max = 12)
             => ScanDifferences(max, true);
 
+        internal string ValidateRestore()
+        {
+            RequireCheckpoint();
+            if (_access is not IStateStableStorageAccess
+                || _blocks.Any(block => block.Payload is not IStateStableStorageBlock))
+            {
+                Differences();
+                return "full-read";
+            }
+            // Capture already validated every immutable descriptor against its retained CLR owner.
+            // Current values may legitimately differ and cannot invalidate those storage paths.
+            _revision++;
+            _access.Validate();
+            return "retained-storage";
+        }
+
         internal Reconciliation PrepareReconciliation(bool allowOwners = true, int maxOwners = 128, int maxSlots = 8192)
         {
             RequireCheckpoint();
             if (maxOwners < 0 || maxSlots < 0) throw new ArgumentOutOfRangeException();
             string reason = !allowOwners ? "disabled" : _access is not IStateOwnerRepairAccess ? "access"
                 : _blocks.Any(b => b.Payload is not IStateOwnerRepairBlock) ? "block" : "";
-            var plan = new Reconciliation(this, _revision + 1, reason, maxOwners);
+            var plan = new Reconciliation(this, _revision + 1, reason, maxOwners, maxSlots);
             plan.Differences = ScanDifferences(12, true, plan);
-            if (plan.Mode == "owners")
-            {
-                for (int i = 0; i < _entries.Count; i++)
-                    if (plan.Owners.Contains(_entries[i].Owner))
-                    {
-                        plan.Entries.Add(i);
-                        if (++plan.PlannedSlots > maxSlots) { plan.Reason = "slot-limit"; break; }
-                    }
-                if (plan.Reason.Length == 0)
-                    for (int i = 0; i < _blocks.Count; i++)
-                        if (plan.Owners.Contains(_blocks[i].Owner))
-                        {
-                            plan.Blocks.Add(i);
-                            if (_blocks[i].Slots.Count > maxSlots - plan.PlannedSlots)
-                            { plan.Reason = "slot-limit"; break; }
-                            plan.PlannedSlots += _blocks[i].Slots.Count;
-                        }
-            }
             if (plan.Mode == "full")
             {
                 plan.Entries.Clear(); plan.Blocks.Clear();
@@ -653,8 +681,18 @@ namespace ProbablyStolenTools
             var comparer = _access as IStateValueComparer;
             var references = _access as IStateReferenceComparer;
             _access.Validate();
-            foreach (var e in _entries)
+            int ownerStart = 0;
+            IntPtr owner = IntPtr.Zero;
+            for (int index = 0; index < _entries.Count; index++)
             {
+                var e = _entries[index];
+                if (e.Owner != owner)
+                {
+                    plan?.AddEntries(owner, ownerStart, index);
+                    owner = e.Owner;
+                    ownerStart = index;
+                    readPass.ResetObject();
+                }
                 bool same;
                 if (e.Slot.IsReference) same = references != null
                     ? references.ReferenceMatches(e.Owner, e.Slot, e.Reference)
@@ -672,14 +710,17 @@ namespace ProbablyStolenTools
                         result.Add(sources ? DescribeDifference(e.Owner, e.Slot.Name, false) : e.Slot.Name);
                 }
             }
-            foreach (var block in _blocks)
+            plan?.AddEntries(owner, ownerStart, _entries.Count);
+            for (int index = 0; index < _blocks.Count; index++)
             {
+                var block = _blocks[index];
                 readPass.ResetObject();
                 int start = result.Count;
                 int changed = block.Payload.CollectDifferences(result, max);
                 if (changed < 0 || changed > block.Slots.Count)
                     throw new InvalidOperationException("Invalid block difference count.");
                 if (changed != 0) plan?.Changed(block.Owner, changed);
+                plan?.AddBlock(block.Owner, index, block.Slots.Count);
                 if (sources)
                     for (int i = start; i < result.Count; i++)
                         result[i] = DescribeDifference(block.Owner, result[i], true);

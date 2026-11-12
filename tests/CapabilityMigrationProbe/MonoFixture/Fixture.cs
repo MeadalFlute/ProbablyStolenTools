@@ -176,6 +176,16 @@ public static partial class OfflineMonoFixture
         }
         void Restore(object graph)
         {
+            var preflight = graphType.GetMethod("ValidateRestore", instance);
+            if (preflight != null)
+            {
+                long typed = (long)graphType.GetProperty("TypedComparisonCount", instance).GetValue(graph);
+                long references = (long)graphType.GetProperty("ReferenceComparisonCount", instance).GetValue(graph);
+                if ((string)preflight.Invoke(graph, null) != "retained-storage"
+                    || typed != (long)graphType.GetProperty("TypedComparisonCount", instance).GetValue(graph)
+                    || references != (long)graphType.GetProperty("ReferenceComparisonCount", instance).GetValue(graph))
+                    throw new Exception("Actual Mono stable preflight performed a discarded value scan.");
+            }
             graphType.GetMethod("Restore", instance).Invoke(graph, null);
             Verify(graph);
         }
@@ -194,6 +204,38 @@ public static partial class OfflineMonoFixture
         {
             Verify(first);
             var capturedAccess = graphType.GetField("_access", instance).GetValue(first);
+            var stablePreflight = graphType.GetMethod("ValidateRestore", instance);
+            if (stablePreflight != null)
+            {
+                var retained = (IDictionary)accessType.GetField("_retained", instance).GetValue(capturedAccess);
+                var retainedOwner = retained[roots[0]];
+                retained[roots[0]] = new object();
+                try
+                {
+                    stablePreflight.Invoke(first, null);
+                    throw new Exception("Actual Mono stable preflight accepted changed retained identity.");
+                }
+                catch (TargetInvocationException e)
+                {
+                    if (!e.ToString().Contains("Managed snapshot identity changed")) throw;
+                }
+                finally { retained[roots[0]] = retainedOwner; }
+                var disposedGraph = Capture();
+                try
+                {
+                    ((IDisposable)graphType.GetField("_access", instance).GetValue(disposedGraph)).Dispose();
+                    try
+                    {
+                        stablePreflight.Invoke(disposedGraph, null);
+                        throw new Exception("Actual Mono stable preflight accepted a disposed access.");
+                    }
+                    catch (TargetInvocationException e)
+                    {
+                        if (!(e.InnerException is ObjectDisposedException)) throw;
+                    }
+                }
+                finally { ((IDisposable)disposedGraph).Dispose(); }
+            }
             var entityFactory = accessType.GetProperty("EntityBlocks", instance).GetValue(capturedAccess);
             int entityBlocks = (int)entityFactory.GetType().GetProperty("BlockCount", instance).GetValue(entityFactory);
             int intBlocks = (int)accessType.GetProperty("IntArrayBlockCount", instance).GetValue(capturedAccess);
@@ -214,6 +256,27 @@ public static partial class OfflineMonoFixture
             var exact = graphType.GetMethod("Capture", statics)
                 .Invoke(null, new object[] { Access(), roots, objectCount, slotCount, byteCount });
             ((IDisposable)exact).Dispose();
+            var restoreCensus = graphType.GetMethod("CensusForRestore", statics);
+            if (restoreCensus != null)
+            {
+                var exactTopology = restoreCensus.Invoke(null,
+                    new object[] { Access(), roots, objectCount, slotCount, byteCount });
+                ((IDisposable)exactTopology).Dispose();
+                foreach (int budget in new[] { 0, 1, 2 })
+                {
+                    try
+                    {
+                        restoreCensus.Invoke(null, new object[] { Access(), roots,
+                            objectCount - (budget == 0 ? 1 : 0), slotCount - (budget == 1 ? 1 : 0),
+                            byteCount - (budget == 2 ? 1 : 0) });
+                        throw new Exception("Actual Mono topology census budget was not enforced.");
+                    }
+                    catch (TargetInvocationException e)
+                    {
+                        if (!e.ToString().Contains("SnapshotLimitException")) throw;
+                    }
+                }
+            }
             foreach (int budget in new[] { 0, 1, 2 })
             {
                 try
@@ -271,6 +334,34 @@ public static partial class OfflineMonoFixture
                             throw new Exception("Actual Mono census parity mismatch: " + name);
                 }
                 finally { ((IDisposable)census).Dispose(); }
+                var topologyMethod = graphType.GetMethod("CensusForRestore", statics);
+                if (topologyMethod != null)
+                {
+                    var topologyAccess = Access();
+                    mod.GetType("ProbablyStolenTools.SemanticTagBlock").GetMethod("EnableCensus", statics)
+                        .Invoke(null, new[] { topologyAccess });
+                    var topology = topologyMethod.Invoke(null,
+                        new object[] { topologyAccess, roots, 50000, 1000000, 64L * 1024 * 1024 });
+                    try
+                    {
+                        foreach (string name in new[] { "ObjectCount", "SlotCount", "ByteCount" })
+                            if (!Equals(graphType.GetProperty(name, instance).GetValue(first),
+                                graphType.GetProperty(name, instance).GetValue(topology)))
+                                throw new Exception("Actual Mono topology census budget parity mismatch: " + name);
+                        if ((string)graphType.GetProperty("CensusMode", instance).GetValue(topology) != "topology"
+                            || (int)accessType.GetProperty("CensusValueObjectCount", instance).GetValue(topologyAccess) != 0)
+                            throw new Exception("Actual Mono topology census invoked discarded scalar probes.");
+                        var objects = ((IEnumerable)graphType.GetProperty("Objects", instance).GetValue(first)).Cast<IntPtr>().ToArray();
+                        var currentObjects = ((IEnumerable)graphType.GetProperty("Objects", instance).GetValue(topology)).Cast<IntPtr>().ToArray();
+                        if (!new HashSet<IntPtr>(objects).SetEquals(currentObjects))
+                            throw new Exception("Actual Mono topology census lost an identity.");
+                        foreach (var identity in objects)
+                            if (!Equals(graphType.GetMethod("SourceOf", instance).Invoke(first, new object[] { identity }),
+                                graphType.GetMethod("SourceOf", instance).Invoke(topology, new object[] { identity })))
+                                throw new Exception("Actual Mono topology census changed a source path.");
+                    }
+                    finally { ((IDisposable)topology).Dispose(); }
+                }
                 Restore(second);
                 if ((int)cash.GetValue(root) != 999 || (int)unit.GetValue(item) != 71 || list.Count != 130
                     || dictionary.Count != 132 || hashSet.Count != 132 || (string)closureField.GetValue(closure) != "after"
@@ -307,6 +398,23 @@ public static partial class OfflineMonoFixture
                 if (!e.ToString().Contains("Uncovered static snapshot layout")) throw;
             }
             if (unknown.Value != 17) throw new Exception("Rejected root was mutated.");
+            if (restoreCensus != null)
+            {
+                var unknownTopologyAccess = accessType.GetConstructor(instance, null, new[] { typeof(Type), typeof(string) }, null)
+                    .Invoke(new object[] { unity.GetType("UnityEngine.Object"), "Assembly-CSharp" });
+                accessType.GetMethod("AddRoot", instance).Invoke(unknownTopologyAccess,
+                    new object[] { Id(unknown), Array.Empty<string>() });
+                try
+                {
+                    restoreCensus.Invoke(null, new object[] { unknownTopologyAccess, new[] { Id(unknown) },
+                        50000, 1000000, 64L * 1024 * 1024 });
+                    throw new Exception("Actual Mono topology census silently accepted an unknown root.");
+                }
+                catch (TargetInvocationException e)
+                {
+                    if (!e.ToString().Contains("Uncovered static snapshot layout")) throw;
+                }
+            }
             Restore(second);
             Restore(first);
             if (_callbackCount != 0) throw new Exception("A business callback ran during restoration.");

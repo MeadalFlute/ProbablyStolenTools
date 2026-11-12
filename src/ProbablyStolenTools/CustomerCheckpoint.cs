@@ -1024,6 +1024,7 @@ namespace ProbablyStolenTools
             (long Checked, long Skipped) runtimeScalarWrites = default;
             long censusBytes = 0;
             string workload = "";
+            string preflightMode = "";
             var scalarWritesBefore = target.Graph.ScalarWrites;
             long typedComparisonsBefore = target.Graph.TypedComparisonCount;
             long referenceComparisonsBefore = target.Graph.ReferenceComparisonCount;
@@ -1049,7 +1050,7 @@ namespace ProbablyStolenTools
 #if MONO
                 if (Plugin.CfgSemanticTagCensus?.Value == true) SemanticTagBlock.EnableCensus(access);
 #endif
-                current = StateGraph.Census(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
+                current = StateGraph.CensusForRestore(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
 #if MONO
                 censusTagProbes = access.CensusValueObjectCount;
 #endif
@@ -1061,7 +1062,7 @@ namespace ProbablyStolenTools
                 if (Plugin.CfgVerboseLog?.Value == true) workload = " " + access.WorkloadSummary();
 #endif
                 phase = "target-preflight";
-                target.Graph.Differences();
+                preflightMode = target.Graph.ValidateRestore();
 #if MONO
                 // Validate independent retention before the first business write; live differences are expected here.
                 target.BlockOracle?.ValidateRetention();
@@ -1071,16 +1072,16 @@ namespace ProbablyStolenTools
                 var newWindows = new List<PixelWindow>();
                 foreach (var id in current.Objects)
                 {
+#if MONO
+                    var instance = ManagedObjects.Get(id);
+                    if (instance is GameItemElement newItem && !target.Items.ContainsKey(id))
+                        newItems.Add(newItem);
+                    if (instance is PixelWindow newWindow && !target.Windows.ContainsKey(id))
+                        newWindows.Add(newWindow);
+#else
                     if (Is<GameItemElement>(id) && !target.Items.ContainsKey(id))
-#if MONO
-                        newItems.Add((GameItemElement)ManagedObjects.Get(id));
-#else
                         newItems.Add(new GameItemElement(id));
-#endif
                     if (Is<PixelWindow>(id) && !target.Windows.ContainsKey(id))
-#if MONO
-                        newWindows.Add((PixelWindow)ManagedObjects.Get(id));
-#else
                         newWindows.Add(new PixelWindow(id));
 #endif
                 }
@@ -1318,6 +1319,7 @@ namespace ProbablyStolenTools
                     EventLog.Write($"[Customer] RESTORE OK id={target.Id} client={target.Label} history={CustomerCount}/20 diff={finalDifferences} " +
                         $"releaseOk={releaseError == null} {comparisonDiagnostic} " + writeDiagnostic +
                         $"census(objects={censusObjects},slots={censusSlots},bytes={censusBytes},exactTagProbes={censusTagProbes}) " +
+                        $"censusMode={current.CensusMode} preflightMode={preflightMode} " +
                         $"ms(validate={tValidate},census={tCensus - tValidate},preflight={tPreflight - tCensus}," +
                         $"write={tWrite - tPreflight},refresh={tRefresh - tWrite},reconcile={tReconcile - tRefresh}," +
                         $"finalVerify={tVerify - tReconcile},semanticVerify={tSemanticVerify - tVerify}," +

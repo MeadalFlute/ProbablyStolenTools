@@ -223,9 +223,13 @@ public static partial class OfflineMonoFixture
                         throw new Exception("Large graph budget parity failed: " + metric);
                     expectedCounts[metric] = actual;
                 }
+                // Match restore ordering: current live values differ before census/preflight.
+                for (int i = 0; i < tags.Count; i += tagsPerOwner) tagInt.SetValue(tags[i], 91);
+                foreach (var dictionary in dictionaries) dictionary["item"] = null;
                 watch.Restart();
-                var census = graphType.GetMethod("Census", All).Invoke(null,
+                var census = (graphType.GetMethod("CensusForRestore", All) ?? graphType.GetMethod("Census", All)).Invoke(null,
                     new object[] { Access(optimized, true), new[] { id }, 200000, 3000000, 256L * 1024 * 1024 });
+                string censusMode = (string)graphType.GetProperty("CensusMode", All)?.GetValue(census) ?? "full-read";
                 Lap();
                 try
                 {
@@ -240,15 +244,24 @@ public static partial class OfflineMonoFixture
                         throw new Exception("Large graph full verification failed.");
                 }
                 watch.Restart();
-                Verify(); Lap();
-                // Change both compact entities and ordinary dictionary Entry values.
-                for (int i = 0; i < tags.Count; i += tagsPerOwner) tagInt.SetValue(tags[i], 91);
-                foreach (var dictionary in dictionaries) dictionary["item"] = null;
+                string preflightMode;
+                var preflight = graphType.GetMethod("ValidateRestore", All);
+                if (preflight != null) preflightMode = (string)preflight.Invoke(graph, null);
+                else
+                {
+                    graphType.GetMethod("Differences", All).Invoke(graph, new object[] { 12 });
+                    preflightMode = "full-read";
+                }
+                Lap();
                 watch.Restart();
                 graphType.GetMethod("Restore", All).Invoke(graph, null); Lap();
                 Verify(); Lap();
+                // Simulate a native refresh changing a small captured owner.
+                tagInt.SetValue(tags[0], 91);
+                watch.Restart();
                 var repair = graphType.GetMethod("PrepareReconciliation", All).Invoke(graph, new object[] { true, 128, 8192 });
                 repair.GetType().GetMethod("Apply", All).Invoke(repair, null); Lap();
+                Verify();
                 for (int i = 0; i < owners; i++)
                     if (dictionaries[i]["item"] == null || (int)tagInt.GetValue(tags[i * tagsPerOwner]) != 0)
                         throw new Exception("Large graph content restoration failed.");
@@ -260,6 +273,7 @@ public static partial class OfflineMonoFixture
                     + string.Join(",", times.Select(t => t.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)))
                     + " loads=" + accessType.GetProperty("ArrayElementLoads", All)?.GetValue(access)
                     + " reuses=" + accessType.GetProperty("ArrayElementReuses", All)?.GetValue(access) + " diff=0");
+                Console.WriteLine("RESTORE_STAGE_MODES census=" + censusMode + " preflight=" + preflightMode);
             }
             finally { ((IDisposable)graph).Dispose(); }
         }

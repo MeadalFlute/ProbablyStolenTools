@@ -32,6 +32,7 @@ FieldEntityWriterTests.Run(Test, Check);
 SemanticFieldBlockTests.Run(Test, Check);
 SnapshotDifferenceSourceTests.Run(Test, Check);
 SnapshotReconciliationTests.Run(Test, Check);
+SnapshotRestoreStageTests.Run(Test, Check);
 SnapshotIntArrayTests.Run(Test, Check);
 ItemLayoutTests.Run(Test, Check);
 CheckpointItemInteractionTests.Run(Test, Check);

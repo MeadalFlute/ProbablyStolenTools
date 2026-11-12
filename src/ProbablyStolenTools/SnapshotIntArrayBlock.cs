@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace ProbablyStolenTools
 {
     // Complete physical storage, including unused dictionary buckets; never rebuild a collection.
-    internal sealed class SnapshotIntArrayBlock : IStateBlock, IStateOwnerRepairBlock
+    internal sealed class SnapshotIntArrayBlock : IStateBlock, IStateOwnerRepairBlock, IStateStableStorageBlock
     {
         private readonly int[] _target;
         private readonly int[] _values;

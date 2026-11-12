@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ProbablyStolenTools
 {
     // Exact native TagState only: no collection reconstruction, setters, callbacks or new identities.
-    internal sealed class SemanticTagBlock : IStateBlock, IStateOwnerRepairBlock
+    internal sealed class SemanticTagBlock : IStateBlock, IStateOwnerRepairBlock, IStateStableStorageBlock
     {
         private static readonly string[] Names = { "valueEnabled", "internalValueString", "valueInt",
             "valueFloat", "valueLong", "valueDouble", "valueBool",

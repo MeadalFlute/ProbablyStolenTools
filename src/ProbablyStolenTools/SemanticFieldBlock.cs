@@ -94,7 +94,7 @@ namespace ProbablyStolenTools
                     ? BitConverter.DoubleToInt64Bits(d) == BitConverter.DoubleToInt64Bits(sd)
                     : Equals(actual, saved);
 
-        private sealed class Block : IStateBlock, IStateOwnerRepairBlock
+        private sealed class Block : IStateBlock, IStateOwnerRepairBlock, IStateStableStorageBlock
         {
             private readonly object _target;
             private readonly Schema _schema;

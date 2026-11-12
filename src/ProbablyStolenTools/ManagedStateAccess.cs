@@ -7,6 +7,9 @@ namespace ProbablyStolenTools
 {
     // Snapshot real managed fields and array elements; reflection preserves GC write barriers.
     internal sealed class ManagedStateAccess : IStateAccess, IIndependentStateAccess, IStateValueComparer, IStateReferenceComparer, IStateValueProbe, IBudgetedStateDescription, IStateBlockAccess, IStateObjectDescription, IStateOwnerRepairAccess, IStateCensusValueProbe, IStateScalarWriteDiagnostics, IStateComparisonDiagnostics, IStateReadPass
+#if STATIC_SNAPSHOT_LAYOUTS
+        , IStateStableStorageAccess
+#endif
     {
         private readonly struct Storage
         {
@@ -54,6 +57,7 @@ namespace ProbablyStolenTools
         private readonly Dictionary<object, byte[]> _values = new();
         private readonly Dictionary<long, object> _savedValues = new();
         private long _nextValue;
+        private bool _disposed;
         private static readonly object NullValue = new();
 #if STATIC_SNAPSHOT_LAYOUTS
         private int _readPassDepth;
@@ -789,12 +793,14 @@ namespace ProbablyStolenTools
             => Write(id, slot, value == IntPtr.Zero ? null : _retained[value]);
         public void Validate()
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(ManagedStateAccess));
             foreach (var pair in _retained)
                 if (!ReferenceEquals(pair.Value, ManagedObjects.Get(pair.Key)))
                     throw new InvalidOperationException("Managed snapshot identity changed.");
         }
         public void Dispose()
         {
+            _disposed = true;
             ResetReadObject();
 #if STATIC_SNAPSHOT_LAYOUTS
             ResetStorageOwner();
