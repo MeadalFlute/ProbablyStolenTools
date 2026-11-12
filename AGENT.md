@@ -22,12 +22,12 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**380 项**离线参考测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态迁移候选另有游戏 Mono 下 2807 类型/8027 字段精确对照、完整图六轮往返及版本拒绝测试。离线通过 **不等于** Unity 活体验收。
+当前基线：**380 项**离线参考测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归。离线通过 **不等于** Unity 活体验收。
 
 ### 版本与发布
 
 - 唯一真源：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
-- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.0**。
+- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.1**。
 - 纯文档提交不单独升版；推送前重新构建 → 两组测试 → 部署 → 正常 `push`（不 force）。
 - 推送使用用户临时 token，不写入文件、日志或命令历史。
 
@@ -159,6 +159,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 ## 8. 已知坑
 
 0.9.1 玩家报告 `Uncovered static snapshot layout: PaperBookRegistry+<>c`：生成器排除注册/信任组件，但运行时按游戏程序集继续展开其闭包。现以共享 `SnapshotTraversalBoundary` 统一边界，受保护引用只保留身份、不读写字段，显式受保护根拒绝；其他未知布局仍拒绝。游戏 Mono 回归和全套测试通过，已部署，玩家实机待测。详情见 `research/2026-11-12-protected-registry-capture-fix.md`；失败日志现含 manual/closed，另一份无日志的自动节点问题尚不能确认同因。
+
+后续边界复查 `79cab6e`：游戏 owner 排除规则（含 ES3 前缀）已由生成器与运行时共享同一函数。目标程序集 111 个被排除类型/嵌套类型全部不展开，其余游戏类型均有表；不表示所有字段组合都支持。另修复 decimal? 的引用检查误入 Decimal 字段，以及 object 集合中的基本装箱标量/顶层 System 枚举缺表；保留原装箱身份及字段恢复，不降级为空对象。全套通过，最终双 DLL 已部署，实机待测；当前审查交接见 `research/snapshot-boundary-review-handoff.md`。第三方自动适配及独立生成器分发按用户要求搁置。
 
 | 坑 | 结论 |
 |---|---|
