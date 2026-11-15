@@ -8,15 +8,17 @@ namespace ProbablyStolenTools
         private readonly List<T> _items = new();
         private readonly int _capacity;
         private readonly Predicate<T> _countsTowardCapacity;
+        private readonly Func<T, int> _capacityGroup;
         private T _selected;
         internal IReadOnlyList<T> Items => _items;
         internal int Revision { get; private set; }
 
-        internal CheckpointHistory(int capacity, Predicate<T> countsTowardCapacity = null)
+        internal CheckpointHistory(int capacity, Predicate<T> countsTowardCapacity = null, Func<T, int> capacityGroup = null)
         {
             if (capacity < 1) throw new ArgumentOutOfRangeException(nameof(capacity));
             _capacity = capacity;
             _countsTowardCapacity = countsTowardCapacity ?? (_ => true);
+            _capacityGroup = capacityGroup ?? (_ => 0);
         }
 
         internal void Add(T item, bool commitBranch = true)
@@ -24,9 +26,11 @@ namespace ProbablyStolenTools
             if (item == null || _items.Contains(item)) throw new ArgumentException("Invalid history entry.");
             if (commitBranch) CommitBranch();
             _items.Add(item);
-            while (_items.FindAll(_countsTowardCapacity).Count > _capacity)
+            int group = _capacityGroup(item);
+            bool Counted(T entry) => _countsTowardCapacity(entry) && _capacityGroup(entry) == group;
+            while (_items.FindAll(Counted).Count > _capacity)
             {
-                Remove(_items.Find(_countsTowardCapacity));
+                Remove(_items.Find(Counted));
             }
             Revision++;
         }
@@ -56,6 +60,11 @@ namespace ProbablyStolenTools
             if (ReferenceEquals(_selected, item)) _selected = null;
             item.Dispose();
             Revision++;
+        }
+
+        internal void RemoveWhere(Predicate<T> predicate)
+        {
+            foreach (var item in _items.FindAll(predicate)) Remove(item);
         }
 
         internal void TruncateAfter(T item)

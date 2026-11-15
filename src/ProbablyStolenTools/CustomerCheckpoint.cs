@@ -15,7 +15,8 @@ namespace ProbablyStolenTools
     internal static class CustomerCheckpoint
     {
         private static readonly CustomerBoundary Boundary = new();
-        private static readonly CheckpointHistory<Snapshot> History = new(20, node => !node.IsClosed);
+        private static readonly CheckpointHistory<Snapshot> History = new(20,
+            node => !node.IsClosed || node.IsManual, node => node.Day);
         private static Snapshot _active;
         internal static Snapshot ClosedNode { get; private set; }
         private static bool _closeArmed, _outside;
@@ -43,7 +44,7 @@ namespace ProbablyStolenTools
         internal static bool Enabled => Plugin.CfgCustomerCheckpoint?.Value == true && PatchesReady;
         internal static string Status { get; private set; } = "Waiting for a new customer";
         internal static IReadOnlyList<Snapshot> Nodes => History.Items;
-        internal static int CustomerCount => Nodes.Count(node => !node.IsClosed);
+        internal static int CustomerCount => Nodes.Count(node => node.Day == Boundary.Day && (!node.IsClosed || node.IsManual));
         internal static bool IsFuture(Snapshot node) => History.IsFuture(node);
         private static int _failureRevision;
         private static string _failureNoticeKey;
@@ -244,17 +245,48 @@ namespace ProbablyStolenTools
             bool contextChanged = scene != Boundary.Scene || day != Boundary.Day || Ptr(store) != Boundary.Store;
             if (contextChanged)
             {
+                bool nextDay = Plugin.CfgKeepPreviousDay?.Value == true && store != null && !_faulted
+                    && scene == Boundary.Scene && Ptr(store) == Boundary.Store
+                    && Boundary.Day >= 0 && day == Boundary.Day + 1;
                 string context = $"[Customer] CONTEXT CHANGED scene={Boundary.Scene}->{scene} day={Boundary.Day}->{day} " +
-                    $"store={Boundary.Store}->{Ptr(store)} nodes={History.Items.Count} -> cleared";
+                    $"store={Boundary.Store}->{Ptr(store)} nodes={History.Items.Count} -> " + (nextDay ? "keep previous day" : "cleared");
                 if (History.Items.Count > 0) EventLog.Write(context);
                 else EventLog.Debug(context);
                 ++_epoch;
                 PendingCallbacks.Clear(); DialogueCallbacks.Clear();
-                Clear();
-                if (ClosedNode?.Day != day) ClosedNode = null;
+                if (nextDay)
+                {
+                    // Sleeping after a rewind creates a new timeline, not a second copy of tomorrow.
+                    History.CommitBranch();
+                    History.RemoveWhere(node => node.Day < day - 1 || node.Day > day);
+                    if (ClosedNode?.Graph == null) ClosedNode = null;
+                    RebuildRetainedItems();
+                    _active = null;
+                    _armed = false;
+                    _closeArmed = false;
+                    _captureSince = 0;
+                    _settledSince = 0;
+                    SettleLog.Reset();
+                    Failures.Clear();
+                    _failureRevision++;
+#if MONO
+                    ChemistryAutomation.Reset();
+#endif
+                }
+                else
+                {
+                    Clear();
+                    if (ClosedNode?.Day != day) ClosedNode = null;
+                }
                 _outside = false;
                 AppraisalPatch.Reset();
                 _faulted = false;
+            }
+            if (Plugin.CfgKeepPreviousDay?.Value != true && History.Items.Any(node => node.Day != day))
+            {
+                History.RemoveWhere(node => node.Day != day);
+                if (ClosedNode?.Graph == null) ClosedNode = null;
+                RebuildRetainedItems();
             }
             if (Boundary.Observe(Ptr(store), Ptr(client), day, scene))
             {
@@ -509,7 +541,13 @@ namespace ProbablyStolenTools
                 case "noStore": return "商店数据未就绪";
                 case "storeChanged": return "商店实例已变化";
                 case "sceneChanged": return "已切换场景";
-                case "dayChanged": return "已经跨天";
+                case "dayChanged": return "不在保留的相邻日期内，或跨天回溯已关闭";
+                case "nightCycle": return "正在结算夜间工作";
+                case "dayTransition": return "跨天黑屏尚未结束";
+                case "nightReport": return "请先关闭睡前结算界面";
+                case "morningReport": return "请先关闭晨报／日历";
+                case "gameOver": return "游戏已经结束";
+                case "hopperBusy": return "自动漏斗传输尚未结束";
                 case "arrested": return "顾客正在被逮捕";
                 case "shootout": return "正在发生枪战";
                 case "outside": return "当前在店外";
@@ -839,14 +877,14 @@ namespace ProbablyStolenTools
                 }
 #endif
                 phase = "history";
-                if (closed)
+                if (closed && !manual)
                 {
-                    History.Remove(ClosedNode);
+                    if (ClosedNode?.Day == candidate.Day) History.Remove(ClosedNode);
                     ClosedNode = candidate;
                 }
                 LogItemGeometry(candidate, "capture");
                 long tBeforeHistory = timing.ElapsedMilliseconds;
-                History.Add(candidate, commitBranch: !closed);
+                History.Add(candidate, commitBranch: !closed || manual);
                 long tHistory = timing.ElapsedMilliseconds;
                 if (ClosedNode?.Graph == null) ClosedNode = null;
                 _active = candidate;
@@ -936,11 +974,28 @@ namespace ProbablyStolenTools
             {
                 if (target.Store != Ptr(store)) blockers.Add("storeChanged");
                 if (target.Scene != Boundary.Scene) blockers.Add("sceneChanged");
-                if (target.Day != Boundary.Day) blockers.Add("dayChanged");
+                bool crossDay = target.Day != Boundary.Day;
+                if (crossDay && (Plugin.CfgKeepPreviousDay?.Value != true || Math.Abs((long)target.Day - Boundary.Day) != 1))
+                    blockers.Add("dayChanged");
                 int state = (int)store.storeState;
                 // 手动节点允许在同一营业状态下回溯（包括早市 state=2）；自动节点仍只支持营业/闭店。
                 bool sameState = target.StoreState == state;
-                if (state != 0 && state != 1 && !(target.IsManual && sameState)) blockers.Add("state=" + state);
+                if (state != 0 && state != 1 && !(target.IsManual && sameState) && !(crossDay && state == 2))
+                    blockers.Add("state=" + state);
+                if (crossDay)
+                {
+#if MONO
+                    if (CurrentConverterHelper.isNightCycle) blockers.Add("nightCycle");
+                    if (ui?.blackscreen != null && ui.blackscreen.gameObject.activeSelf) blockers.Add("dayTransition");
+                    if (EndOfDayUIManager.Instance?.IsOpen == true) blockers.Add("nightReport");
+                    if (AdvCalendarUIManager.Instance?.UIPanel?.activeSelf == true
+                        || StartOfDayUIManager.Instance?.UIPanel?.activeSelf == true) blockers.Add("morningReport");
+                    if (GameOverUIManager.Instance?.IsShowing == true) blockers.Add("gameOver");
+                    if (ModReflect.GetStatic<bool>(typeof(HopperHelper), "batchQueued")
+                        || ModReflect.GetStatic<bool>(typeof(HopperHelper), "batchRunning")
+                        || ModReflect.GetStatic<bool>(typeof(HopperHelper), "transferring")) blockers.Add("hopperBusy");
+#endif
+                }
                 if (store.isClientBeingArrested) blockers.Add("arrested");
                 if (store.isHandlingShootout) blockers.Add("shootout");
                 // 允许回到更早的顾客节点：PlayerStore.currentClientInstance 在快照里，
@@ -977,7 +1032,7 @@ namespace ProbablyStolenTools
                     + " targetClient=0x" + target.Client.ToInt64().ToString("X")
                     + " currentClient=0x" + currentClient.ToString("X"));
             }
-            bool changingPhase = ((int)store.storeState == 0) != target.IsClosed;
+            bool changingPhase = (int)store.storeState != target.StoreState || target.Day != Boundary.Day;
             var phaseDialog = DialogUIManager.Instance;
             if (changingPhase)
             {
@@ -1250,6 +1305,8 @@ namespace ProbablyStolenTools
                 _armed = false;
                 _closeArmed = false;
                 Boundary.Observe(target.Store, target.Client, target.Day, target.Scene);
+                ClosedNode = History.Items.LastOrDefault(node => node.Day == target.Day && node.IsClosed && !node.IsManual)
+                    ?? History.Items.LastOrDefault(node => node.IsClosed && !node.IsManual);
                 Boundary.MarkReady();
                 RebuildRetainedItems();
                 AppraisalPatch.Reset();

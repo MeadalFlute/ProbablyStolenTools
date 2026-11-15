@@ -189,6 +189,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgPreviewPanel;
         internal static ConfigEntry<bool> CfgHistory;
         internal static ConfigEntry<bool> CfgCustomerCheckpoint;
+        internal static ConfigEntry<bool> CfgKeepPreviousDay;
         internal static ConfigEntry<float> CfgPanelX, CfgPanelY, CfgPanelWidth, CfgPanelHeight;
         internal static ConfigEntry<bool> CfgPanelFolded;
 
@@ -362,7 +363,9 @@ namespace ProbablyStolenTools
             CfgHistory = Config.Bind("History", "Enabled", true,
                 "Observation-only business event log (no save writes, no state changes). Writes PSTools_history.log.");
             CfgCustomerCheckpoint = Config.Bind("CustomerCheckpoint", "Enabled", true,
-                "Keep the latest 20 customer/manual checkpoints within the current day. F6 resets the current customer; F7 keeps day-start restore.");
+                "Keep the latest 20 customer/manual checkpoints per retained day. F6 resets the current customer; F7 keeps day-start restore.");
+            CfgKeepPreviousDay = Config.Bind("CustomerCheckpoint", "KeepPreviousDay", true,
+                "Keep yesterday's remaining in-memory checkpoints across normal sleep in the same shop session. Each day has an independent 20-node limit; scene changes and file reloads still expire all nodes.");
             CfgPanelX = Config.Bind("Panel", "X", 16f, "Panel left position in reference canvas units.");
             CfgPanelY = Config.Bind("Panel", "Y", 16f, "Panel top position in reference canvas units.");
             CfgPanelWidth = Config.Bind("Panel", "Width", 480f, "Panel width in reference canvas units.");

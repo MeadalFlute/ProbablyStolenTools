@@ -261,7 +261,7 @@ namespace ProbablyStolenTools
             _scroll.movementType = ScrollRect.MovementType.Clamped;
             _scroll.scrollSensitivity = RowH;
             _scroll.inertia = false;
-            for (int i = 0; i < 24; i++) _rows.Add(NewRow(i));
+            for (int i = 0; i < 48; i++) _rows.Add(NewRow(i));
             _empty = Text("empty", viewportGo.transform, 13, new Color(0.55f, 0.70f, 0.85f));
             _empty.text = InspectionLocale.Text("暂无节点", "No checkpoints");
             _settingsGo = NewObject("settings", _nativeContent);
@@ -293,6 +293,7 @@ namespace ProbablyStolenTools
             NewSetting(InspectionLocale.Text("自动萃取", "Auto extract"), Plugin.CfgAutoExtraction);
             NewSetting(InspectionLocale.Text("隔夜产物预览", "Overnight output preview"), Plugin.CfgFacilityPreview);
             NewSetting(InspectionLocale.Text("酿酒标注", "Wine annotations"), Plugin.CfgWineAppraisal);
+            NewSetting(InspectionLocale.Text("保留上一天节点", "Keep previous day checkpoints"), Plugin.CfgKeepPreviousDay);
             NewSetting(InspectionLocale.Text("整日回退需确认", "Confirm whole-day rewind"), Plugin.CfgConfirmWholeDay);
             NewSetting(InspectionLocale.Text("详细诊断日志", "Verbose diagnostics"), Plugin.CfgVerboseLog);
             _keysHeading = Text("keys-heading", _settingsContent, 13, new Color(0.55f, 0.85f, 1f));
@@ -552,7 +553,7 @@ namespace ProbablyStolenTools
             _click.Reset();
             _shown = 0;
             var closed = CustomerCheckpoint.ClosedNode;
-            if (closed != null && closed.Day == day)
+            if (closed != null && closed.Day == day && closed.Graph == null)
                 Bind(_rows[_shown++], closed, closed.At, InspectionLocale.Text("闭店", "Closed"), closed.Cash,
                     closed.Graph == null ? closed.ExpiredReason : closed.Id == _activeId ? InspectionLocale.Text("当前", "Current")
                         : CustomerCheckpoint.IsFuture(closed) ? InspectionLocale.Text("后续", "Later") : "", closed.Graph != null);
@@ -560,10 +561,9 @@ namespace ProbablyStolenTools
             for (int i = nodes.Count - 1; i >= 0; i--)
             {
                 var node = nodes[i];
-                if (node.Day != day || _shown >= _rows.Count) continue;
-                // 闭店的自动节点只从 ClosedNode 显示；手动节点无论开着还是关着都要列出来。
-                if (node.IsClosed && !node.IsManual) continue;
-                Bind(_rows[_shown++], node, node.At, CustomerCheckpoint.Name(node), node.Cash,
+                if (_shown >= _rows.Count) continue;
+                string label = InspectionLocale.Text($"第 {node.Day} 天 · ", $"Day {node.Day} - ") + CustomerCheckpoint.Name(node);
+                Bind(_rows[_shown++], node, node.At, label, node.Cash,
                     node.Id == _activeId ? InspectionLocale.Text("当前", "Current") : CustomerCheckpoint.IsFuture(node) ? InspectionLocale.Text("后续", "Later") : "", true);
             }
             for (int i = Rewind.Points.Count - 1; i >= 0; i--)
@@ -591,7 +591,7 @@ namespace ProbablyStolenTools
                 _rows[i].Go.SetActive(false);
                 try { _rows[i].Element?.SetTooltip(null); } catch { }
             }
-            _title.text = day < 0 ? InspectionLocale.Text("今日回溯", "Rewind") : InspectionLocale.Text($"今日回溯 · 第 {day} 天", $"Rewind - Day {day}");
+            _title.text = day < 0 ? InspectionLocale.Text("回溯", "Rewind") : InspectionLocale.Text($"回溯 · 第 {day} 天", $"Rewind - Day {day}");
             _empty.gameObject.SetActive(_shown == 0);
             Layout();
         }

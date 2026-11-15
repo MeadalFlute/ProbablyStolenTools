@@ -149,6 +149,12 @@ foreach (var root in roots)
     }
 }
 Console.WriteLine($"PASS {hooks} hook targets and {fields} snapshot/private fields");
+foreach (string name in new[] { "batchQueued", "batchRunning", "transferring" })
+{
+    var field = game.GetType("HopperHelper", true).GetField(name, BindingFlags.Static | BindingFlags.NonPublic);
+    if (field?.FieldType != typeof(bool)) throw new Exception("Cross-day hopper idle contract changed: " + name);
+}
+Console.WriteLine("PASS cross-day native hopper queue/running/transfer guards");
 var tweenAssembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(managed, "DOTween.dll"));
 var pathAssembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(managed, "DOTweenPro.dll"));
 var tweenType = tweenAssembly.GetType("DG.Tweening.Tween", true);
