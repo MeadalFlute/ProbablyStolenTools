@@ -2,6 +2,10 @@
 param([string]$OutputRoot)
 $ErrorActionPreference = 'Stop'
 $workspace = Split-Path -Parent $PSScriptRoot
+$revision = & git -C $workspace rev-parse HEAD
+if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the source revision.' }
+$status = @(& git -C $workspace status --porcelain)
+if ($LASTEXITCODE -ne 0 -or $status.Count -gt 0) { throw 'Commit source changes before publishing a player tool; dirty builds are refused.' }
 if (!$OutputRoot) { $OutputRoot = Join-Path $workspace ('out\static-layout-tool-' + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 if (Test-Path -LiteralPath $OutputRoot) { throw 'Output directory already exists; refusing to overwrite a previous package.' }
@@ -37,9 +41,11 @@ Copy-Item -LiteralPath (Join-Path $runtimeRoot 'THIRD-PARTY-NOTICES.TXT') -Desti
 $hashes = @(Get-ChildItem -LiteralPath $package -File -Recurse | ForEach-Object {
     [ordered]@{ Path = $_.FullName.Substring($package.Length + 1); SHA256 = (Get-FileHash -LiteralPath $_.FullName).Hash }
 })
-$revision = & git -C $workspace rev-parse HEAD
-$dirty = @(& git -C $workspace status --porcelain).Count -gt 0
-[ordered]@{ BuildCommit = $revision; BuildDirty = $dirty; Files = $hashes } | ConvertTo-Json -Depth 5 |
+$finalRevision = & git -C $workspace rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or $finalRevision -ne $revision) { throw 'Source revision changed during packaging.' }
+$status = @(& git -C $workspace status --porcelain)
+if ($LASTEXITCODE -ne 0 -or $status.Count -gt 0) { throw 'Source changed during packaging; package not released.' }
+[ordered]@{ BuildCommit = $revision; BuildDirty = $false; Files = $hashes } | ConvertTo-Json -Depth 5 |
     Set-Content -LiteralPath (Join-Path $package 'package.json') -Encoding UTF8
 $zip = Join-Path $OutputRoot 'ProbablyStolenTools-StaticLayoutGenerator-win-x64.zip'
 Compress-Archive -LiteralPath $package -DestinationPath $zip

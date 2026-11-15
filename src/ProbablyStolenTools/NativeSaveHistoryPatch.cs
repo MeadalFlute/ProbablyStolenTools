@@ -27,23 +27,7 @@ namespace ProbablyStolenTools
                     && metadata[0].Day == StoreStation.GetDayCounter() && keepCount < int.MaxValue)
                     keepCount++;
                 var duplicates = DayArchivePolicy.Duplicates(metadata);
-                int removed = 0;
-                foreach (int index in duplicates.OrderByDescending(i => i))
-                {
-                    var entry = history[index];
-                    string path = SaveFiles.AbsolutePath(entry.file);
-                    // Duplicate references to one file must not delete the retained copy.
-                    bool sharedFile = history.Take(index).Any(e => e != null
-                        && string.Equals(e.file, entry.file, StringComparison.OrdinalIgnoreCase));
-                    if (!sharedFile)
-                    {
-                        if (DayArchiveIdentity.From(CheckpointFileCatalog.Read(path))
-                            != DayArchiveIdentity.From(metadata[index])) continue;
-                        File.Delete(path);
-                    }
-                    history.RemoveAt(index);
-                    removed++;
-                }
+                int removed = RemoveDuplicates(history, metadata, duplicates);
                 if (removed > 0)
                     EventLog.Write($"[Rewind] native history deduplicated={removed} before trim keep={keepCount}; newest per run/slot/day retained");
             }
@@ -73,23 +57,7 @@ namespace ProbablyStolenTools
                         && File.GetLastWriteTimeUtc(SaveFiles.AbsolutePath(history[i].file)) > stamp)
                         metadata[i] = null;
                 var duplicates = DayArchivePolicy.Duplicates(metadata, active);
-                var retained = new HashSet<string>(history.Where((_, i) => !duplicates.Contains(i))
-                    .Select(e => e.file), StringComparer.OrdinalIgnoreCase);
-                var deleted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                int removed = 0;
-                foreach (int index in duplicates.OrderByDescending(i => i))
-                {
-                    string file = history[index].file;
-                    string path = SaveFiles.AbsolutePath(file);
-                    if (!deleted.Contains(file))
-                    {
-                        if (DayArchiveIdentity.From(CheckpointFileCatalog.Read(path))
-                            != DayArchiveIdentity.From(metadata[index])) continue;
-                        if (!retained.Contains(file)) { File.Delete(path); deleted.Add(file); }
-                    }
-                    history.RemoveAt(index);
-                    removed++;
-                }
+                int removed = RemoveDuplicates(history, metadata, duplicates);
                 if (removed == 0) return;
                 if (history.Count == 0) SaveFiles.IndexDeleteKey("history_" + slot);
                 else SaveFiles.IndexSave("history_" + slot, history);
@@ -100,6 +68,35 @@ namespace ProbablyStolenTools
                 EventLog.Write("[Rewind] native active/history cleanup incomplete; active slot unchanged: " + e.Message);
             }
             finally { NativeLoadDiagnostics.RecordHistory(started); }
+        }
+
+        private static int RemoveDuplicates(List<SaveHistoryEntry> history, SaveMetadata[] metadata, List<int> duplicates)
+        {
+            string pending = Rewind.PendingPoint?.Path;
+            if (!string.IsNullOrEmpty(pending)) pending = Path.GetFullPath(pending);
+            var candidates = new HashSet<int>(duplicates.Where(i => pending == null
+                || !string.Equals(Path.GetFullPath(SaveFiles.AbsolutePath(history[i].file)),
+                    pending, StringComparison.OrdinalIgnoreCase)));
+            // Check all retained references, including malformed index entries after
+            // a duplicate. They must not lose their file to another entry's cleanup.
+            var retained = new HashSet<string>(history.Where((entry, i) => entry != null && !candidates.Contains(i))
+                .Select(entry => entry.file), StringComparer.OrdinalIgnoreCase);
+            var deleted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int removed = 0;
+            foreach (int index in candidates.OrderByDescending(i => i))
+            {
+                string file = history[index].file;
+                string path = SaveFiles.AbsolutePath(file);
+                if (!deleted.Contains(file))
+                {
+                    if (DayArchiveIdentity.From(CheckpointFileCatalog.Read(path))
+                        != DayArchiveIdentity.From(metadata[index])) continue;
+                    if (!retained.Contains(file)) { File.Delete(path); deleted.Add(file); }
+                }
+                history.RemoveAt(index);
+                removed++;
+            }
+            return removed;
         }
 
         private static SaveMetadata Read(SaveHistoryEntry entry)

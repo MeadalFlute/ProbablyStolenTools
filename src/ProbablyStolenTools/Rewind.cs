@@ -37,7 +37,23 @@ namespace ProbablyStolenTools
             if (PendingPoint == null) return;
             bool matched = LoadGate.Loaded(StoreStation.GetDayCounter(), store.saveSlotId, store.runID);
             EventLog.Write($"[Rewind] native load completed day={StoreStation.GetDayCounter()} expectedDay={PendingPoint.Day} matched={matched}");
-            if (!matched) PanelNotice.Show("载入结果与节点不符，已停止回溯收尾，请查看日志", true);
+            if (!matched)
+            {
+                CancelPendingLoad();
+                PanelNotice.Show(InspectionLocale.Text("载入日期、槽位或周目与节点不符，已取消回溯；恢复文件已保留。",
+                    "Loaded day, slot or run does not match the checkpoint. Rewind cancelled; recovery file retained."), true);
+            }
+        }
+        internal static void CancelPendingLoad()
+        {
+            if (NewGameData.Instance != null && NewGameData.Instance.saveFile == PendingLoadFile)
+                NewGameData.Instance.saveFile = null;
+            PendingPoint = null;
+            PendingLoadFile = null;
+            PendingMenuReload = false;
+            LoadGate.Reset();
+            Settling = false;
+            Busy = false;
         }
         private static IntPtr _captureStore;
         private static int _captureDay = -1;
@@ -991,12 +1007,7 @@ namespace ProbablyStolenTools
                     {
                         EventLog.Write("[Rewind] native load completion not verified within 90s; staged checkpoint retained, resume cancelled.");
                         PanelNotice.Show("回溯载入未确认完成，请查看日志", true);
-                        if (NewGameData.Instance != null && NewGameData.Instance.saveFile == Rewind.PendingLoadFile)
-                            NewGameData.Instance.saveFile = null;
-                        Rewind.PendingPoint = null;
-                        Rewind.PendingLoadFile = null;
-                        Rewind.LoadGate.Reset();
-                        Rewind.Settling = false;
+                        Rewind.CancelPendingLoad();
                     }
                     return;
                 }

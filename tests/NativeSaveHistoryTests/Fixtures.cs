@@ -108,6 +108,11 @@ namespace ProbablyStolenTools
         internal static void Write(string line) => Lines.Add(line);
     }
     internal static class NativeLoadDiagnostics { internal static void RecordHistory(long started) { } }
+    internal static class Rewind
+    {
+        internal sealed class Point { internal string Path; }
+        internal static Point PendingPoint;
+    }
 }
 namespace HarmonyLib
 {

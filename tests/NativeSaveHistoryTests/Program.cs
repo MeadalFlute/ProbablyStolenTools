@@ -14,6 +14,7 @@ void Test(string name, Action action)
     SaveFiles.Root = root;
     SaveFiles.History.Clear(); SaveFiles.IndexWrites = 0; SaveFiles.FailIndex = false;
     NativeSaveScopePatch.Saving = null; Plugin.CfgRewind.Value = true;
+    Rewind.PendingPoint = null;
     try { action(); passed++; Console.WriteLine("PASS " + name); }
     finally
     {
@@ -107,6 +108,45 @@ Test("locked active file and disabled feature never delete history", () =>
     Plugin.CfgRewind.Value = false;
     NativeSaveHistoryPatch.ReconcileActive(2);
     Check(File.Exists(history) && SaveFiles.IndexWrites == 0);
+});
+Test("trim preserves a duplicate file referenced by a later invalid retained index row", () =>
+{
+    Add(95, 50);
+    string duplicate = Add(95, 40);
+    SaveFiles.History.Add(new SaveHistoryEntry
+        { file = Path.GetFileName(duplicate), dayCount = 94, saveDateTime = new DateTime(2026, 11, 15, 21, 0, 0) });
+    Trim(20);
+    Check(File.Exists(duplicate) && SaveFiles.History.Count == 2 && SaveFiles.History.Any(e => e.dayCount == 94));
+});
+Test("trim removes all obsolete index references without keeping a dangling row", () =>
+{
+    Add(95, 50);
+    string duplicate = Add(95, 40);
+    SaveFiles.History.Add(SaveFiles.History.Last());
+    Trim(20);
+    Check(!File.Exists(duplicate) && SaveFiles.History.Count == 1);
+});
+Test("pending restore file and every reference survive successful write and load reconciliation", () =>
+{
+    Add(95, 50, active: true);
+    string pending = Add(95, 40), other = Add(95, 30);
+    SaveFiles.History.Add(SaveFiles.History[0]);
+    Rewind.PendingPoint = new Rewind.Point { Path = pending };
+    typeof(NativeSlotWrittenPatch).GetMethod("Postfix", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { new PlayerStore() });
+    NativeSaveHistoryPatch.ReconcileActive(2);
+    Check(File.Exists(pending) && !File.Exists(other) && SaveFiles.History.Count == 2);
+    Rewind.PendingPoint = null;
+    NativeSaveHistoryPatch.ReconcileActive(2);
+    Check(!File.Exists(pending) && SaveFiles.History.Count == 0);
+});
+Test("pending restore is protected from trim without disabling other daily deduplication", () =>
+{
+    Add(95, 50);
+    string pending = Add(95, 40), other = Add(95, 30);
+    Rewind.PendingPoint = new Rewind.Point { Path = pending };
+    Trim(20);
+    Check(File.Exists(pending) && !File.Exists(other) && SaveFiles.History.Count == 2);
 });
 Test("closed rotation does not reserve an unremovable extra historical slot", () =>
 {
