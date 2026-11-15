@@ -26,11 +26,11 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1 -GameDir "<游戏目录>" -ManifestPath release/beta/manifest.xml
 ```
 
-当前开发候选：**430 项**离线参考测试，另有 10 项原版历史/齿轮设置 IO 夹具测试、10 项玩家生成工具断言；Harmony 挂点与字段检查数量见最新验证日志，另检查三个漏斗静态门控字段；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归，以及 500 组原版比例耗水对照。离线通过 **不等于** Unity 活体验收。基础见 `research/2026-11-15-chemistry-crossday-handoff.md`，测试反馈修正见 `research/2026-11-15-feedback-followup.md`，跨天/F6 选择修正见 `research/2026-11-15-rewind-picker-followup.md`，返店/文件去重与存档恢复见 `research/2026-11-15-return-archive-followup.md`，活动档去重与晨报卡顿跟进见 `research/2026-11-15-active-history-morning-followup.md`。
+当前 beta 候选：**430 项**参考测试、14 项原版历史/齿轮 IO 测试、11 项玩家工具断言（含随包源码复建）；84 挂点/76 字段、漏斗门控、16 项官方保护名单核对；双 DLL 扫描仅 `files`，`HardFlags/Error` 空。beta 静态表 2883 类型/8160 字段，游戏 Mono 精确布局、完整图往返、预算/边界/GC/MVID/失效令牌拒绝及 500 组耗水对照通过。离线通过 **不等于** Unity 活体验收。当前说明见 `research/2026-11-16-beta-static-layout-compatibility.md`；旧批次功能和过程说明由下方统一交接链接索引。
 
 上一批统一审查入口：`research/2026-11-15-feature-batch-review-handoff.md`，覆盖 `44cf260..48853fb`；回执见 `2026-11-15-feature-batch-review-receipt.md`，0.9.3 已由 DS 推送。本轮补 N1/N2 文件保护、N3 不匹配立即取消、N4 脏源码拒绝打包；beta 适配及构建来源以 `research/2026-11-16-beta-static-layout-compatibility.md` 为准，不把旧 0.46D 实测当作 beta 验收。
 
-2026-11-16 当前 beta 验证规模：2883 类型/8160 字段、14 项原版历史/齿轮 IO 夹具；上段 2861/8108 与 10 项为上一轮 0.46D 记录。430 项参考测试和工具 10 项断言不变。
+0.46D 的 2861 类型/8108 字段属于旧分支表，不能混用本轮 beta 的程序集或验收记录。
 
 ### 版本与发布
 
@@ -210,7 +210,7 @@ DS 边界代码审查通过。部署哈希疑点已复核：原 FDC 与 DS 的 C
 ## 9. 验收清单
 
 1. `dotnet build -c Release`：0 警告 / 0 错误。
-2. `CheckpointTests` 430 项全过；`ReleaseCompatibility` 84 挂点/76 字段/漏斗门控/官方保护名单/`HardFlags` 通过；另跑原版历史/齿轮 IO 14 项、玩家生成工具 10 项。beta 与稳定版需要各自验收，不混用实机记录。
+2. `CheckpointTests` 430 项全过；`ReleaseCompatibility` 84 挂点/76 字段/漏斗门控/官方保护名单/`HardFlags` 通过；另跑原版历史/齿轮 IO 14 项、玩家生成工具 11 项。beta 与稳定版需要各自验收，不混用实机记录。
 3. 部署后：首/普通/手动节点往返、恢复后群拖、顾客贴图、正常交易/送客。
 4. 物品：售出/移动/旋转/拆分合并/嵌套容器/前柜台回溯，贴图位置与朝向正确，无“空气占用”。
 5. 多语言：切换语言后水质/纯度/评级/酿酒标签跟随；缺键回退；三个设置开关生效。

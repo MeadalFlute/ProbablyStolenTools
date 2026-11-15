@@ -62,6 +62,8 @@ dotnet run -c Release --project tests/NativeSaveHistoryTests
 - 修正后的完整套件：430 参考测试、84 挂点/76 字段、16 官方保护 owner、500 组原版耗水对照、发布扫描仅 files，HardFlags/Error 为空。
 - 游戏 Mono 精确布局对照、完整图六次往返、业务闭包/原存储/别名/预算/预检/最终差异检查、错误版本和缺类型负例、字节复现通过。
 - out/validation-beta-20261116-pass3.log、out/validation-20261116-review-safety.log 是开发验证；最终干净构建和部署以 out 内相应 clean-head 日志、包 provenance 和 deployment.json 为准。
+- 独立工具补查发现：flat source 解压到仓库 out 下时，既有 ../../src 链接会与随包本地 boundary 重复定义。工程改为本地副本优先；工具断言新增源码复建，合计 11 项。这是构建工程修正，不改变生成的 helper 字节。
+- 181ae76 的首份 beta 候选主包 536787 字节（约 524 KiB）；后续工程/文档提交重新构建会改变主 DLL informational version，最终来源以新包 provenance 为准，不复用旧哈希冒充新提交。
 - 0.46D 当前没有完整已安装程序集副本，不切换/下载 Steam 分支，不声称本轮重跑了稳定版本游戏 Mono 套件。既有稳定发布不覆盖。
 - 暂无 beta 实机测试：需建首/普通/手动/返店节点、跨天 F5/F7、物品移动/售出/旋转/群拖、顾客视觉、化学操作和设置；不要直接向玩家宣称所有 beta 功能已验收。
 - 本轮不额外性能优化，不复原 day94，不主动保存或修改活动存档，不清理未知玩家文件。

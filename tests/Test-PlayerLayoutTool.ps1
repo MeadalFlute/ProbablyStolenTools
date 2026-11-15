@@ -10,6 +10,7 @@ $tool = Join-Path $root 'tool'
 $fakeGame = Join-Path $root 'game'
 $managed = Join-Path $fakeGame 'Probably Stolen_Data\Managed'
 $mod = Join-Path $fakeGame 'Mods\ProbablyStolenTools'
+$sourceRoot = $root + '-source'
 function Check([bool]$value, [string]$name) {
     if (!$value) { throw $name }
     Write-Output "PASS $name"
@@ -53,6 +54,11 @@ try {
     finally { $ErrorActionPreference = $savedPreference }
     $refused = $refusalCode -ne 0 -and $refusalOutput -match 'Refusing to write' -and !(Test-Path -LiteralPath $forbidden)
     Check $refused 'generator refuses output in Managed'
+    # A flat export under repo/out also sees ../../src. Its local copy must
+    # win over that unrelated checkout rather than compiling both files.
+    Copy-Item -LiteralPath (Join-Path $tool 'source') -Destination $sourceRoot -Recurse
+    & dotnet build (Join-Path $sourceRoot 'StaticSnapshotLayouts.csproj') -c Release -p:PlayerLayoutTool=true *> $null
+    Check ($LASTEXITCODE -eq 0) 'bundled flat player source rebuilds even beside a repository shared source'
 }
 finally {
     $resolved = [IO.Path]::GetFullPath($root)
@@ -60,5 +66,11 @@ finally {
         [IO.Path]::GetFileName($resolved) -notmatch '^player-layout-fixture-[0-9a-f]{32}$') {
         throw 'Invalid cleanup target.'
     }
+    $sourceResolved = [IO.Path]::GetFullPath($sourceRoot)
+    if ([IO.Path]::GetDirectoryName($sourceResolved) -ne $parent -or
+        [IO.Path]::GetFileName($sourceResolved) -notmatch '^player-layout-fixture-[0-9a-f]{32}-source$') {
+        throw 'Invalid source cleanup target.'
+    }
     if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Recurse -Force }
+    if (Test-Path -LiteralPath $sourceResolved) { Remove-Item -LiteralPath $sourceResolved -Recurse -Force }
 }

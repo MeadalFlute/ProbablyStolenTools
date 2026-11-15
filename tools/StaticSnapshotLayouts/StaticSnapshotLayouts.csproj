@@ -8,6 +8,6 @@
   <ItemGroup>
     <PackageReference Include="Mono.Cecil" Version="0.11.5" />
     <Compile Include="../../src/ProbablyStolenTools/SnapshotTraversalBoundary.cs" Link="SnapshotTraversalBoundary.cs"
-             Condition="Exists('../../src/ProbablyStolenTools/SnapshotTraversalBoundary.cs')" />
+             Condition="!Exists('SnapshotTraversalBoundary.cs') and Exists('../../src/ProbablyStolenTools/SnapshotTraversalBoundary.cs')" />
   </ItemGroup>
 </Project>
