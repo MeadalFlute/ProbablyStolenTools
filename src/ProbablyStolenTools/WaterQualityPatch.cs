@@ -59,7 +59,7 @@ namespace ProbablyStolenTools
 #endif
                 if (slots == null) return;
                 bool water = Plugin.CfgWaterQuality?.Value ?? true;
-                bool chemistry = Plugin.CfgChemistry?.Value ?? true;
+                bool chemistry = (Plugin.CfgChemistry?.Value ?? true) && (Plugin.CfgChemistryLabels?.Value ?? true);
                 if (!water && !chemistry) return;
                 var analysis = LiquidComposition.Analyze(item);
                 if (analysis == null) return;
@@ -85,7 +85,7 @@ namespace ProbablyStolenTools
             {
                 if (builder == null) return;
                 bool water = Plugin.CfgWaterQuality?.Value ?? true;
-                bool chemistry = Plugin.CfgChemistry?.Value ?? true;
+                bool chemistry = (Plugin.CfgChemistry?.Value ?? true) && (Plugin.CfgChemistryLabels?.Value ?? true);
                 if (!water && !chemistry) return;
                 var analysis = LiquidComposition.Analyze(item);
                 if (analysis == null) return;

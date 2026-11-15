@@ -112,6 +112,22 @@ foreach (var type in types)
     Console.WriteLine("HOOK " + target.Name + "." + name);
     hooks++;
 }
+var rapidRecipes = types.Where(t => t.Name.StartsWith("Rapid", StringComparison.Ordinal) && t.Name.EndsWith("Patch", StringComparison.Ordinal))
+    .Select(t => t.GetCustomAttributesData().Single(a => a.AttributeType.FullName == "HarmonyLib.HarmonyPatch"))
+    .Select(a => (string)a.ConstructorArguments.Single(v => v.ArgumentType == typeof(string)).Value).ToHashSet();
+if (!rapidRecipes.SetEquals(new[] { "HandleNomoreReaction", "HandleMicrobeAlcohol", "HandleOrganicWasteMineralization",
+    "HandleAcidBaseMicrobeKill", "HandleStabilizingAgentSedimentation", "HandleProteinPrecipitation",
+    "HandleLipobondAgentSedimentation", "HandleAcidBaseNeutralization", "HandleChlorine" }))
+    throw new Exception("Rapid reaction boundary changed: thermal dispatcher/degradation must never be accelerated.");
+Console.WriteLine("PASS explicit rapid-reaction allowlist; all thermal dispatch, boiling, heat extraction and degradation hooks excluded");
+var nativeTag = game.GetType("TagState", true);
+var integerTag = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(nativeTag);
+nativeTag.GetField("valueInt").SetValue(integerTag, 13);
+nativeTag.GetField("valueFloat").SetValue(integerTag, 13.9f);
+if (nativeTag.GetMethod("GetInt").ReturnType != typeof(int)
+    || (int)nativeTag.GetMethod("GetInt").Invoke(integerTag, null) != 13)
+    throw new Exception("Native hydroponic progress tag is no longer an exact integer.");
+Console.WriteLine("PASS native work-tag integer semantics: separate float value does not accumulate into GetInt progress");
 var roots = new Dictionary<string, string[]>
 {
     ["BargainUIManager"] = new[] { "trackedClient", "baseTradeRepMultiplier", "discountOffered",

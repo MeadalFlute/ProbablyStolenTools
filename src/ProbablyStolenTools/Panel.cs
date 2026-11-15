@@ -44,6 +44,8 @@ namespace ProbablyStolenTools
         private RectTransform _settingsButton, _foldButton, _headerControls;
         private bool _settingsOpen;
         private readonly List<(RectTransform Rect, Toggle Toggle, ConfigEntry<bool> Config)> _settings = new();
+        private RectTransform _chemistryTop, _chemistryBottom;
+        private int _chemistryStart, _chemistryEnd;
         private readonly List<(RectTransform Rect, TextMeshProUGUI Label, CustomUIElement Element,
             Plugin.HotkeyBinding Binding)> _keyRows = new();
         private TextMeshProUGUI _optionsHeading, _keysHeading, _storageUsage;
@@ -157,11 +159,14 @@ namespace ProbablyStolenTools
                 {
                     string usage = _storageText.Get(Rewind.DiskUsage, Rewind.MaxDiskBytes, _localeCode);
                     if (_storageUsage.text != usage) _storageUsage.text = usage;
-                    foreach (var setting in _settings)
+                    for (int index = 0; index < _settings.Count; index++)
                     {
+                        var setting = _settings[index];
                         setting.Toggle.SetIsOnWithoutNotify(setting.Config.Value);
                         setting.Toggle.interactable = setting.Config != Plugin.CfgAutoSubmit
                             && setting.Config != Plugin.CfgAlwaysOverwrite || Plugin.CfgAutoAppraisal.Value;
+                        if (index > _chemistryStart && index < _chemistryEnd)
+                            setting.Toggle.interactable = Plugin.CfgChemistry.Value;
                     }
                 }
             }
@@ -239,7 +244,7 @@ namespace ProbablyStolenTools
             _settingsButton = settingsButton.Rect;
             _body = NewObject("body", _nativeContent);
             _hint = Text("status", _body.transform, 12, new Color(0.45f, 0.72f, 0.90f));
-            foreach (string label in new[] { InspectionLocale.Text("时间", "Time"), InspectionLocale.Text("节点", "Checkpoint"),
+            foreach (string label in new[] { InspectionLocale.Text("日期", "Day"), InspectionLocale.Text("节点", "Checkpoint"),
                 InspectionLocale.Text("现金", "Cash"), InspectionLocale.Text("状态", "State") })
             {
                 var text = Text("column", _body.transform, 12, new Color(0.42f, 0.62f, 0.82f));
@@ -286,12 +291,16 @@ namespace ProbablyStolenTools
             NewSetting(InspectionLocale.Text("双击物品快速鉴定", "Double-click to inspect"), Plugin.CfgDoubleClickInspection);
             NewSetting(InspectionLocale.Text("显示快速鉴定摘要", "Show quick inspection summary"), Plugin.CfgQuickInspection);
             NewSetting(InspectionLocale.Text("水质标注", "Water quality labels"), Plugin.CfgWaterQuality);
+            _chemistryStart = _settings.Count;
+            _chemistryTop = Raw("chemistry-divider-top", _settingsContent, new Color(0.42f, 0.62f, 0.72f, 0.6f)).rectTransform;
             NewSetting(InspectionLocale.Text("化学辅助", "Chemistry assist"), Plugin.CfgChemistry);
-            NewSetting(InspectionLocale.Text("扩展化学标注容量", "Extended chemistry capacities"), Plugin.CfgChemistryExtendedContainers);
-            NewSetting(InspectionLocale.Text("区分空容器名称", "Distinct empty container names"), Plugin.CfgEmptyContainerNames);
+            NewSetting(InspectionLocale.Text("化学成分标注", "Composition labels"), Plugin.CfgChemistryLabels);
+            NewSetting(InspectionLocale.Text("容器自动改名", "Container auto naming"), Plugin.CfgContainerAutoRename);
             NewSetting(InspectionLocale.Text("自动搅拌", "Auto blend"), Plugin.CfgAutoBlend);
-            NewSetting(InspectionLocale.Text("自动萃取", "Auto extract"), Plugin.CfgAutoExtraction);
-            NewSetting(InspectionLocale.Text("隔夜产物预览", "Overnight output preview"), Plugin.CfgFacilityPreview);
+            NewSetting(InspectionLocale.Text("快速萃取", "Rapid extraction"), Plugin.CfgAutoExtraction);
+            NewSetting(InspectionLocale.Text("机器产物预览", "Machine output preview"), Plugin.CfgFacilityPreview);
+            _chemistryEnd = _settings.Count;
+            _chemistryBottom = Raw("chemistry-divider-bottom", _settingsContent, new Color(0.42f, 0.62f, 0.72f, 0.6f)).rectTransform;
             NewSetting(InspectionLocale.Text("酿酒标注", "Wine annotations"), Plugin.CfgWineAppraisal);
             NewSetting(InspectionLocale.Text("保留上一天节点", "Keep previous day checkpoints"), Plugin.CfgKeepPreviousDay);
             NewSetting(InspectionLocale.Text("整日回退需确认", "Confirm whole-day rewind"), Plugin.CfgConfirmWholeDay);
@@ -456,7 +465,8 @@ namespace ProbablyStolenTools
                 for (int i = 0; i < AllKeys.Length; i++)
                 {
                     var key = AllKeys[i];
-                    if (key == KeyCode.None || IsMouseKey(key)) continue;
+                    if (key == KeyCode.None || IsMouseKey(key)
+                        && key != KeyCode.Mouse2 && key != KeyCode.Mouse3 && key != KeyCode.Mouse4) continue;
                     if (Input.GetKeyDown(key)) { EndCapture(key); return; }
                 }
             }
@@ -525,6 +535,10 @@ namespace ProbablyStolenTools
             if (element.text != null) element.text.enabled = false;
             DisableLayout(element.Rect);
             row.Time = Text("time", row.Go.transform, 13, new Color(0.52f, 0.82f, 0.96f));
+            row.Time.enableAutoSizing = true;
+            row.Time.fontSizeMin = 9;
+            row.Time.fontSizeMax = 13;
+            row.Time.enableWordWrapping = false;
             row.Label = Text("label", row.Go.transform, 13, new Color(0.82f, 0.72f, 1.0f));
             row.Cash = Text("cash", row.Go.transform, 13, new Color(0.45f, 0.92f, 0.68f), TextAlignmentOptions.Right);
             row.State = Text("state", row.Go.transform, 12, new Color(1.0f, 0.62f, 0.50f), TextAlignmentOptions.Right);
@@ -554,7 +568,7 @@ namespace ProbablyStolenTools
             _shown = 0;
             var closed = CustomerCheckpoint.ClosedNode;
             if (closed != null && closed.Day == day && closed.Graph == null)
-                Bind(_rows[_shown++], closed, closed.At, InspectionLocale.Text("闭店", "Closed"), closed.Cash,
+                Bind(_rows[_shown++], closed, closed.Day, InspectionLocale.Text("闭店", "Closed"), closed.Cash,
                     closed.Graph == null ? closed.ExpiredReason : closed.Id == _activeId ? InspectionLocale.Text("当前", "Current")
                         : CustomerCheckpoint.IsFuture(closed) ? InspectionLocale.Text("后续", "Later") : "", closed.Graph != null);
             var nodes = CustomerCheckpoint.Nodes;
@@ -562,8 +576,8 @@ namespace ProbablyStolenTools
             {
                 var node = nodes[i];
                 if (_shown >= _rows.Count) continue;
-                string label = InspectionLocale.Text($"第 {node.Day} 天 · ", $"Day {node.Day} - ") + CustomerCheckpoint.Name(node);
-                Bind(_rows[_shown++], node, node.At, label, node.Cash,
+                string label = CustomerCheckpoint.Name(node);
+                Bind(_rows[_shown++], node, node.Day, label, node.Cash,
                     node.Id == _activeId ? InspectionLocale.Text("当前", "Current") : CustomerCheckpoint.IsFuture(node) ? InspectionLocale.Text("后续", "Later") : "", true);
             }
             for (int i = Rewind.Points.Count - 1; i >= 0; i--)
@@ -571,7 +585,7 @@ namespace ProbablyStolenTools
                 var p = Rewind.Points[i];
                 if (_shown >= _rows.Count || p.Day != day || !p.IsDayStart || p.State != 2 || p.SlotId != Plugin.Store()?.saveSlotId
                     || p.RunId != Plugin.Store()?.runID) continue;
-                Bind(_rows[_shown++], p, p.At, InspectionLocale.Text("开业前", "Day start"), p.Cash, InspectionLocale.Text("存档", "File"), true);
+                Bind(_rows[_shown++], p, p.Day, InspectionLocale.Text("开业前", "Day start"), p.Cash, InspectionLocale.Text("存档", "File"), true);
                 break;
             }
             // 建立失败的节点也列出来：名字可见、状态为“损坏”，悬停显示失败原因。
@@ -580,7 +594,7 @@ namespace ProbablyStolenTools
             {
                 var failure = failures[i];
                 var row = _rows[_shown++];
-                Bind(row, null, failure.At, failure.Label, 0, InspectionLocale.Text("失败", "Failed"), false);
+                Bind(row, null, failure.Day, failure.Label, 0, InspectionLocale.Text("失败", "Failed"), false);
                 row.Cash.text = "—";
                 row.Bg.color = new Color(0.42f, 0.14f, 0.16f, row.IdleColor.a);
                 try { row.Element?.SetTooltip(failure.Reason); } catch { }
@@ -599,11 +613,11 @@ namespace ProbablyStolenTools
 #if !MONO
         [HideFromIl2Cpp]
 #endif
-        private void Bind(Row row, object node, DateTime time, string label, int cash, string state, bool usable)
+        private void Bind(Row row, object node, int day, string label, int cash, string state, bool usable)
         {
             row.Node = node;
             row.Go.SetActive(true);
-            row.Time.text = time.ToString("HH:mm:ss");
+            row.Time.text = InspectionLocale.Text($"第 {day} 天", $"Day {day}");
             row.Label.text = label;
             row.Cash.text = cash.ToString();
             row.State.text = state;
@@ -637,7 +651,7 @@ namespace ProbablyStolenTools
             _settingsGo.SetActive(_settingsOpen);
             float settingsHeight = Math.Max(1, contentH - 24);
             Place(_settingsViewport, 0, 0, w, settingsHeight);
-            var settingsLayout = new PanelSettingsLayout(w, _settings.Count, _keyRows.Count);
+            var settingsLayout = new PanelSettingsLayout(w, _settings.Count, _keyRows.Count, _chemistryStart, _chemistryEnd);
             float scrollOffset = settingsLayout.ScrollOffset(_settingsContent.anchoredPosition.y, settingsHeight);
             Place(_settingsContent, 0, scrollOffset, w, settingsLayout.ContentHeight);
             Place(_optionsHeading.rectTransform, PanelSettingsLayout.Padding, -PanelSettingsLayout.Padding,
@@ -648,8 +662,17 @@ namespace ProbablyStolenTools
             {
                 var setting = _settings[i];
                 Place(setting.Rect, settingsLayout.Toggle(i));
+                if (i > _chemistryStart && i < _chemistryEnd)
+                {
+                    var bounds = settingsLayout.Toggle(i);
+                    Place(setting.Rect, new PanelBounds(bounds.X + 16, bounds.Y, bounds.Width - 16, bounds.Height));
+                }
                 setting.Toggle.interactable = i != 1 && i != 2 || Plugin.CfgAutoAppraisal.Value;
+                if (i > _chemistryStart && i < _chemistryEnd)
+                    setting.Toggle.interactable = Plugin.CfgChemistry.Value;
             }
+            Place(_chemistryTop, PanelSettingsLayout.Padding, -settingsLayout.DividerY(_chemistryStart), settingsLayout.RowWidth, 1);
+            Place(_chemistryBottom, PanelSettingsLayout.Padding, -settingsLayout.DividerY(_chemistryEnd), settingsLayout.RowWidth, 1);
             for (int i = 0; i < _keyRows.Count; i++)
             {
                 var row = _keyRows[i];

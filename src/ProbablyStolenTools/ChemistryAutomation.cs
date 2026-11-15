@@ -33,7 +33,7 @@ namespace ProbablyStolenTools
             else if (_placements == 0) Drain();
             if (_groups == 0) GroupPlan.Clear();
         }
-        internal static void Reset() { Pending.Clear(); GroupPlan.Clear(); }
+        internal static void Reset() { Pending.Clear(); GroupPlan.Clear(); HydroponicWorkWatch.Reset(); }
 
         private static GameItem Blender(GameGridInventory grid)
         {
@@ -130,6 +130,7 @@ namespace ProbablyStolenTools
                     if (grid == null || bottle == null || !GeneralHelper.IsItemOwned(machine)
                         || !GeneralHelper.IsItemOwned(bottle)) continue;
                     string signature = ChemistryRules.Signature(ids, ChemistryData.Parts(bottle));
+                    bool played = false;
                     foreach (var item in new List<GameItem>(grid.childItems))
                     {
                         if (!ReferenceEquals(item.parentInventory, grid) || !GeneralHelper.IsItemOwned(item)
@@ -140,6 +141,7 @@ namespace ProbablyStolenTools
                         if (output <= 0 || output + ChemistryData.Total(ChemistryData.Parts(bottle))
                             > ChemistryData.Capacity(bottle)) continue;
                         signature = product;
+                        if (!played) { AudioManager.Instance?.Play2("blender"); played = true; }
                         ChemicalHelper.BlendInto(item, bottle, MachineBlender.GetLoss(machine));
                         EventLog.Debug("[Chemistry] AUTO BLEND machine=" + machine.uniqueId + " product=" + product + " ul=" + output);
                     }
@@ -192,6 +194,10 @@ namespace ProbablyStolenTools
             catch (Exception e) { Warn("extract", e); }
             finally { _extracting = false; }
         }
+        internal static bool CanReact(GameItem container)
+            => Available && Plugin.CfgAutoExtraction?.Value == true && !_extracting
+                && container?.parentInventory != null && container.IsTag("LIQUID_CONTAINER_TAG")
+                && !container.IsTag("WINE_CONTAINER_TAG") && GeneralHelper.IsItemOwned(container);
         internal static int Alcohol(GameItem container)
         {
             if (!Available || Plugin.CfgAutoExtraction?.Value != true) return 0;

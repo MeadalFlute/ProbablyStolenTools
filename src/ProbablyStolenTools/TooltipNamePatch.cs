@@ -66,8 +66,18 @@ namespace ProbablyStolenTools
         {
             if (!TooltipNameScope.Active || __instance == null || !InspectionLocale.AnnotationsReady) return;
             if (Plugin.CfgChemistry != null && !Plugin.CfgChemistry.Value) return;
+            if (Plugin.CfgContainerAutoRename?.Value == false) return;
             try
             {
+#if MONO
+                if (__instance.identifier == "hydroponic")
+                {
+                    var seed = MachineHydroponic.GetInputSlot(__instance)?.childItem;
+                    if (seed != null)
+                        __result = InspectionLocale.Label(AnnotationLabels.FacilityItem(seed.identifier));
+                    return;
+                }
+#endif
                 if (LiquidComposition.NoRename(__instance)) return;
                 var analysis = LiquidComposition.Analyze(__instance);
                 if (analysis == null) return;

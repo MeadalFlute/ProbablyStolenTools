@@ -6,6 +6,61 @@ internal static class ChemistryRulesTests
     {
         var ids = new[] { "water", "alcohol", "plant_matter", "dream_cap_mush", "dream_cap_extract",
             "nightmare_cap_mush", "nightmare_extract", "coffee_mush", "caffeine", "mineral" };
+        test("facility harvest resolves bloomberry's actual item key and seeds keep their native name key", () =>
+        {
+            check(AnnotationLabels.FacilityItem("bloomberry").Key == "item_wine_berry_name", "native harvested item");
+            check(AnnotationLabels.FacilityItem("coffee_bean").Key == "item_coffee_bean_name", "native coffee seed");
+            check(AnnotationLabels.FacilityItem("hydroreed_seed").Key == "item_hydroreed_seed_name", "native reed seed");
+        });
+        test("rapid reaction preserves native rounding and completes integer-sized proportional recipes", () =>
+        {
+            foreach (double rate in new[] { .05, .1, .2 })
+            {
+                int amount = int.MaxValue;
+                long output = 0;
+                int Step()
+                {
+                    if (amount <= 0) return 0;
+                    int reacted = Math.Min(amount, Math.Max(1, (int)(amount * rate)));
+                    amount -= reacted; output += reacted;
+                    return 1;
+                }
+                check(ReactionCompletion.Finish(Step, () => new[] { amount }, out int steps), "bounded completion");
+                check(amount == 0 && output == int.MaxValue && steps < ReactionCompletion.MaxSteps, "mass and convergence");
+            }
+        });
+        test("rapid reaction stops if a third-party handler reports success without changes", () =>
+        {
+            int calls = 0;
+            check(ReactionCompletion.Finish(() => { calls++; return 1; }, () => new[] { 10 }, out _), "unchanged");
+            check(calls == 1, "no spin");
+        });
+        test("rapid reaction synchronizes deferred native base tags before every derived read", () =>
+        {
+            int baseline = 8, modified = 10, syncs = 0;
+            int Step()
+            {
+                if (modified <= 0) return 0;
+                baseline = modified - Math.Min(modified, 2);
+                return 1;
+            }
+            check(ReactionCompletion.Finish(Step, () => new[] { modified }, out _,
+                () => { modified = baseline; syncs++; }), "completed");
+            check(baseline == 0 && modified == 0 && syncs == 5, "base and derived state agree");
+        });
+        test("rapid reaction budget bounds third-party unending changes", () =>
+        {
+            int calls = 0;
+            check(!ReactionCompletion.Finish(() => { calls++; return 1; }, () => new[] { calls }, out _), "bounded");
+            check(calls == ReactionCompletion.MaxSteps, "budget");
+        });
+        test("rapid reaction does not hide a native failure", () =>
+        {
+            bool failed = false;
+            try { ReactionCompletion.Finish(() => throw new InvalidOperationException(), () => new[] { 1 }, out _); }
+            catch (InvalidOperationException) { failed = true; }
+            check(failed, "caller handles native exceptions");
+        });
         test("blend excludes carriers and sub-one-percent impurities", () =>
         {
             var parts = new[] { 90000, 0, 1000, 9000, 0, 0, 0, 0, 0, 999 };

@@ -40,26 +40,40 @@ namespace ProbablyStolenTools
         }
 
         private static void Header(RichTextBuilder b) => b.AddLine(
-            T("预计隔夜（按当前内容）", "Next cycle (current contents)"), true, RenderHandler.ColorPalette.LightCyan);
-        private static void Output(RichTextBuilder b, string text) => b.AddLine(
-            T("产物：", "Output: ") + text, true, RenderHandler.ColorPalette.LightGreen);
-        private static void Warning(RichTextBuilder b, string text) => b.AddLine(
-            T("产物：", "Output: ") + text, true, RenderHandler.ColorPalette.Red);
-        private static string Amount(long ul) => (ul / 1000d).ToString("0.###", CultureInfo.InvariantCulture) + " mL";
+            T("预期今夜产出：", "Expected tonight: "), true, RenderHandler.ColorPalette.DarkOrange);
+        private static void Values(RichTextBuilder b, string heading, IEnumerable<string> values,
+            RenderHandler.ColorPalette color = RenderHandler.ColorPalette.LightGreen)
+        {
+            b.Add(heading, RenderHandler.ColorPalette.LightBlue);
+            bool first = true;
+            foreach (string value in values)
+            {
+                if (!first) b.Add(T("、", ", "), RenderHandler.ColorPalette.LightBlue);
+                b.Add(value, color);
+                first = false;
+            }
+            if (first) b.Add(T("无", "None"), color);
+            b.NextLine();
+        }
+        private static void Output(RichTextBuilder b, string text) => Outputs(b, new[] { text });
+        private static void Outputs(RichTextBuilder b, IEnumerable<string> values) => Values(b, T("产物：", "Output: "), values);
+        private static void Warning(RichTextBuilder b, string text) => Values(b,
+            T("产物：", "Output: "), new[] { text }, RenderHandler.ColorPalette.Red);
+        private static string Amount(long ul) => (ul / 1000d).ToString("0.###", CultureInfo.InvariantCulture) + "mL";
+        private static string WithAmount(string name, string amount) => name + T("（", " (") + amount + T("）", ")");
         private static string LiquidName(int i) => InspectionLocale.Label(
             AnnotationLabels.Liquid(Liquid.Liquids[i].identifier, Liquid.Liquids[i].displayName));
         private static string ItemName(string id)
         {
             if (string.IsNullOrEmpty(id)) return T("未知产物", "Unknown product");
-            return InspectionLocale.Label(new NativeLabel("Item", "item_" + id + "_name", id, id));
+            return InspectionLocale.Label(AnnotationLabels.FacilityItem(id));
         }
         private static void Removed(RichTextBuilder b, int[] amounts)
         {
             var values = new List<string>();
             for (int i = 0; i < amounts.Length; i++)
-                if (amounts[i] > 0) values.Add(LiquidName(i) + " " + Amount(amounts[i]));
-            b.AddLine(T("去除：", "Remove: ") + (values.Count == 0 ? T("无", "None") : string.Join(", ", values)),
-                true, RenderHandler.ColorPalette.LightCyan);
+                if (amounts[i] > 0) values.Add(WithAmount(LiquidName(i), Amount(amounts[i])));
+            Values(b, T("去除：", "Remove: "), values);
         }
         private static int[] Difference(int[] before, int[] after)
         {
@@ -123,7 +137,7 @@ namespace ProbablyStolenTools
             }
             var result = FacilityProjection.Purify(parts, water, MachinePurifier.GetMaxPurityCap(Quality(machine)), budget, priorities);
             Removed(b, Difference(parts, result));
-            Output(b, LiquidName(water) + " " + (result[water] * 100d / total).ToString("0.##", CultureInfo.InvariantCulture) + "%");
+            Output(b, WithAmount(LiquidName(water), (result[water] * 100d / total).ToString("0.##", CultureInfo.InvariantCulture) + "%"));
         }
 
         private static void Evaporator(RichTextBuilder b, GameItem machine)
@@ -149,9 +163,9 @@ namespace ProbablyStolenTools
                 int recovered = (int)Math.Round(removed[i] * Math.Max(0, Math.Min(100, Quality(machine))) / 100d);
                 // Native AddLiquid caps each component individually, not their sum.
                 recovered = Math.Min(recovered, Math.Max(0, ChemistryData.Capacity(receiver) - existing[i]));
-                if (recovered > 0) values.Add(LiquidName(i) + " " + Amount(recovered));
+                if (recovered > 0) values.Add(WithAmount(LiquidName(i), Amount(recovered)));
             }
-            Output(b, values.Count == 0 ? T("无回收液", "No distillate") : string.Join(", ", values));
+            Outputs(b, values.Count == 0 ? new[] { T("无回收液", "No distillate") } : (IEnumerable<string>)values);
         }
 
         private static void Fish(RichTextBuilder b, GameItem machine)
@@ -195,13 +209,15 @@ namespace ProbablyStolenTools
         {
             var seed = Slot(machine, 3);
             if (seed == null) return;
+            HydroponicWorkWatch.Shown(machine);
             Header(b);
             var bottle = Slot(machine, 2);
             int use = HydroponicHelper.GetWaterUsePerCycle(seed);
             var initial = ChemistryData.Parts(bottle);
             if (bottle == null || FacilityProjection.Total(initial) / 1000 < use)
             {
-                Warning(b, T("水量不足，需要 ", "Insufficient water; requires ") + use + " mL");
+                Warning(b, WithAmount(T("水量不足", "Insufficient water"),
+                    Amount(FacilityProjection.Total(initial)) + "/" + (use * 1L).ToString(CultureInfo.InvariantCulture) + "mL"));
                 return;
             }
             if (!CheckPower(b, machine)) return;
@@ -254,7 +270,11 @@ namespace ProbablyStolenTools
             int next = Math.Min(required, current + progress);
             int machineTarget = growing ? ChemistryData.Int(machine, "MACHINE_PROGRESS_TARGET_TAG") : required;
             int machineProgress = growing ? ChemistryData.Int(machine, "MACHINE_PROGRESS_CURRENT_TAG") : 0;
-            if (machineProgress + progress < machineTarget) { Output(b, T("继续生长 ", "Growing ") + next + "/" + required); return; }
+            if (machineProgress + progress < machineTarget)
+            {
+                Output(b, WithAmount(T("继续生长", "Growing"), current + "→" + next + "/" + required));
+                return;
+            }
             Harvest(b, machine, seed, health / 100);
         }
 
@@ -288,14 +308,14 @@ namespace ProbablyStolenTools
                     count = Math.Max(1, count - 1) + 1;
                     break;
                 case "hydroreed_seed":
-                    string seeds = ItemName("hydroreed_seed") + " 1-2";
+                    string seeds = WithAmount(ItemName("hydroreed_seed"), "1-2");
                     int filters = Modules(machine, "farm_module_hydroreed_filter");
-                    Output(b, seeds + (filters > 0 ? ", " + ItemName("hydroreed_filter") + " " + filters : ""));
+                    Outputs(b, filters > 0 ? new[] { seeds, WithAmount(ItemName("hydroreed_filter"), filters.ToString()) } : new[] { seeds });
                     return;
             }
             int minimum = plant == "coffee_bean" || plant == "bloomberry_seed" || plant == "fillerweed_seed" ? 1 : 0;
             int low = Math.Max(minimum, (int)Math.Floor(count * mult)), high = Math.Max(minimum, (int)Math.Ceiling(count * mult));
-            Output(b, ItemName(id) + " " + (low == high ? low.ToString() : low + "-" + high));
+            Output(b, WithAmount(ItemName(id), low == high ? low.ToString() : low + "-" + high));
         }
     }
 }

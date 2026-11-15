@@ -22,6 +22,19 @@ internal static class CheckpointDayTests
             gate.Reset();
             check(!gate.Completed && !gate.Loaded(93, 2, "run"));
         });
+        test("chemistry dividers preserve row separation and hotkey scroll reachability", () =>
+        {
+            foreach (float width in new[] { 380f, 480f, 900f })
+            {
+                var layout = new PanelSettingsLayout(width, 18, 5, 7, 13);
+                check(layout.Toggle(7).Y - layout.Toggle(6).Y == PanelSettingsLayout.RowHeight + 16);
+                check(layout.Toggle(13).Y - layout.Toggle(12).Y == PanelSettingsLayout.RowHeight + 16);
+                check(layout.DividerY(7) > layout.Toggle(6).Y + layout.Toggle(6).Height);
+                check(layout.DividerY(13) > layout.Toggle(12).Y + layout.Toggle(12).Height);
+                check(layout.HotkeySectionY > layout.Toggle(17).Y + layout.Toggle(17).Height);
+                check(layout.ScrollOffset(float.MaxValue, 180) + 180 == layout.ContentHeight);
+            }
+        });
         test("two days each retain twenty nodes without cross-day eviction", () =>
         {
             var h = History();

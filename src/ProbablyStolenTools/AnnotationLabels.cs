@@ -76,6 +76,11 @@ namespace ProbablyStolenTools
 
     internal static class AnnotationLabels
     {
+        internal static NativeLabel FacilityItem(string id)
+        {
+            if (id == "bloomberry") id = "wine_berry";
+            return new NativeLabel("Item", "item_" + id + "_name", id, id);
+        }
         private static NativeLabel Mechanic(string key, string chinese, string english)
             => new("Mechanic", key, chinese, english);
 

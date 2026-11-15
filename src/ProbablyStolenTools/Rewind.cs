@@ -926,6 +926,8 @@ namespace ProbablyStolenTools
                     {
                         EventLog.Write("[Rewind] native load completion not verified within 90s; staged checkpoint retained, resume cancelled.");
                         PanelNotice.Show("回溯载入未确认完成，请查看日志", true);
+                        if (NewGameData.Instance != null && NewGameData.Instance.saveFile == Rewind.PendingLoadFile)
+                            NewGameData.Instance.saveFile = null;
                         Rewind.PendingPoint = null;
                         Rewind.PendingLoadFile = null;
                         Rewind.LoadGate.Reset();

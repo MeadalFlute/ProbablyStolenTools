@@ -17,20 +17,24 @@ namespace ProbablyStolenTools
             => x >= 0 && x < SettingsX(width) - Gap && y >= 0 && y <= Height;
     }
 
-    internal readonly record struct PanelSettingsLayout(float Width, int ToggleCount, int KeyCount)
+    internal readonly record struct PanelSettingsLayout(float Width, int ToggleCount, int KeyCount,
+        int GroupStart = -1, int GroupEnd = -1)
     {
         internal const float Padding = 4, Gap = 8, RowHeight = 34, SectionHeight = 26;
         internal float RowWidth => Math.Max(1, Width - Padding * 2);
         internal float KeyWidth => Math.Min(144, RowWidth * 0.44f);
         internal float KeyX => Padding + RowWidth - KeyWidth;
         internal float LabelWidth => Math.Max(1, RowWidth - KeyWidth - Gap);
-        internal float HotkeySectionY => Padding + SectionHeight + ToggleCount * RowHeight + Gap;
+        internal float DividerSpace(int index) => (GroupStart >= 0 && index >= GroupStart ? Gap * 2 : 0)
+            + (GroupEnd >= 0 && index >= GroupEnd ? Gap * 2 : 0);
+        internal float DividerY(int index) => Toggle(index).Y - Gap;
+        internal float HotkeySectionY => Padding + SectionHeight + ToggleCount * RowHeight + DividerSpace(ToggleCount) + Gap;
         internal float ResetY => HotkeySectionY + SectionHeight + KeyCount * RowHeight + Gap;
         internal float LogY => ResetY + RowHeight + Gap;
         internal float StorageY => LogY + RowHeight + Gap;
         internal float ContentHeight => StorageY + RowHeight * 2 + Padding;
         internal PanelBounds Toggle(int index)
-            => new(Padding, Padding + SectionHeight + index * RowHeight, RowWidth, RowHeight - 2);
+            => new(Padding, Padding + SectionHeight + index * RowHeight + DividerSpace(index), RowWidth, RowHeight - 2);
         internal PanelBounds Key(int index)
             => new(Padding, HotkeySectionY + SectionHeight + index * RowHeight, RowWidth, RowHeight - 2);
         internal float ScrollOffset(float offset, float viewportHeight)

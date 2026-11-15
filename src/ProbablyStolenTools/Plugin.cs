@@ -39,6 +39,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgQuickInspection;
         internal static ConfigEntry<bool> CfgWaterQuality;
         internal static ConfigEntry<bool> CfgChemistry;
+        internal static ConfigEntry<bool> CfgChemistryLabels, CfgContainerAutoRename;
         internal static ConfigEntry<bool> CfgChemistryExtendedContainers, CfgEmptyContainerNames;
         internal static ConfigEntry<bool> CfgAutoBlend, CfgAutoExtraction, CfgFacilityPreview;
         internal static ConfigEntry<bool> CfgWineAppraisal;
@@ -111,6 +112,9 @@ namespace ProbablyStolenTools
                 case KeyCode.RightAlt: return "R-Alt";
                 case KeyCode.BackQuote: return "`";
                 case KeyCode.Space: return "Space";
+                case KeyCode.Mouse2: return InspectionLocale.Text("鼠标中键", "Mouse middle");
+                case KeyCode.Mouse3: return InspectionLocale.Text("鼠标侧键1", "Mouse side 1");
+                case KeyCode.Mouse4: return InspectionLocale.Text("鼠标侧键2", "Mouse side 2");
             }
 
             string name = key.ToString();
@@ -250,8 +254,13 @@ namespace ProbablyStolenTools
                 "Show water-quality names and mismatch highlights on liquid containers.");
             CfgWaterQuality.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
             CfgChemistry = Config.Bind("Chemistry", "Enabled", true,
-                "Show the composition / share / purity / grade row and rename liquid containers by their main component.");
+                "Master switch for chemistry annotations, tooltip naming, automatic blending, rapid extraction and facility previews.");
             CfgChemistry.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
+            CfgChemistryLabels = Config.Bind("Chemistry", "CompositionLabels", true,
+                "Show chemical composition, share, purity and grade annotations.");
+            CfgChemistryLabels.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
+            CfgContainerAutoRename = Config.Bind("Chemistry", "ContainerAutoRename", true,
+                "Rename liquid containers and seeded hydroponic machines in tooltips only.");
             CfgChemistryExtendedContainers = Config.Bind("Chemistry", "ExtendedContainers", true,
                 "Include containers from 150 mL with no upper capacity limit. Droppers and measuring vessels remain excluded from component naming.");
             CfgChemistryExtendedContainers.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
@@ -260,7 +269,7 @@ namespace ProbablyStolenTools
             CfgAutoBlend = Config.Bind("Chemistry", "AutoBlend", true,
                 "Blend compatible ingredients after player placement. Mixed-product batches leave incompatible ingredients at their source; whole-item outputs must fit.");
             CfgAutoExtraction = Config.Bind("Chemistry", "AutoExtraction", true,
-                "Adding alcohol converts all dream/nightmare/coffee mush into equal amounts of extract and plant matter. Does not consume alcohol; volume may exceed capacity.");
+                "Complete extraction and reagent reactions in one step. Preserve reaction conditions and thermal evaporation/degradation rates; volume may exceed capacity.");
             CfgFacilityPreview = Config.Bind("Chemistry", "FacilityPreview", true,
                 "Show read-only next-cycle projections for aquaculture, purifiers, hydroponics and evaporators.");
             CfgWineAppraisal = Config.Bind("Wine", "Enabled", true,
