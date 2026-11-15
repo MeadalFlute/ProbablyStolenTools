@@ -161,7 +161,9 @@ namespace ProbablyStolenTools
         private readonly bool _probeValues;
         private readonly List<Entry> _entries = new();
         private readonly List<(IntPtr Owner, IReadOnlyList<StateSlot> Slots, IStateBlock Payload)> _blocks = new();
-        private readonly HashSet<IntPtr> _objects = new();
+        // Discover already deduplicates every queued ID in _sources. Keep only
+        // the processed sequence here, without a second per-checkpoint hash set.
+        private readonly List<IntPtr> _objects = new();
         private readonly Dictionary<IntPtr, (IntPtr Parent, string Field)> _sources = new();
         private bool _disposed;
         private long _revision;
@@ -175,7 +177,7 @@ namespace ProbablyStolenTools
         internal long TypedComparisonCount => (_access as IStateComparisonDiagnostics)?.TypedComparisonCount ?? 0;
         internal long ReferenceComparisonCount => (_access as IStateReferenceComparer)?.ReferenceComparisonCount ?? 0;
         internal IEnumerable<IntPtr> Objects => _objects;
-        internal bool Contains(IntPtr id) => _objects.Contains(id);
+        internal bool Contains(IntPtr id) => _sources.ContainsKey(id);
 
         internal IStateAccess CreateIndependentAccess()
         {
@@ -322,7 +324,7 @@ namespace ProbablyStolenTools
             if (_access is not IStateOwnerRepairAccess || runtime._access is not IStatePartitionWriteAccess)
                 throw new InvalidOperationException("Snapshot backend does not permit partition writes.");
             if (ObjectCount > maxObjects || SlotCount > maxSlots || runtime.SlotCount > maxSlots
-                || !_objects.SetEquals(runtime._objects))
+                || ObjectCount != runtime.ObjectCount || _objects.Any(id => !runtime.Contains(id)))
                 throw new InvalidOperationException("Partition object coverage or metadata budget differs.");
             var remaining = new Dictionary<(IntPtr Owner, StateSlot Slot), IntPtr>();
             runtime.VisitCapturedSlots((owner, slot, reference) =>

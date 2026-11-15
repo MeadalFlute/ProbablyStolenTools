@@ -37,6 +37,16 @@ internal static class SnapshotArrayBudgetTests
 
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
+        test("raising object cap does not expand traversal or logical payload below the original cap", () =>
+        {
+            var root = new Cell[100];
+            for (int i = 0; i < root.Length; i++) root[i] = new Cell { Number = i, Pair = (i, new object()) };
+            using var ordinary = StateGraph.Capture(Access(root), new[] { ManagedObjects.Id(root) }, maxObjects: 200000);
+            using var raised = StateGraph.Capture(Access(root), new[] { ManagedObjects.Id(root) }, maxObjects: 1000000);
+            check(ordinary.ObjectCount == raised.ObjectCount && ordinary.SlotCount == raised.SlotCount
+                && ordinary.ByteCount == raised.ByteCount && ordinary.Objects.ToHashSet().SetEquals(raised.Objects));
+            check(ordinary.Differences().Count == 0 && raised.Differences().Count == 0);
+        });
         test("byte bool and decimal array budgets match actual eight-byte tokens in capture and census", () =>
         {
             foreach (Array root in new Array[] { new byte[] { 1, 2 }, new bool[] { true, false }, new decimal[] { 1m, 2m } })

@@ -21,6 +21,10 @@ namespace ProbablyStolenTools
         private static readonly ConditionalWeakTable<object, Identity> Ids = new();
         private static readonly System.Collections.Generic.Dictionary<IntPtr, WeakReference<object>> Objects = new();
         private static long _next;
+        private static int _untilSweep = 4096;
+        internal static long SweepCount { get; private set; }
+        internal static long SweepVisited { get; private set; }
+        internal static long SweepTicks { get; private set; }
 
         internal static IntPtr Id(object value)
         {
@@ -29,12 +33,20 @@ namespace ProbablyStolenTools
             {
                 var id = new IntPtr(Interlocked.Increment(ref _next));
                 Objects[id] = new WeakReference<object>(obj);
-                if (Objects.Count % 4096 == 0)
+                // Charge a full weak-table sweep to at least one table's worth of
+                // NEW identities. Count modulo made large captures repeatedly scan
+                // every live entry, and deletions could immediately retrigger it.
+                if (--_untilSweep == 0)
                 {
+                    long started = System.Diagnostics.Stopwatch.GetTimestamp();
+                    SweepCount++;
+                    SweepVisited += Objects.Count;
                     var dead = new System.Collections.Generic.List<IntPtr>();
                     foreach (var pair in Objects)
                         if (!pair.Value.TryGetTarget(out _)) dead.Add(pair.Key);
                     foreach (var key in dead) Objects.Remove(key);
+                    _untilSweep = Math.Max(4096, Objects.Count);
+                    SweepTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
                 }
                 return new Identity(id);
             });
