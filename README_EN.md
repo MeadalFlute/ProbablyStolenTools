@@ -10,14 +10,18 @@ The full release uses Unity 2021.3.45f2 / Mono / x64 (game 0.46D), with its own
 
 Game **1.0.0.14 is beta**, separate from stable 0.46D. This source provides a
 beta-specific static-layout candidate with offline validation; live acceptance
-is still required. Build separate branch packages, each containing exactly one
-helper DLL. No second table, game assemblies or generator runtime is bundled.
-After switching Steam branches, install the matching package or regenerate the
-helper outside the game. Module validation now precedes generated type-token
-resolution; gameplay closures remain fully captured, not silently made opaque.
+is still required. A new universal candidate contains the main DLL and one
+merged helper for both 0.46D and 1.0.0.14. An offline tool deduplicates identical
+field accessors; version-specific type tokens remain isolated behind fingerprint
+selection. No runtime code generation, extraction or dynamic loading is added.
+Switching between these two recorded versions needs no replacement helper;
+unknown fingerprints are still rejected. The player generator replaces the
+merged helper with a single-version table for the installed game.
 
-Maintainers use `release/beta/manifest.xml` for beta and `release/manifest.xml`
-for stable. See `research/2026-11-16-beta-static-layout-compatibility.md`.
+Maintainers use `release/universal/manifest.xml` for the universal candidate;
+single-branch manifests remain available. See
+`research/2026-11-16-universal-static-layouts.md`. Only beta Mono tests were rerun:
+the stable branch still needs revalidation with its original game assemblies.
 
 ## Snapshot Limits and Manual Layout Generator
 

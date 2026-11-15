@@ -8,12 +8,12 @@
 ### 游戏 Beta 分支
 
 游戏 **1.0.0.14 是 beta**，不是 0.46D 稳定分支。当前源码已提供针对它的静态表构建与离线兼容候选，尚待实机验收。
-稳定版和 beta 包分别构建；每个包只带一份 `ProbablyStolenTools.StaticLayouts.dll`，不把两套表、游戏程序集或独立生成器叠加进 Mod。
-切换 Steam 分支后需安装匹配分支的候选包，或退出游戏后使用匹配源码版本的独立工具重新生成 helper。
-旧表现在会先校验模块版本，明确拒绝不匹配，不会为了兼容而漏存游戏闭包状态。
+新增**单包双版本候选**：主 DLL + 一份合并的 `ProbablyStolenTools.StaticLayouts.dll`，按程序集指纹自动选择 0.46D / 1.0.0.14 布局。
+离线工具复用相同字段访问代码，版本专用类型令牌独立隔离；运行时不生成、解压或动态加载代码，不漏存游戏闭包状态。
+这两个已收录版本间切换不需换表；未来版本仍严格拒绝未知指纹。独立玩家生成工具会将合并表替换成当前安装版本的单版本表。
 
-维护者：beta 使用 `release/beta/manifest.xml`，稳定分支继续使用 `release/manifest.xml`。
-详见 `research/2026-11-16-beta-static-layout-compatibility.md`；离线通过不代表未来 beta 更新或任意第三方 Mod 已兼容。
+维护者：通用包使用 `release/universal/manifest.xml`；原有单分支构建入口仍保留。
+详见 `research/2026-11-16-universal-static-layouts.md`。当前仅重跑 beta Mono 套件；正式版原始程序集不可用，通用包的正式版分支仍待复验，不代表未来 beta 或任意第三方 Mod 已兼容。
 
 ---
 

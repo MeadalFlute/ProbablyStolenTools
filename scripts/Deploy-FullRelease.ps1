@@ -1,6 +1,7 @@
 param(
     [string]$GameDir = $env:PROBABLY_STOLEN_FULL_DIR,
-    [string]$ManifestPath
+    [string]$ManifestPath,
+    [string]$PackageDirectory
 )
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($GameDir)) { throw "Set PROBABLY_STOLEN_FULL_DIR or pass -GameDir <path to Probably Stolen>." }
@@ -13,6 +14,18 @@ if (!(Test-Path -LiteralPath $managedPath) -or (Test-Path -LiteralPath (Join-Pat
 $sourceDll = Join-Path $workspace 'src\ProbablyStolenTools\bin\Release\Mono\ProbablyStolenTools.dll'
 $sourceLayouts = Join-Path (Split-Path -Parent $sourceDll) 'ProbablyStolenTools.StaticLayouts.dll'
 $manifest = if ($ManifestPath) { (Resolve-Path -LiteralPath $ManifestPath).Path } else { Join-Path $workspace 'release\manifest.xml' }
+if ($PackageDirectory) {
+    $PackageDirectory = (Resolve-Path -LiteralPath $PackageDirectory).Path
+    if ($ManifestPath) { throw 'Use the manifest inside PackageDirectory, not ManifestPath.' }
+    $sourceDll = Join-Path $PackageDirectory 'ProbablyStolenTools.dll'
+    $sourceLayouts = Join-Path $PackageDirectory 'ProbablyStolenTools.StaticLayouts.dll'
+    $manifest = Join-Path $PackageDirectory 'manifest.xml'
+    $expectedFiles = @('ProbablyStolenTools.dll', 'ProbablyStolenTools.StaticLayouts.dll', 'manifest.xml', 'preview.png')
+    $actualFiles = @(Get-ChildItem -LiteralPath $PackageDirectory -Force)
+    if ($actualFiles.Count -ne $expectedFiles.Count -or @($actualFiles | Where-Object {
+        $_.PSIsContainer -or $_.Name -notin $expectedFiles -or ($_.Attributes -band [IO.FileAttributes]::ReparsePoint)
+    }).Count -gt 0) { throw 'PackageDirectory must contain exactly the four release files, without links.' }
+}
 $saveDir = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'AppData\LocalLow\Questing Goose Studio\Probably Stolen'
 $settingsPath = Join-Path $saveDir 'PSTools.settings.xml'
 $modsDir = Join-Path $GameDir 'Mods'
@@ -48,8 +61,14 @@ foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
 # Verify the built helper targets this installation before touching Mods or saves.
 $verifiedLayouts = Join-Path $workspace ('out\deploy-layout-check-' + [guid]::NewGuid().ToString('N') + '\ProbablyStolenTools.StaticLayouts.dll')
 & dotnet run -c Release --project (Join-Path $workspace 'tools\StaticSnapshotLayouts') -- $GameDir $verifiedLayouts
-if ($LASTEXITCODE -ne 0 -or (Get-FileHash -LiteralPath $verifiedLayouts).Hash -ne (Get-FileHash -LiteralPath $sourceLayouts).Hash) {
-    throw 'Built static table does not match this game installation; rebuild for the selected branch.'
+if ($LASTEXITCODE -ne 0) { throw 'Cannot generate a verification table for this installation.' }
+if ((Get-FileHash -LiteralPath $verifiedLayouts).Hash -ne (Get-FileHash -LiteralPath $sourceLayouts).Hash) {
+    & dotnet run -c Release --project (Join-Path $workspace 'tools\MergeStaticLayouts') -- --verify-profile $sourceLayouts $verifiedLayouts
+    if ($LASTEXITCODE -ne 0) { throw 'Static helper does not contain an exact profile for this game installation.' }
+}
+if ($PackageDirectory) {
+    & dotnet run -c Release --project (Join-Path $workspace 'tests\ReleaseCompatibility') -- $GameDir $sourceDll $manifest
+    if ($LASTEXITCODE -ne 0) { throw 'Package contracts or capability scan failed; nothing deployed.' }
 }
 $saveBefore = @(Get-TreeHashes $saveDir)
 $modsBefore = @(Get-TreeHashes $modsDir)
@@ -66,7 +85,7 @@ Copy-Item -LiteralPath $manifest -Destination (Join-Path $targetDir 'manifest.xm
 # The game only loads <mod>/preview.png (hardcoded in ModUIManager.GetLocalPreview).
 # release/preview.png is pre-shrunk (960x540 paletted); the full-size JPG is only for the
 # Workshop upload, so the packaged mod stays small.
-$preview = Join-Path $workspace 'release\preview.png'
+$preview = if ($PackageDirectory) { Join-Path $PackageDirectory 'preview.png' } else { Join-Path $workspace 'release\preview.png' }
 if (Test-Path -LiteralPath $preview) {
     Copy-Item -LiteralPath $preview -Destination (Join-Path $targetDir 'preview.png') -Force
 }

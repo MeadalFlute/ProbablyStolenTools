@@ -30,7 +30,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 上一批统一审查入口：`research/2026-11-15-feature-batch-review-handoff.md`，覆盖 `44cf260..48853fb`；回执见 `2026-11-15-feature-batch-review-receipt.md`，0.9.3 已由 DS 推送。本轮补 N1/N2 文件保护、N3 不匹配立即取消、N4 脏源码拒绝打包；beta 适配及构建来源以 `research/2026-11-16-beta-static-layout-compatibility.md` 为准，不把旧 0.46D 实测当作 beta 验收。
 
-0.46D 的 2861 类型/8108 字段属于旧分支表，不能混用本轮 beta 的程序集或验收记录。
+0.46D 的 2861 类型/8108 字段属于旧分支表，不能混用本轮 beta 的程序集或验收记录。新增单包双版本候选见 `research/2026-11-16-universal-static-layouts.md`：离线合并旧正式表与当前 beta 表，主 DLL 接口不变；只共享相同访问代码，各版本完整注册表/MVID 仍独立，未知指纹拒绝。合并 helper 783872 bytes；beta 两种分派位置/完整图/扫描通过，正式版原始程序集仍缺，不能宣称正式分支重验通过。
 
 ### 版本与发布
 
@@ -40,8 +40,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 - 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.3**。
 - 纯文档提交不单独升版；推送前重新构建 → 两组测试 → 部署 → 正常 `push`（不 force）。
 - 推送使用用户临时 token，不写入文件、日志或命令历史。
-- `release/manifest.xml` 仍只声明稳定游戏 0.46D；`release/beta/manifest.xml` 只声明 beta 1.0.0.14，二者 ModVersion 必须与 Plugin.Version 一起更新。不能仅在旧 helper 的 manifest 加版本号宣称兼容。
-- 用干净源码执行 `scripts/Package-FullRelease.ps1 -GameDir "<游戏目录>" -ManifestPath release/beta/manifest.xml` 构建 beta 包。每包仅主 DLL、当前分支 helper、manifest、preview；正式包和工具包均拒绝 dirty 源码，保留源码提交/哈希/包体记录。不包含第二分支表，不承诺同一主 DLL 已在两个游戏版本实测。
+- `release/manifest.xml` 只声明稳定游戏 0.46D；`release/beta/manifest.xml` 只声明 beta 1.0.0.14；`release/universal/manifest.xml` 声明两版。三个 ModVersion 必须与 Plugin.Version 一起更新。不能仅改 manifest 宣称新版本兼容。
+- 用干净源码执行 `scripts/Package-FullRelease.ps1 -GameDir "<游戏目录>" -ManifestPath release/beta/manifest.xml` 构建 beta 包。通用包改用 universal manifest 并传 `-AdditionalLayoutPaths "<另一版原始helper>"`；离线合并和逐版本等价验证后，扫描实际合并产物。每包仍仅主 DLL、一个 helper、manifest、preview；正式包和工具包均拒绝 dirty 源码，保留源码提交/哈希/包体记录。`Deploy-FullRelease.ps1 -GameDir ... -PackageDirectory "<包目录>"` 验证当前分支 profile/扫描后部署。不能以 beta 通过代替两版实机验收。
 
 ---
 
@@ -149,7 +149,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 ## 6. 加载器兼容迁移
 
-2026-11-16 beta 适配：在任何 KnownTypes/KnownFactories 令牌解析前，以固定 PlayerStore/object/HashSet/Vector3 模块锚点校验全部 MVID。KnownTypes/Factories 禁止内联；错误版本负例同时含不存在的类型令牌，须先版本拒绝。新版官方保护名单增加 ModWindowControl，生成器与运行时共享排除并离线核对官方全名单。保留全部其余业务闭包，不能泛化排除 CompilerGeneratedAttribute。表仅复用相同泛型元数的空声明字段工厂，不减覆盖；beta 每包一表，与稳定包分开。新表 664576 字节，同 beta/同边界未合并工厂基线 687616 字节。详见本轮 beta 记录。
+2026-11-16 beta 适配：在任何 KnownTypes/KnownFactories 令牌解析前，以固定 PlayerStore/object/HashSet/Vector3 模块锚点校验全部 MVID。KnownTypes/Factories 禁止内联；错误版本负例同时含不存在的类型令牌，须先版本拒绝。新版官方保护名单增加 ModWindowControl，生成器与运行时共享排除并离线核对官方全名单。保留全部其余业务闭包，不能泛化排除 CompilerGeneratedAttribute。单分支表复用相同泛型元数的空声明字段工厂，不减覆盖；beta 单表 664576 字节，同 beta/同边界未合并工厂基线 687616 字节。后续通用包通过离线 MergeStaticLayouts 合并两版，4871 工厂去重至 2055，保留完整的各版本注册表；按游戏 MVID 选择、主 DLL 再检查全部模块。无运行时 Assembly.Load/解压/生成，不扩大能力声明；当前 beta Mono/隔离负例通过，正式版活体未复验。
 
 **0.9.3 的 Mono 发布路径已使用构建时静态布局表**，详见 `research/2026-11-12-static-runtime-graph-migration.md` 与 `research/2026-11-12-loader-migration-review-handoff.md`。构建时生成目标 Mono 字段表，包含私有 Entry/Slot 固定类型令牌；版本严格 MVID 门控，未知布局不动态回退。Mono 编译排除旧表达式生成路径，通用 GameFields 用官方 ModReflect；恢复字段/集合物理存储与安全检查不减。两个发布 DLL 均列入 manifest，仅声明/检测 files；ReleaseCompatibility 的退役能力门槛已加入，net8 宿主表隔离于 out。`scripts/Test-StaticLayouts.ps1` 全套通过；实机仍只覆盖简单节点回溯，完整功能矩阵和多 Mod 组合未验收。下方为迁移过程中的性能记录。
 
