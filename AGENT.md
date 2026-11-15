@@ -24,6 +24,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 当前开发候选：**430 项**离线参考测试，另有 10 项原版历史/齿轮设置 IO 夹具测试、10 项玩家生成工具断言；Harmony 挂点与字段检查数量见最新验证日志，另检查三个漏斗静态门控字段；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归，以及 500 组原版比例耗水对照。离线通过 **不等于** Unity 活体验收。基础见 `research/2026-11-15-chemistry-crossday-handoff.md`，测试反馈修正见 `research/2026-11-15-feedback-followup.md`，跨天/F6 选择修正见 `research/2026-11-15-rewind-picker-followup.md`，返店/文件去重与存档恢复见 `research/2026-11-15-return-archive-followup.md`，活动档去重与晨报卡顿跟进见 `research/2026-11-15-active-history-morning-followup.md`。
 
+本批统一审查入口：`research/2026-11-15-feature-batch-review-handoff.md`，覆盖 `44cf260..48853fb` 的跨天/化学新功能和后续修正。22:52 实机会话 7 次建点、2 次恢复无新增失败，恢复最终均 diff=0；同规模重新载入晨间 1365ms、次日晨间 1129ms、首顾客 890ms，仅为少量非严格 A/B 样本。双 DLL 构建来源仍为干净 `48853fb`，文档更新不应被误认为已重建/重部署。
+
 ### 版本与发布
 
 玩家静态表工具的独立分发流程：运行 `scripts/Publish-StaticLayoutTool.ps1`，取得 `out/static-layout-tool-日期/ProbablyStolenTools-StaticLayoutGenerator-win-x64.zip`。在 GitHub 单独上传附件，不能把工具 exe/Mono.Cecil 放进 Mod 的 Assemblies 或 Mods。玩家完整用法见 `tools/StaticSnapshotLayouts/PLAYER-README.md` 与 README；先退出游戏，执行 `Generate-StaticLayouts.ps1 -GameDir "<游戏目录>"`，默认只生成。`-Install` 只支持默认 `Mods/ProbablyStolenTools` 安装，会把旧 helper 备份到工具 generated 目录，再只替换 helper。该工具不能自动适配任意第三方类型或修复游戏 API 变化，不代表新版本已验收。当前机器无可用 GitHub 发布凭据，附件已打包测试，但**尚未上传**；不要声称已可从 Release 下载。
@@ -154,6 +156,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 2026-11-15 晨报关闭停顿跟进：载入后的晨间节点约 18.6 万对象/102 万槽，普通约 15 万对象/83 万槽，不能把旧 1.3 秒当作同规模对照。每日仍需完整读取新晨间锚点，类型缓存本已跨日保留。新增独立性能提交：ManagedObjects 弱身份表清理从每 4096 个反复扫全表改为按新身份数/表规模摊销，最终局部游戏 Mono 对照（双方均缓存回调）490.50→161.46ms，不等于整体快照提速；StateGraph 用现有 _sources 做唯一成员索引，不再保存第二个 HashSet，完整图串行对照 215.48→213.57ms，未显著提速。所有预算/完整恢复/校验保留。CAPTURE 额外记 identitySweepMs/identitySweeps/identityVisited 与 GC 三代次数。证明及实机待验收边界见 `research/2026-11-15-morning-capture-amortization.md`。
 
+22:52 后续会话：冷捕获 1802ms（access 474ms），同规模 185714 对象晨间重载捕获 1365ms，正常跨天晨间 1129ms；首顾客 890ms，返店两次 937/899ms。两次恢复 1802/2020ms，均 diff=0，无 finalFallback；其中一次 owner 修复消除 1 项刷新差异。原版加载仍需 9022/11058ms，DecodeSaveItem 聚合 7618/10039ms；这不是晨间捕获已解决的开销，也不能据被补丁包裹的原版解码计时排除其他 Mod 的影响。跨夜另有 8.8 秒 watchdog，未完成归因，不能归到 1129ms 的随后晨间捕获。完整证据和待审查项见统一交接。
+
 - 技术依据：`research/2026-11-12-static-type-token-proof.md` 证明构建时固定 ldtoken 可表达私有泛型 Entry/Slot。窄探针之后已完成生产源码替换及离线完整图测试，已有基本节点实机反馈，但完整功能矩阵仍待验收；工具/原生离线宿主绝不随 Mod 发布。
 - 官方公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.9.0 只保证**当前游戏版本**可用，发行说明不得写“已兼容下一版”。
 - 迁移前源码依赖 `Expression.Compile` 与计算类型 `GetFields/GetMethod`；只删 manifest 声明或关闭 DevelopmentChecks **不是修复**，扫描器按编译进 DLL 的方法判断。现已从 Mono 发布编译排除此类路径，离线参考源码仍保留。
@@ -175,7 +179,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 0.9.1 玩家报告 `Uncovered static snapshot layout: PaperBookRegistry+<>c`：生成器排除注册/信任组件，但运行时按游戏程序集继续展开其闭包。现以共享 `SnapshotTraversalBoundary` 统一边界，受保护引用只保留身份、不读写字段，显式受保护根拒绝；其他未知布局仍拒绝。游戏 Mono 回归和全套测试通过，已部署，玩家实机待测。详情见 `research/2026-11-12-protected-registry-capture-fix.md`；失败日志现含 manual/closed，另一份无日志的自动节点问题尚不能确认同因。
 
-后续边界复查 `79cab6e`：游戏 owner 排除规则（含 ES3 前缀）已由生成器与运行时共享同一函数。目标程序集 111 个被排除类型/嵌套类型全部不展开，其余游戏类型均有表；不表示所有字段组合都支持。另修复 decimal? 的引用检查误入 Decimal 字段，以及 object 集合中的基本装箱标量/顶层 System 枚举缺表；保留原装箱身份及字段恢复，不降级为空对象。全套通过，最终双 DLL 已部署，实机待测；当前审查交接见 `research/snapshot-boundary-review-handoff.md`。第三方自动适配及独立生成器分发按用户要求搁置。
+后续边界复查 `79cab6e`：游戏 owner 排除规则（含 ES3 前缀）已由生成器与运行时共享同一函数。目标程序集 111 个被排除类型/嵌套类型全部不展开，其余游戏类型均有表；不表示所有字段组合都支持。另修复 decimal? 的引用检查误入 Decimal 字段，以及 object 集合中的基本装箱标量/顶层 System 枚举缺表；保留原装箱身份及字段恢复，不降级为空对象。全套通过，最终双 DLL 已部署，实机待测；当时审查交接见 `research/snapshot-boundary-review-handoff.md`。第三方自动适配仍搁置；独立游戏布局生成器后于 2026-11-15 按新需求打包完成，尚未上传，见第 1 节。
 
 DS 边界代码审查通过。部署哈希疑点已复核：原 FDC 与 DS 的 CB 主 DLL 在 3026 项类型/字段/方法记录（含 IL）中无差异，内嵌 Git informational version 不同，不能据哈希或提交时间断定旧包缺少代码。现从干净 `970e8c955f510e2bf88202cd8f77029bbfa81606` 完整验证、重复 Rebuild 并重部署，主 DLL `197099BB...`、helper `CBB8F36A...`；完整哈希与来源见 `research/2026-11-13-snapshot-artifact-provenance-followup.md`。后续交接同时记录构建提交号/干净状态/双哈希；纯文档提交变化也可能改变重建哈希，不要要求旧包始终等于文档更新后的 HEAD 构建。
 
@@ -195,7 +199,7 @@ DS 边界代码审查通过。部署哈希疑点已复核：原 FDC 与 DS 的 C
 ## 9. 验收清单
 
 1. `dotnet build -c Release`：0 警告 / 0 错误。
-2. `CheckpointTests` 411 项全过；`ReleaseCompatibility` 76 挂点/76 字段/漏斗门控/`HardFlags` 通过；新功能实机矩阵见本轮交接。
+2. `CheckpointTests` 430 项全过；`ReleaseCompatibility` 84 挂点/76 字段/漏斗门控/`HardFlags` 通过；另跑原版历史/齿轮 IO 与玩家生成工具各 10 项。新功能实机矩阵见本轮统一交接。
 3. 部署后：首/普通/手动节点往返、恢复后群拖、顾客贴图、正常交易/送客。
 4. 物品：售出/移动/旋转/拆分合并/嵌套容器/前柜台回溯，贴图位置与朝向正确，无“空气占用”。
 5. 多语言：切换语言后水质/纯度/评级/酿酒标签跟随；缺键回退；三个设置开关生效。
