@@ -42,8 +42,17 @@ try {
     Check $failed 'invalid game directory fails without installation'
     $exe = Join-Path $tool 'StaticSnapshotLayouts.exe'
     $forbidden = Join-Path $managed 'forbidden-helper.dll'
-    & $exe $fakeGame $forbidden *> $null
-    Check ($LASTEXITCODE -ne 0 -and !(Test-Path -LiteralPath $forbidden)) 'generator refuses output in Managed'
+    # The generator deliberately exits non-zero after printing its refusal. Native stderr
+    # becomes a terminating NativeCommandError under Stop; capture it as text instead.
+    $savedPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $refusalOutput = & $exe $fakeGame $forbidden 2>&1 | Out-String
+        $refusalCode = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $savedPreference }
+    $refused = $refusalCode -ne 0 -and $refusalOutput -match 'Refusing to write' -and !(Test-Path -LiteralPath $forbidden)
+    Check $refused 'generator refuses output in Managed'
 }
 finally {
     $resolved = [IO.Path]::GetFullPath($root)
