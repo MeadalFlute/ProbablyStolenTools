@@ -71,7 +71,7 @@ Package-FullRelease 保留单版本入口，新增 AdditionalLayoutPaths；manif
 
 ## 验证与剩余风险
 
-`out/universal-validation-20261116.log`：
+`out/universal-validation-final-20261116.log`（首轮记录另见 out/universal-validation-20261116.log）：
 
 - 当前 beta 在 profile 0 和 profile 1 两种顺序下均跑游戏 Mono 精确字段对照和完整图恢复。
 - 两版合并前后模块指纹、类型顺序、全部字段访问工厂 IL 等价；两种顺序分别字节复现。
@@ -85,3 +85,20 @@ Package-FullRelease 保留单版本入口，新增 AdditionalLayoutPaths；manif
 保留正式原表等价不证明当前主 DLL 的全部游戏 API 在旧版本仍匹配，也不证明旧版本加载器可扫描所有 beta 专用令牌。
 通用包是候选：beta 尚需玩家实机回归，正式分支必须补自身加载器扫描/Mono/实机验收，
 不能将“两个选择分支都在 beta 测过”写成“两版游戏都测过”。
+
+## 最终候选产物
+
+代码/打包来源：`9b4a97ef20456730099e08fb646e1ab836f99a57`，构建时 clean。
+本节是随后纯文档补记，不要求旧包的 informational version 跟随文档 HEAD 变化。
+
+- 包：`out/universal-release-9b4a97e/ProbablyStolenTools.zip`，**563112 bytes**，约 550 KiB。
+- 比上轮 beta ZIP 536791 bytes 增加 26321 bytes，约 25.7 KiB / 4.90%。
+- ZIP SHA256：`80466840F3696C65A17DE28B1858FB532531238CF9A534D8850083B041A1274A`。
+- 主 DLL SHA256：`72BAD42BB0CCBC6553A1F66CE85D1A5C7FF27266391D9B55521D556EAED0A668`。
+- helper SHA256：`8503FA2D6D99E6C14D25EE09A2A9E87E4F76C8E98FD1ACD5AF60C0C245AE7B49`。
+- 同目录 provenance.json 与 layout-profiles.json 记录构建及两输入来源；主包只有两个 DLL/manifest/preview。
+- 打包/实际合并 DLL 扫描记录：`out/universal-package-9b4a97e.log`。
+- 最终包的游戏 Mono 完整图测试：`out/universal-package-mono-9b4a97e.log`。
+- **未部署**：检测到游戏运行，Deploy-FullRelease 实际执行并按预期在任何复制/备份前拒绝。
+  未终止游戏、未覆盖 Mods、未主动读取/修改活动存档；待玩家退出游戏后按 PackageDirectory 部署。
+- 未推送/上传，正式版原始程序集及两版活体验收限制不变。
