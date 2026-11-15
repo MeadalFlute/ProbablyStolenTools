@@ -315,6 +315,7 @@ namespace ProbablyStolenTools
             NewSetting(InspectionLocale.Text("容器自动改名", "Container auto naming"), Plugin.CfgContainerAutoRename);
             NewSetting(InspectionLocale.Text("自动搅拌", "Auto blend"), Plugin.CfgAutoBlend);
             NewSetting(InspectionLocale.Text("快速萃取", "Rapid extraction"), Plugin.CfgAutoExtraction);
+            NewSetting(InspectionLocale.Text("快速化学反应", "Rapid chemical reactions"), Plugin.CfgRapidReactions);
             NewSetting(InspectionLocale.Text("机器产物预览", "Machine output preview"), Plugin.CfgFacilityPreview);
             _chemistryEnd = _settings.Count;
             _chemistryBottom = Raw("chemistry-divider-bottom", _settingsContent, new Color(0.42f, 0.62f, 0.72f, 0.6f)).rectTransform;

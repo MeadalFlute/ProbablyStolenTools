@@ -7,6 +7,46 @@ internal static class ChemistryNativeTests
     internal static void Run(Assembly mod, Assembly game)
     {
         const BindingFlags methods = BindingFlags.NonPublic | BindingFlags.Static;
+        var plugin = mod.GetType("ProbablyStolenTools.Plugin", true);
+        var automation = mod.GetType("ProbablyStolenTools.ChemistryAutomation", true);
+        var master = plugin.GetField("CfgChemistry", methods);
+        var extraction = plugin.GetField("CfgAutoExtraction", methods);
+        var reactions = plugin.GetField("CfgRapidReactions", methods);
+        var constructor = master.FieldType.GetConstructors(BindingFlags.NonPublic | BindingFlags.Instance).Single();
+        object Setting(bool value) => constructor.Invoke(new object[] { value, null, "fixture" });
+        var original = new[] { master.GetValue(null), extraction.GetValue(null), reactions.GetValue(null) };
+        try
+        {
+            foreach (bool enabled in new[] { false, true })
+            foreach (bool extract in new[] { false, true })
+            foreach (bool react in new[] { false, true })
+            {
+                master.SetValue(null, Setting(enabled));
+                extraction.SetValue(null, Setting(extract));
+                reactions.SetValue(null, Setting(react));
+                bool actualExtract = (bool)automation.GetProperty("ExtractionEnabled", methods).GetValue(null);
+                bool actualReact = (bool)automation.GetProperty("ReactionsEnabled", methods).GetValue(null);
+                if (actualExtract != (enabled && extract) || actualReact != (enabled && react))
+                    throw new Exception("Rapid extraction/reactions are coupled or bypass the chemistry master switch.");
+            }
+            master.SetValue(null, null);
+            if ((bool)automation.GetProperty("ExtractionEnabled", methods).GetValue(null)
+                || (bool)automation.GetProperty("ReactionsEnabled", methods).GetValue(null))
+                throw new Exception("Chemistry automation enabled before configuration.");
+            master.SetValue(null, Setting(true));
+            extraction.SetValue(null, null); reactions.SetValue(null, null);
+            if ((bool)automation.GetProperty("ExtractionEnabled", methods).GetValue(null)
+                || (bool)automation.GetProperty("ReactionsEnabled", methods).GetValue(null))
+                throw new Exception("Missing chemistry subsettings must fail closed.");
+        }
+        finally
+        {
+            master.SetValue(null, original[0]);
+            extraction.SetValue(null, original[1]);
+            reactions.SetValue(null, original[2]);
+        }
+        Console.WriteLine("PASS eight independent rapid-extraction/reaction switch combinations, master-off and unconfigured fail-closed");
+
         var projection = mod.GetType("ProbablyStolenTools.FacilityProjection", true);
         var consume = projection.GetMethod("Consume", methods);
         var split = game.GetType("WaterHelper", true).GetMethod("SplitProportionally");

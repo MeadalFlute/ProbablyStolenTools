@@ -41,7 +41,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgChemistry;
         internal static ConfigEntry<bool> CfgChemistryLabels, CfgContainerAutoRename;
         internal static ConfigEntry<bool> CfgChemistryExtendedContainers, CfgEmptyContainerNames;
-        internal static ConfigEntry<bool> CfgAutoBlend, CfgAutoExtraction, CfgFacilityPreview;
+        internal static ConfigEntry<bool> CfgAutoBlend, CfgAutoExtraction, CfgRapidReactions, CfgFacilityPreview;
         internal static ConfigEntry<bool> CfgWineAppraisal;
         internal static ConfigEntry<float> CfgInspectionX, CfgInspectionY;
 
@@ -257,7 +257,7 @@ namespace ProbablyStolenTools
                 "Show water-quality names and mismatch highlights on liquid containers.");
             CfgWaterQuality.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
             CfgChemistry = Config.Bind("Chemistry", "Enabled", true,
-                "Master switch for chemistry annotations, tooltip naming, automatic blending, rapid extraction and facility previews.");
+                "Master switch for chemistry annotations, tooltip naming, automatic blending, rapid extraction, rapid chemical reactions and facility previews.");
             CfgChemistry.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
             CfgChemistryLabels = Config.Bind("Chemistry", "CompositionLabels", true,
                 "Show chemical composition, share, purity and grade annotations.");
@@ -272,7 +272,9 @@ namespace ProbablyStolenTools
             CfgAutoBlend = Config.Bind("Chemistry", "AutoBlend", true,
                 "Blend compatible ingredients after player placement. Mixed-product batches leave incompatible ingredients at their source; whole-item outputs must fit.");
             CfgAutoExtraction = Config.Bind("Chemistry", "AutoExtraction", true,
-                "Complete extraction and reagent reactions in one step. Preserve reaction conditions and thermal evaporation/degradation rates; volume may exceed capacity.");
+                "Complete alcohol extraction of mushroom and coffee mush. Volume may exceed capacity; independent of RapidReactions.");
+            CfgRapidReactions = Config.Bind("Chemistry", "RapidReactions", true,
+                "Complete the nine supported non-thermal reagent reactions. Independent of AutoExtraction; preserve native conditions, bounded progress and thermal rates.");
             CfgFacilityPreview = Config.Bind("Chemistry", "FacilityPreview", true,
                 "Show read-only next-cycle projections for aquaculture, purifiers, hydroponics and evaporators.");
             CfgWineAppraisal = Config.Bind("Wine", "Enabled", true,

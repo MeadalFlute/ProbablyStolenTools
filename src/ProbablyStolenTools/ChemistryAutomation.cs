@@ -12,6 +12,8 @@ namespace ProbablyStolenTools
         private static int _placements, _groups;
         private static bool _running, _extracting;
         private static readonly HashSet<string> Reported = new();
+        internal static bool ExtractionEnabled => Plugin.CfgChemistry?.Value == true && Plugin.CfgAutoExtraction?.Value == true;
+        internal static bool ReactionsEnabled => Plugin.CfgChemistry?.Value == true && Plugin.CfgRapidReactions?.Value == true;
         private static bool Available => CustomerCheckpoint.PatchesReady && Plugin.CfgChemistry?.Value == true
             && !CustomerCheckpoint.Restoring && !Rewind.Restoring
             && !SaveManager.IsDecoding && !CurrentConverterHelper.isNightCycle && Plugin.Store() != null;
@@ -153,7 +155,7 @@ namespace ProbablyStolenTools
 
         internal static void AlcoholAdded(GameItem container, int before)
         {
-            if (!Available || Plugin.CfgAutoExtraction?.Value != true || _running || _extracting
+            if (!Available || !ExtractionEnabled || _running || _extracting
                 || container?.parentInventory == null || !container.IsTag("LIQUID_CONTAINER_TAG")
                 || container.IsTag("WINE_CONTAINER_TAG") || !GeneralHelper.IsItemOwned(container)) return;
             try
@@ -195,12 +197,12 @@ namespace ProbablyStolenTools
             finally { _extracting = false; }
         }
         internal static bool CanReact(GameItem container)
-            => Available && Plugin.CfgAutoExtraction?.Value == true && !_extracting
+            => Available && ReactionsEnabled && !_extracting
                 && container?.parentInventory != null && container.IsTag("LIQUID_CONTAINER_TAG")
                 && !container.IsTag("WINE_CONTAINER_TAG") && GeneralHelper.IsItemOwned(container);
         internal static int Alcohol(GameItem container)
         {
-            if (!Available || Plugin.CfgAutoExtraction?.Value != true) return 0;
+            if (!Available || !ExtractionEnabled) return 0;
             var liquid = Liquid.GetLiquidFromId("alcohol");
             return liquid == null ? 0 : ChemistryData.Int(container, liquid.currentPart);
         }
