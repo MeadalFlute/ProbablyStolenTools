@@ -11,6 +11,7 @@ namespace ProbablyStolenTools
             || name == "ModFingerprint" || name == "ModTrustList" || name == "ModScanner"
             || name == "ModCapability" || name == "ModSecurityDebug" || name == "ModSteamRules"
             || name == "ModSteamGuard" || name == "ModSteamAuth" || name == "ModWorkshop"
-            || name == "SteamManager" || name == "PaperBookRegistry" || name == "ModReflect";
+            || name == "SteamManager" || name == "PaperBookRegistry" || name == "ModReflect"
+            || name == "ModWindowControl";
     }
 }

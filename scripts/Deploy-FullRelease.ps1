@@ -1,5 +1,6 @@
 param(
-    [string]$GameDir = $env:PROBABLY_STOLEN_FULL_DIR
+    [string]$GameDir = $env:PROBABLY_STOLEN_FULL_DIR,
+    [string]$ManifestPath
 )
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($GameDir)) { throw "Set PROBABLY_STOLEN_FULL_DIR or pass -GameDir <path to Probably Stolen>." }
@@ -11,7 +12,7 @@ if (!(Test-Path -LiteralPath $managedPath) -or (Test-Path -LiteralPath (Join-Pat
 }
 $sourceDll = Join-Path $workspace 'src\ProbablyStolenTools\bin\Release\Mono\ProbablyStolenTools.dll'
 $sourceLayouts = Join-Path (Split-Path -Parent $sourceDll) 'ProbablyStolenTools.StaticLayouts.dll'
-$manifest = Join-Path $workspace 'release\manifest.xml'
+$manifest = if ($ManifestPath) { (Resolve-Path -LiteralPath $ManifestPath).Path } else { Join-Path $workspace 'release\manifest.xml' }
 $saveDir = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'AppData\LocalLow\Questing Goose Studio\Probably Stolen'
 $settingsPath = Join-Path $saveDir 'PSTools.settings.xml'
 $modsDir = Join-Path $GameDir 'Mods'
@@ -43,6 +44,12 @@ foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
     if ($process.Path -eq (Join-Path $GameDir 'Probably Stolen.exe')) {
         throw 'Close the game before deployment; no processes were stopped and no files were changed.'
     }
+}
+# Verify the built helper targets this installation before touching Mods or saves.
+$verifiedLayouts = Join-Path $workspace ('out\deploy-layout-check-' + [guid]::NewGuid().ToString('N') + '\ProbablyStolenTools.StaticLayouts.dll')
+& dotnet run -c Release --project (Join-Path $workspace 'tools\StaticSnapshotLayouts') -- $GameDir $verifiedLayouts
+if ($LASTEXITCODE -ne 0 -or (Get-FileHash -LiteralPath $verifiedLayouts).Hash -ne (Get-FileHash -LiteralPath $sourceLayouts).Hash) {
+    throw 'Built static table does not match this game installation; rebuild for the selected branch.'
 }
 $saveBefore = @(Get-TreeHashes $saveDir)
 $modsBefore = @(Get-TreeHashes $modsDir)
@@ -86,6 +93,8 @@ $deployedLayoutHash = (Get-FileHash -LiteralPath (Join-Path $targetDir 'Probably
 if ($layoutHash -ne $deployedLayoutHash) { throw 'Deployed static layouts do not match build.' }
 $record = [ordered]@{
     Version = ([xml](Get-Content -LiteralPath $manifest -Raw)).Mod.ModVersion
+    ManifestPath = $manifest
+    DeclaredGameVersions = @(([xml](Get-Content -LiteralPath $manifest -Raw)).Mod.GameVersions.GameVersion)
     Timestamp = (Get-Date).ToString('o')
     GameDirectory = $GameDir
     Runtime = 'Mono'

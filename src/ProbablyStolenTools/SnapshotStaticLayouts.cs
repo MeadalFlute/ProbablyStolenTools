@@ -15,13 +15,27 @@ namespace ProbablyStolenTools
 
         private static Dictionary<Type, MethodInfo> CreateFactories()
         {
-            var types = SnapshotLayouts.KnownTypes();
-            var methods = SnapshotLayouts.KnownFactories();
             var modules = SnapshotLayouts.ExpectedModules();
-            if (types.Length != methods.Length || modules.Length % 2 != 0)
+            if (modules.Length == 0 || modules.Length % 2 != 0)
                 throw new InvalidOperationException("Invalid generated snapshot layout registry.");
             var expected = new Dictionary<string, Guid>(StringComparer.Ordinal);
             for (int i = 0; i < modules.Length; i += 2) expected.Add(modules[i], new Guid(modules[i + 1]));
+            // These stable anchors contain no generated game type tokens. Check
+            // them BEFORE JITting KnownTypes, whose closure tokens may no longer exist.
+            var loaded = new[] { typeof(PlayerStore).Module, typeof(object).Module,
+                typeof(HashSet<>).Module, typeof(UnityEngine.Vector3).Module };
+            var actual = new Dictionary<string, Guid>(StringComparer.Ordinal);
+            foreach (var module in loaded) actual[module.ScopeName] = module.ModuleVersionId;
+            foreach (var pair in expected)
+                if (!actual.TryGetValue(pair.Key, out var version) || version != pair.Value)
+                    throw new InvalidOperationException("Snapshot layout build does not match loaded module: " + pair.Key
+                        + " expected=" + pair.Value + " actual=" + (actual.TryGetValue(pair.Key, out version) ? version.ToString() : "missing"));
+            if (expected.Count != actual.Count)
+                throw new InvalidOperationException("Invalid generated snapshot layout module coverage.");
+            var types = SnapshotLayouts.KnownTypes();
+            var methods = SnapshotLayouts.KnownFactories();
+            if (types.Length != methods.Length)
+                throw new InvalidOperationException("Invalid generated snapshot layout registry.");
             var result = new Dictionary<Type, MethodInfo>();
             var checkedModules = new HashSet<Module>();
             for (int i = 0; i < types.Length; i++)

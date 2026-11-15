@@ -51,6 +51,11 @@ mod folder, keeping an old copy outside Mods. Add `-Install` only for the defaul
 - Generation is not proof of gameplay compatibility. If failures continue,
   wait for an update rather than bypassing validation.
 - Steam Workshop updates may replace the helper; generate again if needed.
+- Steam stable/beta branches require different module fingerprints. Generate
+  for the currently installed branch, never merge two helper DLLs in Mods.
+- Game-generated closures are retained because they can hold gameplay state.
+  Only shared protected/serialization boundaries are excluded. Empty declared
+  field factories are shared without dropping any type or field coverage.
 - Project: https://github.com/MeadalFlute/ProbablyStolenTools
 - Matching source is included in `source/`. To rebuild it with the .NET 8 SDK:
-  `dotnet build .\source\StaticSnapshotLayouts.csproj -c Release`.
+  `dotnet build .\source\StaticSnapshotLayouts.csproj -c Release -p:PlayerLayoutTool=true`.

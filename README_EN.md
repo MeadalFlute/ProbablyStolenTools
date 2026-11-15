@@ -6,6 +6,19 @@ A helper mod for **Probably Stolen**, targeting the full release **0.9.3**.
 The full release uses Unity 2021.3.45f2 / Mono / x64 (game 0.46D), with its own
 **IMod / Harmony** loader. MelonLoader and BepInEx are not required.
 
+## Game Beta Branch
+
+Game **1.0.0.14 is beta**, separate from stable 0.46D. This source provides a
+beta-specific static-layout candidate with offline validation; live acceptance
+is still required. Build separate branch packages, each containing exactly one
+helper DLL. No second table, game assemblies or generator runtime is bundled.
+After switching Steam branches, install the matching package or regenerate the
+helper outside the game. Module validation now precedes generated type-token
+resolution; gameplay closures remain fully captured, not silently made opaque.
+
+Maintainers use `release/beta/manifest.xml` for beta and `release/manifest.xml`
+for stable. See `research/2026-11-16-beta-static-layout-compatibility.md`.
+
 ## Snapshot Limits and Manual Layout Generator
 
 Snapshot failures now show the concrete exception, effective limit and recovery

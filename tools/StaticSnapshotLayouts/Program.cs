@@ -90,19 +90,26 @@ void ArrayIndex(ILProcessor il, int index)
 }
 
 var typesMethod = ArrayMethod("KnownTypes", module.ImportReference(typeType));
+typesMethod.ImplAttributes |= Mono.Cecil.MethodImplAttributes.NoInlining;
 var typesIl = typesMethod.Body.GetILProcessor();
 BeginArray(typesIl, types.Length, module.ImportReference(typeType));
 var factoriesMethod = ArrayMethod("KnownFactories", methodType);
+factoriesMethod.ImplAttributes |= Mono.Cecil.MethodImplAttributes.NoInlining;
 var factoriesIl = factoriesMethod.Body.GetILProcessor();
 BeginArray(factoriesIl, types.Length, methodType);
 int fieldsTotal = 0;
+var emptyFactories = new Dictionary<int, MethodDefinition>();
 for (int i = 0; i < types.Length; i++)
 {
     var type = types[i];
     var reference = module.ImportReference(type);
-    var factory = ArrayMethod("Fields" + i.ToString("D5"), fieldType);
+    var fields = type.Fields.Where(f => !f.IsStatic).ToArray();
+    fieldsTotal += fields.Length;
+    int arity = type.GenericParameters.Count;
+    bool reuse = fields.Length == 0 && emptyFactories.TryGetValue(arity, out _);
+    var factory = reuse ? emptyFactories[arity] : ArrayMethod("Fields" + i.ToString("D5"), fieldType);
     TypeReference closed = reference;
-    if (type.HasGenericParameters)
+    if (!reuse && type.HasGenericParameters)
     {
         var instance = new GenericInstanceType(reference);
         foreach (var parameter in type.GenericParameters)
@@ -113,25 +120,31 @@ for (int i = 0; i < types.Length; i++)
         }
         closed = instance;
     }
-    var fields = type.Fields.Where(f => !f.IsStatic).ToArray();
-    fieldsTotal += fields.Length;
-    var il = factory.Body.GetILProcessor();
-    BeginArray(il, fields.Length, fieldType);
-    for (int j = 0; j < fields.Length; j++)
+    if (!reuse)
     {
-        ArrayIndex(il, j);
-        il.Emit(OpCodes.Ldtoken, closed);
-        il.Emit(OpCodes.Call, getType);
-        il.Emit(OpCodes.Ldstr, fields[j].Name);
-        il.Emit(OpCodes.Ldc_I4, (int)(BindingFlags.DeclaredOnly | BindingFlags.Instance
-            | BindingFlags.Public | BindingFlags.NonPublic));
-        il.Emit(OpCodes.Callvirt, getField);
-        il.Emit(OpCodes.Stelem_Ref);
+        var il = factory.Body.GetILProcessor();
+        BeginArray(il, fields.Length, fieldType);
+        for (int j = 0; j < fields.Length; j++)
+        {
+            ArrayIndex(il, j);
+            il.Emit(OpCodes.Ldtoken, closed);
+            il.Emit(OpCodes.Call, getType);
+            il.Emit(OpCodes.Ldstr, fields[j].Name);
+            il.Emit(OpCodes.Ldc_I4, (int)(BindingFlags.DeclaredOnly | BindingFlags.Instance
+                | BindingFlags.Public | BindingFlags.NonPublic));
+            il.Emit(OpCodes.Callvirt, getField);
+            il.Emit(OpCodes.Stelem_Ref);
+        }
+        il.Emit(OpCodes.Ret);
+        if (fields.Length == 0) emptyFactories.Add(arity, factory);
     }
-    il.Emit(OpCodes.Ret);
 
     ArrayIndex(typesIl, i);
-    typesIl.Emit(OpCodes.Ldtoken, reference);
+    // The negative table also has an unresolvable token: a version rejection
+    // must happen before the runtime ever attempts to JIT KnownTypes.
+    typesIl.Emit(OpCodes.Ldtoken, mismatch && i == 0
+        ? new TypeReference("", "MissingSnapshotVersionSentinel", module, module.ImportReference(game.Types[1]).Scope)
+        : reference);
     typesIl.Emit(OpCodes.Call, getType);
     typesIl.Emit(OpCodes.Stelem_Ref);
     ArrayIndex(factoriesIl, i);
@@ -160,12 +173,13 @@ Directory.CreateDirectory(Path.GetDirectoryName(output));
 // No player or game files are written: the output is a build artifact only.
 module.Mvid = DeterministicMvid();
 module.Write(output, new WriterParameters { Timestamp = 0 });
-Console.WriteLine($"Static layouts generated: hostOnly={host} mismatchTest={mismatch} types={types.Length} fields={fieldsTotal} modules={modules.Length} output={output}");
+Console.WriteLine($"Static layouts generated: hostOnly={host} mismatchTest={mismatch} types={types.Length} fields={fieldsTotal} factories={holder.Methods.Count - 3} modules={modules.Length} bytes={new FileInfo(output).Length} output={output}");
+foreach (var target in modules) Console.WriteLine($"  module={target.Name} mvid={target.Mvid:D}");
 
 Guid DeterministicMvid()
 {
     using var hash = System.Security.Cryptography.SHA256.Create();
-    string text = "static-layouts-v1\nmismatch=" + mismatch + "\n" + string.Join("\n", modules.Select(m => m.Name + ":" + m.Mvid))
+    string text = "static-layouts-v2-shared-empty-factories\nmismatch=" + mismatch + "\n" + string.Join("\n", modules.Select(m => m.Name + ":" + m.Mvid))
         + "\n" + string.Join("\n", types.Select(t => t.FullName + ":"
             + string.Join(",", t.Fields.Where(f => !f.IsStatic).Select(f => f.Name + ":" + f.FieldType.FullName))));
     byte[] bytes = hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text));

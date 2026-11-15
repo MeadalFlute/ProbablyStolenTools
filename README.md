@@ -5,6 +5,16 @@
 《深空当铺 / Probably Stolen》的自研辅助 Mod，适配正式版 **0.9.3**。
 正式版为 Unity 2021.3.45f2 / Mono / x64（游戏 0.46D），使用游戏自带的 **IMod / Harmony** 加载器，不需要 MelonLoader 或 BepInEx。
 
+### 游戏 Beta 分支
+
+游戏 **1.0.0.14 是 beta**，不是 0.46D 稳定分支。当前源码已提供针对它的静态表构建与离线兼容候选，尚待实机验收。
+稳定版和 beta 包分别构建；每个包只带一份 `ProbablyStolenTools.StaticLayouts.dll`，不把两套表、游戏程序集或独立生成器叠加进 Mod。
+切换 Steam 分支后需安装匹配分支的候选包，或退出游戏后使用匹配源码版本的独立工具重新生成 helper。
+旧表现在会先校验模块版本，明确拒绝不匹配，不会为了兼容而漏存游戏闭包状态。
+
+维护者：beta 使用 `release/beta/manifest.xml`，稳定分支继续使用 `release/manifest.xml`。
+详见 `research/2026-11-16-beta-static-layout-compatibility.md`；离线通过不代表未来 beta 更新或任意第三方 Mod 已兼容。
+
 ---
 
 ## 功能一览

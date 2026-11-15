@@ -20,11 +20,17 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 # 部署（必须先关闭游戏）
 .\scripts\Deploy-FullRelease.ps1
+
+# 当前本机为游戏 beta 1.0.0.14，必须使用 beta manifest
+.\scripts\Test-StaticLayouts.ps1 -GameDir "<游戏目录>" -ManifestPath release/beta/manifest.xml
+.\scripts\Deploy-FullRelease.ps1 -GameDir "<游戏目录>" -ManifestPath release/beta/manifest.xml
 ```
 
 当前开发候选：**430 项**离线参考测试，另有 10 项原版历史/齿轮设置 IO 夹具测试、10 项玩家生成工具断言；Harmony 挂点与字段检查数量见最新验证日志，另检查三个漏斗静态门控字段；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归，以及 500 组原版比例耗水对照。离线通过 **不等于** Unity 活体验收。基础见 `research/2026-11-15-chemistry-crossday-handoff.md`，测试反馈修正见 `research/2026-11-15-feedback-followup.md`，跨天/F6 选择修正见 `research/2026-11-15-rewind-picker-followup.md`，返店/文件去重与存档恢复见 `research/2026-11-15-return-archive-followup.md`，活动档去重与晨报卡顿跟进见 `research/2026-11-15-active-history-morning-followup.md`。
 
-本批统一审查入口：`research/2026-11-15-feature-batch-review-handoff.md`，覆盖 `44cf260..48853fb` 的跨天/化学新功能和后续修正。22:52 实机会话 7 次建点、2 次恢复无新增失败，恢复最终均 diff=0；同规模重新载入晨间 1365ms、次日晨间 1129ms、首顾客 890ms，仅为少量非严格 A/B 样本。双 DLL 构建来源仍为干净 `48853fb`，文档更新不应被误认为已重建/重部署。
+上一批统一审查入口：`research/2026-11-15-feature-batch-review-handoff.md`，覆盖 `44cf260..48853fb`；回执见 `2026-11-15-feature-batch-review-receipt.md`，0.9.3 已由 DS 推送。本轮补 N1/N2 文件保护、N3 不匹配立即取消、N4 脏源码拒绝打包；beta 适配及构建来源以 `research/2026-11-16-beta-static-layout-compatibility.md` 为准，不把旧 0.46D 实测当作 beta 验收。
+
+2026-11-16 当前 beta 验证规模：2883 类型/8160 字段、14 项原版历史/齿轮 IO 夹具；上段 2861/8108 与 10 项为上一轮 0.46D 记录。430 项参考测试和工具 10 项断言不变。
 
 ### 版本与发布
 
@@ -34,6 +40,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 - 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.3**。
 - 纯文档提交不单独升版；推送前重新构建 → 两组测试 → 部署 → 正常 `push`（不 force）。
 - 推送使用用户临时 token，不写入文件、日志或命令历史。
+- `release/manifest.xml` 仍只声明稳定游戏 0.46D；`release/beta/manifest.xml` 只声明 beta 1.0.0.14，二者 ModVersion 必须与 Plugin.Version 一起更新。不能仅在旧 helper 的 manifest 加版本号宣称兼容。
+- 用干净源码执行 `scripts/Package-FullRelease.ps1 -GameDir "<游戏目录>" -ManifestPath release/beta/manifest.xml` 构建 beta 包。每包仅主 DLL、当前分支 helper、manifest、preview；正式包和工具包均拒绝 dirty 源码，保留源码提交/哈希/包体记录。不包含第二分支表，不承诺同一主 DLL 已在两个游戏版本实测。
 
 ---
 
@@ -118,6 +126,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 - 返店要求位置为 IN_STORE；CLOSED 状态允许原版整晚保留的卷帘门锁（不修改该锁），OPEN/MORNING 仍要求解锁。RETURN SHOP 记录真实返店；RETURN WAIT 每五秒检查、仅阻塞状态变化才记录。
 - 文件层按 `(runID, slot, day)` 合并 MORNING：Mod 文件节点同日原位原子替换、清理旧重复后才做数量/容量 LRU；原版 `SaveFiles.TrimHistory` 前移除已验证的同日旧归档，保留当前旋转得到的最新档，避免同日重走挤掉其他日期。保持原版轮转、槽位写入、IO 重试和失败恢复；禁用回溯或原版清空历史时不拦截。未知/损坏/非晨间/异周目/异槽位/链接文件不参与按日去重。
 - 原版每日唯一包含活动槽位：正常载入后、成功 WriteSlotFile 后清理不晚于活动档的同日历史；SaveGame postfix 不作为成功依据（原版吞部分异常）。同日保存轮转时临时预留一份回滚副本名额，写盘成功才删除，避免当天重存先挤掉其他日期。比活动档更新的异常历史副本保留，绝不自动替换活动槽位。
+- 原版去重保护 PendingPoint.Path 及所有保留索引引用（含后置的无效索引项），只移除可验证重复；LoadGame/WriteSlotFile 回调也不得删除待恢复文件。载入日期/槽位/周目不匹配时立即取消 Pending/Settling/Busy 并释放临时文件选择，不再等 90 秒；磁盘恢复文件保留。
 - `isGeneScannerScanning` 是设施开关，不是扫描动作，禁止作为任何门控。
 - 文件节点回退只加载不写回：快照复制为 `pstools_restore.es3`，通过 `NewGameData.saveFile` 读取；保留 `.pre_restore` 备份；不覆盖当前存档。必须收到原版 `LoadGame` 完成且日期/槽位/runID 匹配后才能删除临时文件并重置内存节点，不能以 `PlayerStore` 存在代替加载完成。文件重载更换对象实例，不保留旧内存节点。
 - 运行时文件节点仍全局按 `Rewind.MaxCheckpoints`（默认 20）及 `MaxDiskMB`（默认 256 MiB）限额；`.pre_restore` 每槽位一份覆盖，不随回溯次数无限新增。开发部署备份不由游戏内 Mod 自动删除；`scripts/Prune-DeploymentBackups.ps1` 默认仅预览，显式 `-Apply` 才可清理，保留最近 10 份及每种唯一 ES3/备份内容，删除前验证候选和保留副本哈希，拒绝链接、路径越界、变更/额外存档。独立恢复目录不参与清理。部署脚本发现游戏运行直接拒绝，禁止自动终止游戏。
@@ -139,6 +148,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 ---
 
 ## 6. 加载器兼容迁移
+
+2026-11-16 beta 适配：在任何 KnownTypes/KnownFactories 令牌解析前，以固定 PlayerStore/object/HashSet/Vector3 模块锚点校验全部 MVID。KnownTypes/Factories 禁止内联；错误版本负例同时含不存在的类型令牌，须先版本拒绝。新版官方保护名单增加 ModWindowControl，生成器与运行时共享排除并离线核对官方全名单。保留全部其余业务闭包，不能泛化排除 CompilerGeneratedAttribute。表仅复用相同泛型元数的空声明字段工厂，不减覆盖；beta 每包一表，与稳定包分开。新表 664576 字节，同 beta/同边界未合并工厂基线 687616 字节。详见本轮 beta 记录。
 
 **0.9.3 的 Mono 发布路径已使用构建时静态布局表**，详见 `research/2026-11-12-static-runtime-graph-migration.md` 与 `research/2026-11-12-loader-migration-review-handoff.md`。构建时生成目标 Mono 字段表，包含私有 Entry/Slot 固定类型令牌；版本严格 MVID 门控，未知布局不动态回退。Mono 编译排除旧表达式生成路径，通用 GameFields 用官方 ModReflect；恢复字段/集合物理存储与安全检查不减。两个发布 DLL 均列入 manifest，仅声明/检测 files；ReleaseCompatibility 的退役能力门槛已加入，net8 宿主表隔离于 out。`scripts/Test-StaticLayouts.ps1` 全套通过；实机仍只覆盖简单节点回溯，完整功能矩阵和多 Mod 组合未验收。下方为迁移过程中的性能记录。
 
@@ -199,7 +210,7 @@ DS 边界代码审查通过。部署哈希疑点已复核：原 FDC 与 DS 的 C
 ## 9. 验收清单
 
 1. `dotnet build -c Release`：0 警告 / 0 错误。
-2. `CheckpointTests` 430 项全过；`ReleaseCompatibility` 84 挂点/76 字段/漏斗门控/`HardFlags` 通过；另跑原版历史/齿轮 IO 与玩家生成工具各 10 项。新功能实机矩阵见本轮统一交接。
+2. `CheckpointTests` 430 项全过；`ReleaseCompatibility` 84 挂点/76 字段/漏斗门控/官方保护名单/`HardFlags` 通过；另跑原版历史/齿轮 IO 14 项、玩家生成工具 10 项。beta 与稳定版需要各自验收，不混用实机记录。
 3. 部署后：首/普通/手动节点往返、恢复后群拖、顾客贴图、正常交易/送客。
 4. 物品：售出/移动/旋转/拆分合并/嵌套容器/前柜台回溯，贴图位置与朝向正确，无“空气占用”。
 5. 多语言：切换语言后水质/纯度/评级/酿酒标签跟随；缺键回退；三个设置开关生效。

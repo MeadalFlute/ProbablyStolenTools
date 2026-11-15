@@ -205,7 +205,16 @@ var loadedNames = System.IO.Directory.GetFiles(managed, "*.dll")
 game.GetType("ModLoader").GetField("gameAssemblyNames", BindingFlags.Static | BindingFlags.NonPublic)
     .SetValue(null, loadedNames);
 var scanner = game.GetType("ModScanner");
+var protectedOwners = (string[])scanner.GetField("GuardTypes", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null);
+var excludeOwner = mod.GetType("ProbablyStolenTools.SnapshotTraversalBoundary", true)
+    .GetMethod("IsProtectedOwner", BindingFlags.Static | BindingFlags.NonPublic);
+foreach (var owner in protectedOwners)
+    if (!(bool)excludeOwner.Invoke(null, new object[] { owner }))
+        throw new Exception("Runtime/generator snapshot boundary misses an official guarded owner: " + owner);
+Console.WriteLine("PASS shared snapshot boundary covers all " + protectedOwners.Length + " official guarded owners");
 var manifest = XDocument.Load(args[2]).Root;
+if ((string)plugin.GetField("Version").GetRawConstantValue() != manifest.Element("ModVersion").Value)
+    throw new Exception("Main DLL version does not match the selected branch manifest.");
 var shippedDlls = manifest.Element("Assemblies").Elements("Assembly").Select(element =>
 {
     if (Path.GetFileName(element.Value) != element.Value || Path.GetExtension(element.Value) != ".dll")
@@ -529,7 +538,13 @@ foreach (var boundaryItem in boundaryItems)
     game.GetType("GameItem", true).GetField("itemTypes", dataFlags).SetValue(boundaryItem, sharedItemTypes);
 var boundaryGrid = Data("GameGridInventory");
 var boundarySlot = Data("GameSlotInventory");
-var boundaryClosure = Data("MiscItemDirectory+<>c__DisplayClass51_0");
+// Compiler ordinal names change between stable and beta. The fixture requires
+// a real game closure with this field contract, not one historical ordinal.
+var boundaryClosureType = game.GetType("MiscItemDirectory", true).GetNestedTypes(dataFlags)
+    .Where(t => t.Name.StartsWith("<>c__DisplayClass", StringComparison.Ordinal)
+        && t.GetField("item", dataFlags)?.FieldType == game.GetType("GameItem", true))
+    .OrderBy(t => t.FullName, StringComparer.Ordinal).First();
+var boundaryClosure = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(boundaryClosureType);
 boundaryClosure.GetType().GetField("item", dataFlags).SetValue(boundaryClosure, boundaryItems[0]);
 var boundaryList = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(game.GetType("GameItem", true)));
 foreach (var boundaryItem in boundaryItems) boundaryList.Add(boundaryItem);

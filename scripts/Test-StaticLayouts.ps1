@@ -1,5 +1,6 @@
 param(
-    [string]$GameDir = $env:PROBABLY_STOLEN_FULL_DIR
+    [string]$GameDir = $env:PROBABLY_STOLEN_FULL_DIR,
+    [string]$ManifestPath = 'release/manifest.xml'
 )
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($GameDir)) { throw 'Set PROBABLY_STOLEN_FULL_DIR or pass -GameDir.' }
@@ -19,7 +20,7 @@ try {
     Invoke-Dotnet -Arguments @('build', 'src/ProbablyStolenTools/ProbablyStolenTools.csproj', '-c', 'Release', "-p:GameDir=$GameDir")
     Invoke-Dotnet -Arguments @('run', '-c', 'Release', '--project', 'tests/CheckpointTests/CheckpointTests.csproj')
     Invoke-Dotnet -Arguments @('run', '-c', 'Release', '--project', 'tests/ReleaseCompatibility', '--',
-        $GameDir, $mod, 'release/manifest.xml')
+        $GameDir, $mod, $ManifestPath)
     Invoke-Dotnet -Arguments @('build', $fixtureProject, '-c', 'Release')
     Invoke-Dotnet -Arguments @('build', $hostProject, '-c', 'Release')
     Invoke-Dotnet -Arguments @('run', '--no-build', '-c', 'Release', '--project', $hostProject, '--', $GameDir, $fixture, $layouts)

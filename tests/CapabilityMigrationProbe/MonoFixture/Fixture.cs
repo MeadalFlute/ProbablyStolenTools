@@ -148,7 +148,10 @@ public static partial class OfflineMonoFixture
         pairMap["pair"] = Activator.CreateInstance(pairType, new object[] { tag,
             BitConverter.Int32BitsToSingle(unchecked((int)0x80000000)) });
         var random = new Random(7169);
-        var closureType = game.GetType("GameItem+<>c__DisplayClass187_0", true);
+        var closureType = game.GetType("GameItem", true).GetNestedTypes(instance)
+            .Where(t => t.Name.StartsWith("<>c__DisplayClass", StringComparison.Ordinal)
+                && t.GetField("modId", instance)?.FieldType == typeof(string))
+            .OrderBy(t => t.FullName, StringComparer.Ordinal).First();
         var closure = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(closureType);
         var closureField = closureType.GetField("modId", instance);
         closureField.SetValue(closure, "before");
@@ -747,9 +750,10 @@ public static partial class OfflineMonoFixture
         }
         catch (TargetInvocationException e)
         {
-            if (!e.ToString().Contains("Snapshot layout build does not match loaded module:")) throw;
+            if (!e.ToString().Contains("Snapshot layout build does not match loaded module:")
+                || e.ToString().Contains("TypeLoadException") || e.ToString().Contains("MissingSnapshotVersionSentinel")) throw;
         }
-        Console.WriteLine("PASS actual game Mono rejects mismatched generated-module MVID before returning any snapshot fields.");
+        Console.WriteLine("PASS actual game Mono rejects mismatched generated-module MVID before resolving missing KnownTypes tokens or returning any snapshot fields.");
     }
     private static int _callbackCount;
     private static void NeverInvoke() { _callbackCount++; throw new Exception("Callback must not run."); }
