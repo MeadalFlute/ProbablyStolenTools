@@ -354,7 +354,17 @@ namespace ProbablyStolenTools
                 ? "Outside; checkpoints retained until return." : "Left the shop; in-memory checkpoints expired.";
         }
 
-        internal static void Returned() { ReturnGate.Return(); }
+        private static float _returnNextLog;
+        private static string _returnBlocker;
+        internal static void Returned()
+        {
+            bool outside = ReturnGate.Outside;
+            ReturnGate.Return();
+            if (!outside) return;
+            _returnBlocker = null;
+            _returnNextLog = Time.unscaledTime + 5f;
+            EventLog.Write("[Customer] RETURN SHOP; waiting for stable checkpoint boundary");
+        }
 
         private static void TryCaptureReturn()
         {
@@ -370,8 +380,10 @@ namespace ProbablyStolenTools
                 && dialog != null && dialog.currentDialog == null && dialog.isConversationActiveFlag == 0
                 && !dialog.isWaitingForManualAdvance && PendingCallbacks.Count == 0
                 && !store.isHandlingShootout && !store.isClientBeingArrested
-                && store.lockShutterButtonFlag == 0 && StoreClientMono.Instance != null
-                && !StoreClientMono.Instance.IsMoving() && ShopPhaseVisual.IsSettled()
+                && CheckpointReturnGate.ShutterReady((int)store.storeState, store.lockShutterButtonFlag)
+                && store.playerLocation == PlayerStore.PlayerLocation.IN_STORE
+                && (StoreClientMono.Instance != null ? !StoreClientMono.Instance.IsMoving() : store.currentClientInstance == null)
+                && ShopPhaseVisual.IsSettled()
                 && !ItemInteractionBusy() && !GameFields.PhoneBusy(PhoneUIManager.Instance);
 #if MONO
             settled &= !SaveManager.IsDecoding && !CurrentConverterHelper.isNightCycle
@@ -381,6 +393,26 @@ namespace ProbablyStolenTools
 #endif
             if (ReturnGate.Poll(settled, Time.unscaledTime))
                 Capture(store, (int)store.storeState == 0, returned: true);
+            else if (!settled && Time.unscaledTime >= _returnNextLog)
+            {
+                _returnNextLog = Time.unscaledTime + 5f;
+                string reason = $"state={store?.storeState} lock={store?.lockShutterButtonFlag} location={store?.playerLocation}"
+                    + $" faulted={_faulted} restoring={Rewind.Restoring} settling={Rewind.Settling} closeArmed={_closeArmed}"
+                    + $" black={ui?.blackscreen?.gameObject.activeSelf} typing={StoreUIManager.IsAnyTyping()} menu={MainMenuUIController.Instance != null}"
+                    + $" dialog={dialog?.currentDialog != null}/{dialog?.isConversationActiveFlag}/{dialog?.isWaitingForManualAdvance}"
+                    + $" callbacks={PendingCallbacks.Count} moving={StoreClientMono.Instance?.IsMoving()} shutter={ShopPhaseVisual.IsSettled()}"
+                    + $" items={ItemInteractionBusy()} phone={GameFields.PhoneBusy(PhoneUIManager.Instance)}";
+#if MONO
+                reason += $" decoding={SaveManager.IsDecoding} night={CurrentConverterHelper.isNightCycle}"
+                    + $" endUI={EndOfDayUIManager.Instance?.IsOpen} calendar={AdvCalendarUIManager.Instance?.UIPanel?.activeSelf}"
+                    + $" startUI={StartOfDayUIManager.Instance?.UIPanel?.activeSelf}";
+#endif
+                if (reason != _returnBlocker)
+                {
+                    _returnBlocker = reason;
+                    EventLog.Write("[Customer] RETURN WAIT " + reason);
+                }
+            }
         }
 
 #if MONO

@@ -724,8 +724,21 @@ namespace ProbablyStolenTools
     [HarmonyPatch(typeof(PlayerStore), nameof(PlayerStore.LoadGame))]
     internal static class RewindNativeLoadPatch
     {
+#if MONO
+        [HarmonyPrefix]
+        private static void Prefix(out NativeLoadDiagnostics.Scope __state) => __state = NativeLoadDiagnostics.Enter();
+        [HarmonyFinalizer]
+        private static void Finalizer(NativeLoadDiagnostics.Scope __state, Exception __exception) =>
+            NativeLoadDiagnostics.Exit(__state, true, __exception);
+#endif
         [HarmonyPostfix]
-        private static void Postfix(PlayerStore __instance) => Rewind.NativeLoaded(__instance);
+        private static void Postfix(PlayerStore __instance)
+        {
+            Rewind.NativeLoaded(__instance);
+#if MONO
+            NativeSaveHistoryPatch.ReconcileActive(__instance.saveSlotId);
+#endif
+        }
     }
 
     /// <summary>热键 + 事件日志。IMGUI 在这个 build 里被裁掉了，UI 用日志替代。</summary>

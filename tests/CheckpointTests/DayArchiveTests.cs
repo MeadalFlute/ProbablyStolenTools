@@ -26,6 +26,24 @@ internal static class DayArchiveTests
                 check(history[0].Cash == replay);
             }
         });
+        test("committed active day consumes no historical slot on repeated saves", () =>
+        {
+            var active = new SaveMetadata(95, 500, 2, 2, "a");
+            var history = new List<SaveMetadata> { active with { Day = 94 }, active with { Day = 93 } };
+            for (int replay = 0; replay < 20; replay++)
+            {
+                history.Insert(0, active with { Cash = replay });
+                // Native rotation temporarily reserves a rollback slot, not a date.
+                history = history.Take(3).ToList();
+                foreach (int i in DayArchivePolicy.Duplicates(history, active).OrderByDescending(i => i))
+                    history.RemoveAt(i);
+                check(history.Select(m => m.Day).SequenceEqual(new[] { 94, 93 }));
+            }
+            check(DayArchivePolicy.Duplicates(history, null).Count == 0);
+            check(DayArchivePolicy.Duplicates(new[] { active }, active with { State = 0 }).Count == 0);
+            check(DayArchivePolicy.Duplicates(new[] { active }, active with { RunId = "b" }).Count == 0);
+            check(DayArchivePolicy.Duplicates(new[] { active }, active with { Slot = 1 }).Count == 0);
+        });
         test("catalog removes same-day copies before LRU can evict older dates", () => Temp(root =>
         {
             string yesterday = Add(root, 1, 94), older = Add(root, 2, 95), newer = Add(root, 3, 95);

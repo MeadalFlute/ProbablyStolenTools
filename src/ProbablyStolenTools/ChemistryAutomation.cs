@@ -16,7 +16,8 @@ namespace ProbablyStolenTools
         internal static bool ReactionsEnabled => Plugin.CfgChemistry?.Value == true && Plugin.CfgRapidReactions?.Value == true;
         private static bool Available => CustomerCheckpoint.PatchesReady && Plugin.CfgChemistry?.Value == true
             && !CustomerCheckpoint.Restoring && !Rewind.Restoring
-            && !SaveManager.IsDecoding && !CurrentConverterHelper.isNightCycle && Plugin.Store() != null;
+            && !NativeLoadDiagnostics.Active && !SaveManager.IsDecoding
+            && !CurrentConverterHelper.isNightCycle && Plugin.Store() != null;
         private static bool AutoBlend => Available && Plugin.CfgAutoBlend?.Value == true;
         private static bool PlayerMoving => _placements > 0
             || ItemMouseDragHandler.current?.IsDraggingItem == true

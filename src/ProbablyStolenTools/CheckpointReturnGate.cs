@@ -5,6 +5,9 @@ namespace ProbablyStolenTools
         internal bool Outside { get; private set; }
         internal bool Pending { get; private set; }
         private float _stableSince = -1;
+        // CLOSED keeps the native shutter lock until the next morning.
+        internal static bool ShutterReady(int state, int locks) =>
+            state >= 0 && state <= 2 && (state == 0 || locks == 0);
         internal void Leave() { Outside = true; CancelPending(); }
         internal void Return()
         {

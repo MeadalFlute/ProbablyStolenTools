@@ -14,9 +14,11 @@ namespace ProbablyStolenTools
     {
         // Input is newest/preferred first. Unreadable, non-morning and foreign-run
         // saves never qualify as duplicates based on the filename alone.
-        internal static List<int> Duplicates(IEnumerable<SaveMetadata> metadata)
+        internal static List<int> Duplicates(IEnumerable<SaveMetadata> metadata, SaveMetadata active = null)
         {
             var seen = new HashSet<DayArchiveIdentity>();
+            var current = DayArchiveIdentity.From(active);
+            if (current.HasValue) seen.Add(current.Value);
             var duplicates = new List<int>();
             int index = 0;
             foreach (var item in metadata)

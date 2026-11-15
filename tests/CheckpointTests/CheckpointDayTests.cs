@@ -111,6 +111,17 @@ internal static class CheckpointDayTests
             gate.Leave(); gate.Reset(); gate.Return();
             check(!gate.Pending && !gate.Outside);
         });
+        test("closed return allows persistent native shutter lock but opening transitions remain blocked", () =>
+        {
+            check(CheckpointReturnGate.ShutterReady(0, 1));
+            check(CheckpointReturnGate.ShutterReady(0, 2));
+            check(!CheckpointReturnGate.ShutterReady(1, 1));
+            check(!CheckpointReturnGate.ShutterReady(2, 1));
+            check(CheckpointReturnGate.ShutterReady(1, 0));
+            check(CheckpointReturnGate.ShutterReady(2, 0));
+            check(!CheckpointReturnGate.ShutterReady(-1, 0));
+            check(!CheckpointReturnGate.ShutterReady(3, 0));
+        });
         test("chemistry dividers preserve row separation and hotkey scroll reachability", () =>
         {
             foreach (float width in new[] { 380f, 480f, 900f })

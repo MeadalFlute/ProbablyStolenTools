@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前开发候选：**424 项**离线参考测试；**77 个** Harmony 挂点、**76 个**快照/私有字段检查，另检查三个漏斗静态门控字段；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归，以及 500 组原版比例耗水对照。离线通过 **不等于** Unity 活体验收。基础见 `research/2026-11-15-chemistry-crossday-handoff.md`，测试反馈修正见 `research/2026-11-15-feedback-followup.md`，跨天/F6 选择修正见 `research/2026-11-15-rewind-picker-followup.md`，返店/文件去重与存档恢复见 `research/2026-11-15-return-archive-followup.md`。
+当前开发候选：**426 项**离线参考测试，另有 9 项原版历史文件 IO 夹具测试；Harmony 挂点与字段检查数量见最新验证日志，另检查三个漏斗静态门控字段；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归，以及 500 组原版比例耗水对照。离线通过 **不等于** Unity 活体验收。基础见 `research/2026-11-15-chemistry-crossday-handoff.md`，测试反馈修正见 `research/2026-11-15-feedback-followup.md`，跨天/F6 选择修正见 `research/2026-11-15-rewind-picker-followup.md`，返店/文件去重与存档恢复见 `research/2026-11-15-return-archive-followup.md`，活动档去重与晨报卡顿跟进见 `research/2026-11-15-active-history-morning-followup.md`。
 
 ### 版本与发布
 
@@ -111,7 +111,9 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 - F5/F7 优先恢复晨间内存锚点以保留历史；若昨日锚点不可用且还有内存节点，F5 提示并拒绝文件回退，不静默清空。新分支提交前可逆浏览“后续”节点，提交后仅保留最多 80 条已释放图的只读“丢弃”摘要，默认折叠且不能恢复。F6 选择面板向下一个可用节点（包括手动），↑/W、↓/S 切换，Enter 确认，Esc 取消；五个导航/确认键均可改，双击恢复不变。
 - 未进入 F6 选择时，导航主键（默认 ↑/↓）也可直接进入选择并向对应方向移动一格；W/S 备用键仍仅在选择中生效，不抢占普通操作，文本输入时不启动选择。文件节点原位更新也会递增版本并取消旧选择。
 - 真正离店后返店会等待对话、转场、回调、拖拽、开关门等连续稳定 0.5 秒，再建立独立“返店”内存节点，占当天常规名额；初始到店/重复返店回调不建重复点，不替换晨间锚点/自动闭店点，也不消费当前顾客自动捕获边界。
+- 返店要求位置为 IN_STORE；CLOSED 状态允许原版整晚保留的卷帘门锁（不修改该锁），OPEN/MORNING 仍要求解锁。RETURN SHOP 记录真实返店；RETURN WAIT 每五秒检查、仅阻塞状态变化才记录。
 - 文件层按 `(runID, slot, day)` 合并 MORNING：Mod 文件节点同日原位原子替换、清理旧重复后才做数量/容量 LRU；原版 `SaveFiles.TrimHistory` 前移除已验证的同日旧归档，保留当前旋转得到的最新档，避免同日重走挤掉其他日期。保持原版轮转、槽位写入、IO 重试和失败恢复；禁用回溯或原版清空历史时不拦截。未知/损坏/非晨间/异周目/异槽位/链接文件不参与按日去重。
+- 原版每日唯一包含活动槽位：正常载入后、成功 WriteSlotFile 后清理不晚于活动档的同日历史；SaveGame postfix 不作为成功依据（原版吞部分异常）。同日保存轮转时临时预留一份回滚副本名额，写盘成功才删除，避免当天重存先挤掉其他日期。比活动档更新的异常历史副本保留，绝不自动替换活动槽位。
 - `isGeneScannerScanning` 是设施开关，不是扫描动作，禁止作为任何门控。
 - 文件节点回退只加载不写回：快照复制为 `pstools_restore.es3`，通过 `NewGameData.saveFile` 读取；保留 `.pre_restore` 备份；不覆盖当前存档。必须收到原版 `LoadGame` 完成且日期/槽位/runID 匹配后才能删除临时文件并重置内存节点，不能以 `PlayerStore` 存在代替加载完成。文件重载更换对象实例，不保留旧内存节点。
 - 运行时文件节点仍全局按 `Rewind.MaxCheckpoints`（默认 20）及 `MaxDiskMB`（默认 256 MiB）限额；`.pre_restore` 每槽位一份覆盖，不随回溯次数无限新增。开发部署备份不由游戏内 Mod 自动删除；`scripts/Prune-DeploymentBackups.ps1` 默认仅预览，显式 `-Apply` 才可清理，保留最近 10 份及每种唯一 ES3/备份内容，删除前验证候选和保留副本哈希，拒绝链接、路径越界、变更/额外存档。独立恢复目录不参与清理。部署脚本发现游戏运行直接拒绝，禁止自动终止游戏。
@@ -123,6 +125,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 - `EventLog.Write` 品牌头：`[QuickSL]` / `[QuickSL/子系统]`；关键捕获/恢复/失败不随 verbose 关闭。
 - 默认日志：Session/语言状态、CAPTURE/RESTORE 阶段耗时与规模/后端、失败/拒绝/超限、真实 full 回退、释放错误、群拖异常。
+- `[Load] native ms(...)` 每次载入一条，区分 Entry/PreLoad/LoadGame/DecodeSaveItem/历史清理；原版解码后的 onLoaded 等阶段也处于化学自动化禁止区间。晨报关闭另记 `closeMs` 与 `morningAnchorPending`，关闭后晨间锚点同步完整捕获耗时仍见 `CAPTURE client=day-start captureMs`。不把原生载入、关闭回调与后续捕获混作同一耗时。
 - `[QuickSL/Geom]` 只在物品视图异常（DESTROYED/MISSING/NOSPRITE/HIDDEN/MISPLACED）时输出。
 - `PSTools.log` 4MiB × 3 归档；独立错误日志 1MiB × 2；`PSTools_history.log` 保留并轮转。
 - 设置页「查看日志」用 `CustomUIManager.Window(...)` 构建，显示末尾 400 行。
