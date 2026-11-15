@@ -41,9 +41,7 @@ function Assert-Tree([object[]]$expected, [string]$directory) {
 $stopped = @()
 foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
     if ($process.Path -eq (Join-Path $GameDir 'Probably Stolen.exe')) {
-        $stopped += $process.Id
-        Stop-Process -Id $process.Id -Force
-        $process.WaitForExit(10000) | Out-Null
+        throw 'Close the game before deployment; no processes were stopped and no files were changed.'
     }
 }
 $saveBefore = @(Get-TreeHashes $saveDir)
