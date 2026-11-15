@@ -19,7 +19,7 @@ namespace ProbablyStolenTools
         {
             if (Plugin.CfgChemistry?.Value != true || Plugin.CfgFacilityPreview?.Value != true
                 || !InspectionLocale.AnnotationsReady || CustomerCheckpoint.Restoring || Rewind.Restoring
-                || item.IsTag("BROKEN_MACHINE_TAG")) return;
+                || Plugin.Store() == null || item.IsTag("BROKEN_MACHINE_TAG")) return;
             try
             {
                 switch (item.identifier)
@@ -166,7 +166,7 @@ namespace ProbablyStolenTools
                 if (!fish.IsTag("FISH_ITEM_TAG") || fish.IsTag("FISH_IS_DEAD_TAG")) continue;
                 string id = ChemistryData.String(fish, "FISH_SPECIES_TAG");
                 if (!FishSpecies.All.TryGetValue(id, out var species)) continue;
-                if (id == "gutter_tilapia") tilapia = true;
+                if (species.fishIdentifier == "gutter_tilapia") tilapia = true;
                 float kcal = Math.Max(0f, ChemistryData.Float(fish, "FISH_KCAL_GROWN_TAG")
                     - ChemistryData.Float(fish, "FISH_EGG_GRAMS_TAG") * species.eggKcalPerGram);
                 removalMl += AquacultureHelper.GetWeightForBodyKcal(species, kcal) / 100f * species.remediationMlPer100gPerNight;
@@ -215,19 +215,23 @@ namespace ProbablyStolenTools
             var parts = (int[])initial.Clone();
             int water = Index("water"), mineral = Index("mineral");
             var damages = new[] { "heavy_metal", "chemical_contaminant", "microbe", "organic_waste", "acid", "base" };
+            int level = HydroponicHelper.GetNutrimentLevel(seed), range = HydroponicHelper.GetNutrimentRange(seed);
+            int mineralUse = HydroponicHelper.GetMineralUseRate(seed);
+            double sensitivity = HydroponicHelper.GetContaminantSensitivity(seed), effect = HydroponicHelper.GetContaminantEffect(seed);
+            var damageIndices = new int[damages.Length];
+            for (int i = 0; i < damages.Length; i++) damageIndices[i] = Index(damages[i]);
             // Match the work ticks, then consumption, then the purifying trait.
             if (progress < 0 || progress > 10000) throw new InvalidOperationException("Invalid hydroponic work rate: " + progress);
             for (int tick = 0; tick < progress; tick++)
             {
                 int nutrient = Percentage(parts, mineral, water);
-                int level = HydroponicHelper.GetNutrimentLevel(seed), range = HydroponicHelper.GetNutrimentRange(seed);
                 if (nutrient < level - range) health -= 100;
                 else if (nutrient > level + range) health -= 50;
-                FacilityProjection.Remove(parts, mineral, water, HydroponicHelper.GetMineralUseRate(seed), 0);
-                foreach (string id in damages)
-                    health -= FacilityProjection.HealthDamage(Percentage(parts, Index(id), water),
-                        HydroponicHelper.GetContaminantSensitivity(seed), HydroponicHelper.GetContaminantEffect(seed));
+                FacilityProjection.Remove(parts, mineral, water, mineralUse, 0);
+                foreach (int i in damageIndices)
+                    health -= FacilityProjection.HealthDamage(Percentage(parts, i, water), sensitivity, effect);
             }
+            int nutrientUsed = mineral < 0 ? 0 : initial[mineral] - parts[mineral];
             parts = FacilityProjection.Consume(parts, use);
             var preFilter = (int[])parts.Clone();
             int rank = PlantGeneticsHelper.GetTraitRank(seed, "purifying");
@@ -243,7 +247,9 @@ namespace ProbablyStolenTools
                         PlantWaterQuality.PurifyingFloor(liquid, rank));
                 }
                 if (water >= 0) parts[water] = checked(parts[water] + converted);
-                Removed(b, Difference(preFilter, parts));
+                var removed = Difference(preFilter, parts);
+                if (mineral >= 0) removed[mineral] += nutrientUsed;
+                Removed(b, removed);
             }
             int next = Math.Min(required, current + progress);
             int machineTarget = growing ? ChemistryData.Int(machine, "MACHINE_PROGRESS_TARGET_TAG") : required;

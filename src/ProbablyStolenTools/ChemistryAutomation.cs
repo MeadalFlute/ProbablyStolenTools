@@ -8,26 +8,32 @@ namespace ProbablyStolenTools
     internal static class ChemistryAutomation
     {
         private static readonly HashSet<GameItem> Pending = new();
+        private static readonly BlendBatchPlan<GameItem> GroupPlan = new();
         private static int _placements, _groups;
         private static bool _running, _extracting;
         private static readonly HashSet<string> Reported = new();
-        private static bool Available => Plugin.CfgChemistry?.Value == true
+        private static bool Available => CustomerCheckpoint.PatchesReady && Plugin.CfgChemistry?.Value == true
             && !CustomerCheckpoint.Restoring && !Rewind.Restoring
-            && !CurrentConverterHelper.isNightCycle && Plugin.Store() != null;
+            && !SaveManager.IsDecoding && !CurrentConverterHelper.isNightCycle && Plugin.Store() != null;
         private static bool AutoBlend => Available && Plugin.CfgAutoBlend?.Value == true;
         private static bool PlayerMoving => _placements > 0
             || ItemMouseDragHandler.current?.IsDraggingItem == true
             || ItemMultiSelectHandler.current?.IsGroupDragging == true;
 
-        internal static void BeginPlacement(bool group) { _placements++; if (group) _groups++; }
+        internal static void BeginPlacement(bool group)
+        {
+            _placements++;
+            if (group) { if (_groups == 0) GroupPlan.Clear(); _groups++; }
+        }
         internal static void EndPlacement(bool group, bool success)
         {
             _placements = Math.Max(0, _placements - 1);
             if (group) _groups = Math.Max(0, _groups - 1);
             if (!success) Pending.Clear();
             else if (_placements == 0) Drain();
+            if (_groups == 0) GroupPlan.Clear();
         }
-        internal static void Reset() => Pending.Clear();
+        internal static void Reset() { Pending.Clear(); GroupPlan.Clear(); }
 
         private static GameItem Blender(GameGridInventory grid)
         {
@@ -38,13 +44,24 @@ namespace ProbablyStolenTools
         private static GameItem Bottle(GameItem machine) =>
             (MachineHelper.GetBodyStorage(machine, 2) as GameSlotInventory)?.childItem;
 
+        internal static bool SequentialGroup(GameGridInventory grid)
+        {
+            if (!AutoBlend || _running || (_groups == 0 && ItemMultiSelectHandler.current?.IsGroupDragging != true)) return false;
+            try
+            {
+                var machine = Blender(grid);
+                return machine != null && Bottle(machine) != null;
+            }
+            catch (Exception e) { Warn("blend-group", e); return false; }
+        }
+
         private static bool Compatible(GameItem bottle, GameItem ingredient, string[] ids)
         {
             if (bottle == null || ingredient == null || !ingredient.IsTag("BLENDABLE_TAG")) return false;
             string input = ChemistryRules.Signature(ids, ChemistryData.Parts(ingredient));
-            if (input.Length == 0) return false;
             var parts = ChemistryData.Parts(bottle);
-            return ChemistryData.Total(parts) == 0 || input == ChemistryRules.Signature(ids, parts);
+            return ChemistryData.Total(parts) == 0
+                || input.Length > 0 && input == ChemistryRules.Signature(ids, parts);
         }
 
         internal static bool Allow(GameGridInventory grid, GameItem ingredient)
@@ -55,6 +72,7 @@ namespace ProbablyStolenTools
                 var machine = Blender(grid);
                 if (machine == null) return true;
                 var bottle = Bottle(machine);
+                if (bottle == null) return true;
                 var ids = ChemistryData.Ids();
                 bool compatible = Compatible(bottle, ingredient, ids);
                 // A single incompatible placement remains available for manual recipes.
@@ -72,6 +90,9 @@ namespace ProbablyStolenTools
                     reserved += ChemistryRules.BlendVolume(ChemistryData.Parts(item), MachineBlender.GetLoss(machine));
                 }
                 long output = ChemistryRules.BlendVolume(ChemistryData.Parts(ingredient), MachineBlender.GetLoss(machine));
+                if (_groups > 0)
+                    return GroupPlan.Reserve(machine, ingredient, signature, output, ChemistryData.Capacity(bottle),
+                        ChemistryData.Total(ChemistryData.Parts(bottle)), reserved, item => grid.childItems.Contains(item));
                 return output > 0 && output + reserved + ChemistryData.Total(ChemistryData.Parts(bottle))
                     <= ChemistryData.Capacity(bottle);
             }
@@ -90,7 +111,7 @@ namespace ProbablyStolenTools
         }
         internal static void BatchBoundary()
         {
-            if (_groups > 0) Drain();
+            if (_groups > 0 && !_running) { Drain(); GroupPlan.BatchBoundary(); }
         }
         private static void Drain()
         {
@@ -195,6 +216,14 @@ namespace ProbablyStolenTools
     {
         [HarmonyPostfix] private static void Postfix(GameGridInventory __instance, bool __result)
             => ChemistryAutomation.Added(__instance, __result);
+    }
+    [HarmonyPatch(typeof(GameGridInventory), "get_SupportsGroupPlacement")]
+    internal static class ChemistryBlendGroupModePatch
+    {
+        // Native sequential placement can leave rejected members at home and free the
+        // blender between items; precise formation placement is all-or-nothing.
+        [HarmonyPostfix] private static void Postfix(GameGridInventory __instance, ref bool __result)
+        { if (__result && ChemistryAutomation.SequentialGroup(__instance)) __result = false; }
     }
     [HarmonyPatch(typeof(GraphUtils), nameof(GraphUtils.TryAcceptAll))]
     internal static class ChemistryBlendBatchPatch

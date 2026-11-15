@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前基线：**380 项**离线参考测试；正式版 **57 个** Harmony 挂点、**76 个**快照/私有字段检查；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归。离线通过 **不等于** Unity 活体验收。
+当前开发候选：**403 项**离线参考测试；**65 个** Harmony 挂点、**76 个**快照/私有字段检查，另检查三个漏斗静态门控字段；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归，以及 500 组原版比例耗水对照。离线通过 **不等于** Unity 活体验收。本轮新功能详见 `research/2026-11-15-chemistry-crossday-handoff.md`。
 
 ### 版本与发布
 
@@ -98,7 +98,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 - 名称替换只作用于悬浮说明 + 拖拽“使用/倒入”提示；背包、交易列表、任务文本保持原名。
 - 设置开关：`WaterQuality.Enabled`、`Chemistry.Enabled`、`Wine.Enabled`，默认均为 true。
 
-液体规则速查：µL 存储（`容量 = mL×1000`）；水/酒精 **>65%** 为主成分；占比 = 成分/总量；纯度排除水、酒精、脂合剂、脂肪、物理污染物、微生物、植物质、不溶性碎屑、三种菇类糊糊；蛋白/酸/碱 ≥1000µL 才扣；化学污染物按剩余量 0.7% 封顶；还原剂不排除。评级阈值 99/90/80/60/45/30。酒精 74–76% 为医用酒精，≥99.95% 为脱水乙醇。空瓶显示尺寸；滴管/量筒/<200mL 不改名。
+液体规则速查：µL 存储（`容量 = mL×1000`）；水/酒精 **>65%** 为主成分；占比 = 成分/总量；植物质不竞争主成分名称。纯度排除水、酒精、脂合剂、脂肪、物理污染物、微生物、植物质、不溶性碎屑、三种菇类糊糊；蛋白/酸/碱 ≥1000µL 才扣；化学污染物按剩余量 0.7% 封顶；还原剂不排除。评级阈值 99/90/80/60/45/30。酒精 74–76% 为医用酒精，≥99.95% 为脱水乙醇。扩展化学容量默认开启：150mL 起、无上限；滴管/实验量器不改名，刻度水罐/储水罐例外。自动搅拌、自动萃取、空名细分、隔夜预览均默认开启且各有设置；自动化受化学总开关、加载/恢复/夜间门控约束。
 
 ---
 
@@ -107,7 +107,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 - 顾客节点在开场对话播完后建立（`StoreClient.isMainDialogueStarted`，8 秒兜底）；不要用 `isAboutToStartMainDialog` 当门控。
 - `Snapshot.StoreState`：营业(1)/闭店(0) 允许；手动节点允许同 state 回溯（含早市 state=2）；自动顾客节点仍 0/1。
 - 允许跨顾客回溯；剧情/对话类顾客跳过建节点但不清空历史。
-- 节点上限 20，面板行数 24；闭店手动节点必须列入面板。
+- 默认同会话保留当前/上一天，每天独立最多 20 个内存节点（包括自动闭店与手动节点），面板 48 行并显示日期；第三天释放更早节点。闭店手动节点不互相覆盖，不覆盖自动闭店节点。关闭 `CustomerCheckpoint.KeepPreviousDay` 回到当天保留；跨天黑屏/结算/晨报/漏斗传输时拒绝写回。离店/换场景/读档仍清空。
 - `isGeneScannerScanning` 是设施开关，不是扫描动作，禁止作为任何门控。
 - 文件节点（F5/F7）只加载不写回：快照复制为 `pstools_restore.es3`，通过 `NewGameData.saveFile` 读取；保留 `.pre_restore` 备份；不覆盖当前存档。
 
@@ -180,7 +180,7 @@ DS 边界代码审查通过。部署哈希疑点已复核：原 FDC 与 DS 的 C
 ## 9. 验收清单
 
 1. `dotnet build -c Release`：0 警告 / 0 错误。
-2. `CheckpointTests` 380 项全过；`ReleaseCompatibility` 57 挂点/76 字段/`HardFlags` 通过。
+2. `CheckpointTests` 403 项全过；`ReleaseCompatibility` 65 挂点/76 字段/漏斗门控/`HardFlags` 通过；新功能实机矩阵见本轮交接。
 3. 部署后：首/普通/手动节点往返、恢复后群拖、顾客贴图、正常交易/送客。
 4. 物品：售出/移动/旋转/拆分合并/嵌套容器/前柜台回溯，贴图位置与朝向正确，无“空气占用”。
 5. 多语言：切换语言后水质/纯度/评级/酿酒标签跟随；缺键回退；三个设置开关生效。

@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../src/ProbablyStolenTools/ChemistryRules.cs" Link="ChemistryRules.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/BlendBatchPlan.cs" Link="BlendBatchPlan.cs" />
     <Compile Include="../../src/ProbablyStolenTools/FacilityProjection.cs" Link="FacilityProjection.cs" />
     <Compile Include="../../src/ProbablyStolenTools/StateGraph.cs" Link="StateGraph.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SnapshotIntArrayBlock.cs" Link="SnapshotIntArrayBlock.cs" />

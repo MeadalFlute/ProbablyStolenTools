@@ -11,7 +11,7 @@ internal static class CheckpointDayTests
 
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
-        CheckpointHistory<Node> History() => new(20, n => !n.Closed || n.Manual, n => n.Day);
+        CheckpointHistory<Node> History() => new(20, capacityGroup: n => n.Day);
         test("two days each retain twenty nodes without cross-day eviction", () =>
         {
             var h = History();
@@ -51,14 +51,14 @@ internal static class CheckpointDayTests
             check(h.Items.SequenceEqual(new[] { yesterday, branch }) && close.Disposals == 1 && today.Disposals == 1);
             h.Clear();
         });
-        test("manual closed nodes count toward per-day limit but automatic stage does not", () =>
+        test("manual and automatic closed nodes count toward the twenty-node daily limit", () =>
         {
             var h = History();
             var nodes = Enumerable.Range(0, 21).Select(_ => new Node { Day = 1, Closed = true, Manual = true }).ToArray();
             foreach (var n in nodes) h.Add(n);
             var stage = new Node { Day = 1, Closed = true };
             h.Add(stage, false);
-            check(h.Items.Count == 21 && nodes[0].Disposals == 1 && stage.Disposals == 0);
+            check(h.Items.Count == 20 && nodes[0].Disposals == 1 && nodes[1].Disposals == 1 && stage.Disposals == 0);
             h.Clear();
         });
         test("disabling retention prunes other day and resets an expired selection", () =>

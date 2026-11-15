@@ -281,6 +281,7 @@ finally
 }
 
 // Allocate only plain data objects without constructors, Unity callbacks or save APIs.
+ChemistryNativeTests.Run(mod, game);
 var dataFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 object Data(string name) => System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(game.GetType(name, true));
 var player = Data("PlayerStore");

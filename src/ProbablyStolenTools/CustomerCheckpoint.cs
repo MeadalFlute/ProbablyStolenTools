@@ -15,8 +15,7 @@ namespace ProbablyStolenTools
     internal static class CustomerCheckpoint
     {
         private static readonly CustomerBoundary Boundary = new();
-        private static readonly CheckpointHistory<Snapshot> History = new(20,
-            node => !node.IsClosed || node.IsManual, node => node.Day);
+        private static readonly CheckpointHistory<Snapshot> History = new(20, capacityGroup: node => node.Day);
         private static Snapshot _active;
         internal static Snapshot ClosedNode { get; private set; }
         private static bool _closeArmed, _outside;

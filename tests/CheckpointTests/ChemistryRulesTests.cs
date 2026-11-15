@@ -88,5 +88,40 @@ internal static class ChemistryRulesTests
                 && FacilityProjection.HealthDamage(11, 1, 1) == 15
                 && FacilityProjection.HealthDamage(201, 1, 1) == 640, "thresholds");
         });
+        test("precise blend formation locks product before any item is moved", () =>
+        {
+            var plan = new BlendBatchPlan<object>();
+            var machine = new object(); var first = new object(); var different = new object();
+            check(plan.Reserve(machine, first, "caffeine", 20, 100, 0, 0, _ => false), "first accepted");
+            check(!plan.Reserve(machine, different, "nightmare_extract", 20, 100, 0, 0, _ => false), "different product stays at source");
+        });
+        test("blend reservations account for precise batches without double-counting residents", () =>
+        {
+            var plan = new BlendBatchPlan<object>();
+            var machine = new object(); var first = new object(); var second = new object(); var third = new object();
+            check(plan.Reserve(machine, first, "a", 40, 100, 10, 0, _ => false), "first");
+            check(plan.Reserve(machine, first, "a", 40, 100, 10, 0, _ => false), "repeat admission not counted twice");
+            check(plan.Reserve(machine, second, "a", 40, 100, 10, 40, i => ReferenceEquals(i, first)), "resident not counted twice");
+            check(!plan.Reserve(machine, third, "a", 20, 100, 10, 0, _ => false), "whole batch exceeds capacity");
+        });
+        test("sequential blend batches free reservations but keep their product lock", () =>
+        {
+            var plan = new BlendBatchPlan<object>();
+            var machine = new object(); var first = new object(); var second = new object();
+            check(plan.Reserve(machine, first, "a", 40, 100, 0, 0, _ => false), "first");
+            plan.BatchBoundary();
+            check(plan.Reserve(machine, second, "a", 40, 100, 40, 0, _ => false), "volume now in bottle, not reserved twice");
+            check(!plan.Reserve(machine, second, "b", 1, 100, 40, 0, _ => false), "product lock survives batch");
+            plan.Clear();
+            check(plan.Reserve(machine, second, "b", 1, 100, 40, 0, _ => false), "new gesture resets lock");
+        });
+        test("failed blend admission does not lock a product or affect other machines", () =>
+        {
+            var plan = new BlendBatchPlan<object>();
+            var a = new object(); var b = new object(); var input = new object();
+            check(!plan.Reserve(a, input, "oversize", 101, 100, 0, 0, _ => false), "oversize");
+            check(plan.Reserve(a, input, "good", 20, 100, 0, 0, _ => false), "failed candidate not locked");
+            check(plan.Reserve(b, input, "different", 20, 100, 0, 0, _ => false), "independent machines");
+        });
     }
 }
