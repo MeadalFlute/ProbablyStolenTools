@@ -35,12 +35,13 @@ namespace ProbablyStolenTools
         internal bool Active => _index >= 0;
         internal int Revision { get; private set; }
 
-        internal bool Begin(IEnumerable<object> nodes, object current)
+        internal bool Begin(IEnumerable<object> nodes, object current, int direction = 1)
         {
             _nodes.Clear();
             _nodes.AddRange(nodes);
             int origin = _nodes.FindIndex(node => ReferenceEquals(node, current));
-            _index = _nodes.Count == 0 ? -1 : Math.Min(origin + 1, _nodes.Count - 1);
+            _index = _nodes.Count == 0 ? -1 : origin < 0 ? 0
+                : Math.Max(0, Math.Min(origin + direction, _nodes.Count - 1));
             Revision++;
             return Active;
         }

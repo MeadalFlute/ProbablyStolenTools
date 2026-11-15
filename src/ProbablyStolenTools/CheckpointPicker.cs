@@ -7,7 +7,7 @@ namespace ProbablyStolenTools
     internal static class CheckpointPicker
     {
         private static readonly CheckpointSelection Selection = new();
-        private static int _historyRevision, _fileCount, _day;
+        private static int _historyRevision, _fileRevision, _day;
         private static PlayerStore _store;
         private static string _hint = "";
         internal static int Revision => Selection.Revision;
@@ -61,20 +61,20 @@ namespace ProbablyStolenTools
             return a.Length == 0 ? b : b.Length == 0 ? a : a + "/" + b;
         }
 
-        internal static void Begin()
+        internal static void Begin(int direction = 1)
         {
             if (Rewind.Restoring || Rewind.Settling || CustomerCheckpoint.Restoring
                 || Rewind.PendingWholeDay != Rewind.WholeDayAction.None || Plugin.Store() == null
                 || StoreUIManager.IsAnyTyping()) return;
             var entries = Timeline();
             object current = CustomerCheckpoint.Nodes.FirstOrDefault(node => node.Id == CustomerCheckpoint.ActiveId);
-            if (!Selection.Begin(entries.Select(entry => entry.Node), current))
+            if (!Selection.Begin(entries.Select(entry => entry.Node), current, direction))
             {
                 PanelNotice.Show(InspectionLocale.Text("暂无可用节点", "No checkpoints available"), true);
                 return;
             }
             _historyRevision = CustomerCheckpoint.Revision;
-            _fileCount = Rewind.Points.Count;
+            _fileRevision = Rewind.PointRevision;
             _store = Plugin.Store();
             _day = StoreStation.GetDayCounter();
             _hint = BuildHint();
@@ -90,10 +90,19 @@ namespace ProbablyStolenTools
 
         internal static bool TickInput()
         {
-            if (!Active) return false;
+            if (!Active)
+            {
+                // Primary navigation bindings can open the picker; W/S remain modal
+                // so normal gameplay does not unexpectedly consume movement keys.
+                bool newer = Plugin.Down(Plugin.CfgKeyNewer);
+                bool older = Plugin.Down(Plugin.CfgKeyOlder);
+                if (!newer && !older || StoreUIManager.IsAnyTyping()) return false;
+                Begin(newer ? -1 : 1);
+                return Active;
+            }
             if (Rewind.Restoring || Rewind.Settling || CustomerCheckpoint.Restoring
                 || Rewind.PendingWholeDay != Rewind.WholeDayAction.None
-                || CustomerCheckpoint.Revision != _historyRevision || Rewind.Points.Count != _fileCount
+                || CustomerCheckpoint.Revision != _historyRevision || Rewind.PointRevision != _fileRevision
                 || Plugin.Store() != _store || StoreStation.GetDayCounter() != _day
                 || StoreUIManager.IsAnyTyping())
             {

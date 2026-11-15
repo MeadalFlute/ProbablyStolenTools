@@ -27,6 +27,7 @@ namespace ProbablyStolenTools
         }
 
         internal static readonly List<Point> Points = new List<Point>();
+        internal static int PointRevision { get; private set; }
         internal static bool Busy;
         internal static bool Restoring => Busy || PendingMenuReload || PendingPoint != null;
         internal static readonly CheckpointLoadGate LoadGate = new();
@@ -44,6 +45,7 @@ namespace ProbablyStolenTools
         private static float _nextStorageCheck;
         private static string _lastStorageError;
         private static long _rejectedFileBytes;
+        private static readonly CheckpointFileCatalog Catalog = new();
         internal static CheckpointDiskUsage DiskUsage { get; private set; }
         internal static long MaxDiskBytes => (long)Math.Clamp(Plugin.CfgMaxDiskMb?.Value ?? 256, 16, 16384) * 1024 * 1024;
         internal static void Saved() { _captureDay = -1; _nextCapture = Time.unscaledTime + 1f; }
@@ -96,9 +98,12 @@ namespace ProbablyStolenTools
         {
             try
             {
+                int duplicates = Catalog.Deduplicate(Root, new[] { newest, PendingPoint?.Path });
+                if (duplicates > 0)
+                    EventLog.Write($"[Rewind] duplicate day-start files removed={duplicates}; distinct days retained");
                 DiskUsage = CheckpointStorage.Prune(Root, Math.Clamp(Plugin.CfgMaxPoints.Value, 1, 1000),
                     MaxDiskBytes, new[] { newest, PendingPoint?.Path });
-                Points.RemoveAll(point => !File.Exists(point.Path));
+                if (Points.RemoveAll(point => !File.Exists(point.Path)) > 0) PointRevision++;
                 if (DiskUsage.Deleted > 0)
                     EventLog.Write($"[Rewind] storage cleaned deleted={DiskUsage.Deleted} files={DiskUsage.Files} " +
                         $"bytes={DiskUsage.Bytes}/{MaxDiskBytes}");
@@ -150,7 +155,7 @@ namespace ProbablyStolenTools
 
         internal static bool Capture(string label, bool isDayStart = true)
         {
-            if (!Plugin.CfgRewind.Value || Busy) return false;
+            if (!Plugin.CfgRewind.Value || Restoring || Settling) return false;
             try
             {
                 if (Plugin.Store() == null) return false;
@@ -183,9 +188,20 @@ namespace ProbablyStolenTools
                 }
                 _rejectedFileBytes = 0;
                 System.IO.Directory.CreateDirectory(Root);
+                if (!CheckpointStorage.SafeRoot(Root)) throw new IOException("Checkpoint directory is a link; capture skipped.");
+                Catalog.Refresh(Root);
+                var existing = isDayStart ? Catalog.Find(metadata) : null;
                 string safe = Sanitize(label);
-                string dst = Path.Combine(Root, $"{DateTime.Now:yyyyMMdd_HHmmss_fffffff}_{safe}.es3");
-                File.WriteAllBytes(dst, bytes);
+                string dst = existing?.Path ?? Path.Combine(Root, $"{DateTime.Now:yyyyMMdd_HHmmss_fffffff}_{safe}.es3");
+                string staged = dst + ".tmp";
+                if (File.Exists(staged)) throw new IOException("Checkpoint staging file already exists.");
+                try
+                {
+                    File.WriteAllBytes(staged, bytes);
+                    if (existing != null) File.Replace(staged, dst, null);
+                    else File.Move(staged, dst);
+                }
+                finally { if (File.Exists(staged)) File.Delete(staged); }
 
                 var p = new Point
                 {
@@ -200,11 +216,14 @@ namespace ProbablyStolenTools
                     IsDayStart = isDayStart,
                     RunId = metadata.RunId,
                 };
+                Points.RemoveAll(point => string.Equals(point.Path, dst, StringComparison.OrdinalIgnoreCase));
                 Points.Add(p);
+                PointRevision++;
 
                 MaintainStorage(dst);
 
-                Plugin.LogSource.LogInfo($"[Rewind] checkpoint '{label}' saved ({Points.Count} total, cash={p.Cash}).");
+                Plugin.LogSource.LogInfo($"[Rewind] checkpoint '{label}' {(existing == null ? "saved" : "updated")} " +
+                    $"day={p.Day} ({Points.Count} total, cash={p.Cash}).");
                 return true;
             }
             catch (Exception e)

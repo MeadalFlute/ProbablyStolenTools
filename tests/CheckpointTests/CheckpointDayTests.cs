@@ -85,6 +85,32 @@ internal static class CheckpointDayTests
             gate.Reset();
             check(!gate.Completed && !gate.Loaded(93, 2, "run"));
         });
+        test("arrows can initialize selection in either direction without F6", () =>
+        {
+            object a = new(), b = new(), c = new();
+            var selection = new CheckpointSelection();
+            check(selection.Begin(new[] { a, b, c }, b, -1) && selection.Selected == a);
+            check(selection.Begin(new[] { a, b, c }, b, 1) && selection.Selected == c);
+            check(selection.Begin(new[] { a, b, c }, a, -1) && selection.Selected == a);
+            check(selection.Begin(new[] { a, b, c }, null, -1) && selection.Selected == a);
+        });
+        test("return checkpoint waits for stable state, ignores initial arrival and duplicate return hooks", () =>
+        {
+            var gate = new CheckpointReturnGate();
+            gate.Return();
+            check(!gate.Pending && !gate.Poll(true, 1));
+            gate.Leave(); gate.Leave();
+            check(gate.Outside && !gate.Poll(true, 2));
+            gate.Return();
+            check(gate.Pending && !gate.Outside && !gate.Poll(true, 3));
+            gate.Return();
+            check(!gate.Poll(false, 3.5f) && !gate.Poll(true, 4) && !gate.Poll(true, 4.4f));
+            check(gate.Poll(true, 4.5f) && !gate.Poll(true, 5));
+            gate.Leave(); gate.Return(); gate.CancelPending();
+            check(!gate.Poll(true, 6));
+            gate.Leave(); gate.Reset(); gate.Return();
+            check(!gate.Pending && !gate.Outside);
+        });
         test("chemistry dividers preserve row separation and hotkey scroll reachability", () =>
         {
             foreach (float width in new[] { 380f, 480f, 900f })

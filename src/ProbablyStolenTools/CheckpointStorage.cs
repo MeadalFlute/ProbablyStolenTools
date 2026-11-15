@@ -33,7 +33,7 @@ namespace ProbablyStolenTools
                 && DateTime.TryParseExact(name.Substring(0, 23), "yyyyMMdd_HHmmss_fffffff",
                     CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
 
-        private static bool SafeRoot(string root)
+        internal static bool SafeRoot(string root)
             => System.IO.Directory.Exists(root) && (File.GetAttributes(root) & FileAttributes.ReparsePoint) == 0;
 
         // Only files created by this mod, directly inside its own directory, may be removed.
