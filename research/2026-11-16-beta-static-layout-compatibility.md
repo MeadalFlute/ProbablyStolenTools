@@ -67,3 +67,29 @@ dotnet run -c Release --project tests/NativeSaveHistoryTests
 - 0.46D 当前没有完整已安装程序集副本，不切换/下载 Steam 分支，不声称本轮重跑了稳定版本游戏 Mono 套件。既有稳定发布不覆盖。
 - 暂无 beta 实机测试：需建首/普通/手动/返店节点、跨天 F5/F7、物品移动/售出/旋转/群拖、顾客视觉、化学操作和设置；不要直接向玩家宣称所有 beta 功能已验收。
 - 本轮不额外性能优化，不复原 day94，不主动保存或修改活动存档，不清理未知玩家文件。
+
+## 最终交付来源
+
+最终代码/工程提交：`f80f63b47d93c8b5bd23f672be6d6085c3220781`，构建时 clean。
+本节是后续纯文档更新，不声称产物来自更新文档后的 HEAD。
+
+```text
+主 DLL（483840 bytes）
+2E3A2129B4411F3D8F8B5EA0A70F840B15C9BEE1F68D05AD53CA5031A773A619
+helper（664576 bytes）
+B77C9A42591EE47D2D8824E8ABD0455A0029A6D6EDA4B5FD6DB11BA78429C11A
+beta 主包 ZIP（536791 bytes，约 524 KiB）
+5849E5FA95169697C257DE4E826DCC79F05E8044D185CA229FAD211B419544C9
+独立工具 ZIP
+13E3001F3F31395906F7EB85F8427C6FFD77D8EE28BA664DF6AC4BDB9E7678D5
+```
+
+- 主包：`out/beta-release-f80f63b/ProbablyStolenTools.zip`；外置来源文件 `provenance.json`。
+- 工具：`out/static-layout-tool-beta-f80f63b/ProbablyStolenTools-StaticLayoutGenerator-win-x64.zip`；随包 package.json BuildDirty=false。工具须单独分发，未上传。
+- 最终完整套件：`out/validation-beta-20261116-f80f63b-clean-head.log`。
+- 存档/齿轮 14 项：`out/validation-20261116-safety-clean-head.log`。
+- 玩家工具 11 项：`out/validation-player-tool-beta-f80f63b.log`，含负例 stderr、随包源码旁有仓库源文件时复建。
+- 打包/部署：`out/package-beta-release-f80f63b.log`、`out/deploy-beta-f80f63b.log`。
+- 最终部署到本机 Mods/ProbablyStolenTools，使用 beta manifest，双 DLL 与上述来源一致。
+- 备份：`out/full-release-deploy-20261116-001733`，74 个既有存档目录文件校验未变，游戏程序集/其他 Mod 未变，GameStarted=false。
+- 本地 Mod 版本仍 0.9.3，主包仅声明 beta 1.0.0.14；尚无 beta 实机验收，不推送/不发布。切回稳定分支须换表，不把这个包当双版本通用包。
