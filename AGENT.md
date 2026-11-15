@@ -22,7 +22,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前开发候选：**411 项**离线参考测试；**76 个** Harmony 挂点、**76 个**快照/私有字段检查，另检查三个漏斗静态门控字段；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归，以及 500 组原版比例耗水对照。离线通过 **不等于** Unity 活体验收。基础见 `research/2026-11-15-chemistry-crossday-handoff.md`，测试反馈修正见 `research/2026-11-15-feedback-followup.md`。
+当前开发候选：**415 项**离线参考测试；**76 个** Harmony 挂点、**76 个**快照/私有字段检查，另检查三个漏斗静态门控字段；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归，以及 500 组原版比例耗水对照。离线通过 **不等于** Unity 活体验收。基础见 `research/2026-11-15-chemistry-crossday-handoff.md`，测试反馈修正见 `research/2026-11-15-feedback-followup.md`，跨天/F6 选择修正见 `research/2026-11-15-rewind-picker-followup.md`。
 
 ### 版本与发布
 
@@ -107,9 +107,10 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 - 顾客节点在开场对话播完后建立（`StoreClient.isMainDialogueStarted`，8 秒兜底）；不要用 `isAboutToStartMainDialog` 当门控。
 - `Snapshot.StoreState`：营业(1)/闭店(0) 允许；手动节点允许同 state 回溯（含早市 state=2）；自动顾客节点仍 0/1。
 - 允许跨顾客回溯；剧情/对话类顾客跳过建节点但不清空历史。
-- 默认同会话保留当前/上一天，每天独立最多 20 个内存节点（包括自动闭店与手动节点），面板 48 行并显示日期；第三天释放更早节点。闭店手动节点不互相覆盖，不覆盖自动闭店节点。关闭 `CustomerCheckpoint.KeepPreviousDay` 回到当天保留；跨天黑屏/结算/晨报/漏斗传输时拒绝写回。开启保留后，同场景离店只暂停恢复，返店后可继续使用；换场景/读档仍清空。关闭保留时离店仍清空。
+- 默认同会话保留当前/上一天，每天独立最多 20 个常规内存节点（包括自动闭店与手动节点），另保留一个不计入常规名额的 MORNING 完整图锚点；每日新增一次完整捕获成本。面板按日期/阶段/建立时刻倒序，今日开业前高于昨日全部节点；第三天释放更早图。闭店手动节点不互相覆盖，不覆盖自动闭店节点。关闭 `CustomerCheckpoint.KeepPreviousDay` 回到当天保留；跨天黑屏/结算/晨报/漏斗传输时拒绝写回。开启保留后，同场景离店只暂停恢复，返店后可继续使用；换场景/真正的文件读档仍清空。关闭保留时离店仍清空。
+- F5/F7 优先恢复晨间内存锚点以保留历史；若昨日锚点不可用且还有内存节点，F5 提示并拒绝文件回退，不静默清空。新分支提交前可逆浏览“后续”节点，提交后仅保留最多 80 条已释放图的只读“丢弃”摘要，默认折叠且不能恢复。F6 选择面板向下一个可用节点（包括手动），↑/W、↓/S 切换，Enter 确认，Esc 取消；五个导航/确认键均可改，双击恢复不变。
 - `isGeneScannerScanning` 是设施开关，不是扫描动作，禁止作为任何门控。
-- 文件节点（F5/F7）只加载不写回：快照复制为 `pstools_restore.es3`，通过 `NewGameData.saveFile` 读取；保留 `.pre_restore` 备份；不覆盖当前存档。必须收到原版 `LoadGame` 完成且日期/槽位/runID 匹配后才能删除临时文件并重置内存节点，不能以 `PlayerStore` 存在代替加载完成。文件重载更换对象实例，不保留旧内存节点。
+- 文件节点回退只加载不写回：快照复制为 `pstools_restore.es3`，通过 `NewGameData.saveFile` 读取；保留 `.pre_restore` 备份；不覆盖当前存档。必须收到原版 `LoadGame` 完成且日期/槽位/runID 匹配后才能删除临时文件并重置内存节点，不能以 `PlayerStore` 存在代替加载完成。文件重载更换对象实例，不保留旧内存节点。
 - 快捷键支持键盘及鼠标中键/侧键 1/侧键 2，不接受左右键；捕获改键当帧仍屏蔽动作。
 
 ---
@@ -185,7 +186,7 @@ DS 边界代码审查通过。部署哈希疑点已复核：原 FDC 与 DS 的 C
 3. 部署后：首/普通/手动节点往返、恢复后群拖、顾客贴图、正常交易/送客。
 4. 物品：售出/移动/旋转/拆分合并/嵌套容器/前柜台回溯，贴图位置与朝向正确，无“空气占用”。
 5. 多语言：切换语言后水质/纯度/评级/酿酒标签跟随；缺键回退；三个设置开关生效。
-6. 文件节点：F5/F7 只加载不写回；`.pre_restore` 备份存在。
+6. F5/F7：同会话优先内存锚点且保留节点；真正文件回退只加载不写回，`.pre_restore` 备份存在。
 7. 关闭 `SemanticEntityBlocks` 的回滚模式可正常走 legacy。
 
 ---

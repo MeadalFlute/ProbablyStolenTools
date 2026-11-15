@@ -15,7 +15,20 @@ namespace ProbablyStolenTools
     internal static class CustomerCheckpoint
     {
         private static readonly CustomerBoundary Boundary = new();
-        private static readonly CheckpointHistory<Snapshot> History = new(20, capacityGroup: node => node.Day);
+        private static readonly CheckpointHistory<Snapshot> History = new(20, node => !node.IsDayStart,
+            node => node.Day, ArchiveAbandoned);
+        internal sealed class AbandonedNode
+        {
+            internal int Day, Cash;
+            internal string Label;
+        }
+        internal static readonly List<AbandonedNode> Abandoned = new();
+        private static void ArchiveAbandoned(Snapshot node)
+        {
+            Abandoned.Add(new AbandonedNode { Day = node.Day, Cash = node.Cash, Label = Name(node) });
+            if (Abandoned.Count > 80) Abandoned.RemoveAt(0);
+        }
+        private static int _morningAttemptDay = -1;
         private static Snapshot _active;
         internal static Snapshot ClosedNode { get; private set; }
         private static bool _closeArmed, _outside;
@@ -43,7 +56,7 @@ namespace ProbablyStolenTools
         internal static bool Enabled => Plugin.CfgCustomerCheckpoint?.Value == true && PatchesReady;
         internal static string Status { get; private set; } = "Waiting for a new customer";
         internal static IReadOnlyList<Snapshot> Nodes => History.Items;
-        internal static int CustomerCount => Nodes.Count(node => node.Day == Boundary.Day && (!node.IsClosed || node.IsManual));
+        internal static int CustomerCount => Nodes.Count(node => node.Day == Boundary.Day && !node.IsDayStart && (!node.IsClosed || node.IsManual));
         internal static bool IsFuture(Snapshot node) => History.IsFuture(node);
         private static int _failureRevision;
         private static string _failureNoticeKey;
@@ -62,13 +75,13 @@ namespace ProbablyStolenTools
 
         internal static readonly List<Failure> Failures = new List<Failure>();
 
-        private static void RecordFailure(bool closed, bool manual, Exception e)
+        private static void RecordFailure(bool closed, bool manual, Exception e, bool dayStart = false)
         {
             try
             {
-                string label = manual ? InspectionLocale.Text("手动", "Manual")
+                string label = dayStart ? InspectionLocale.Text("开业前", "Day start") : manual ? InspectionLocale.Text("手动", "Manual")
                     : closed ? InspectionLocale.Text("闭店", "Closed") : InspectionLocale.Text("顾客", "Customer");
-                if (!closed && !manual)
+                if (!closed && !manual && !dayStart)
                 {
                     try
                     {
@@ -98,6 +111,7 @@ namespace ProbablyStolenTools
             internal string DisplayName;
             internal bool IsClosed;
             internal bool IsManual;
+            internal bool IsDayStart;
             internal int StoreState;
             internal string ExpiredReason;
             internal int Day, Cash, Scene;
@@ -169,7 +183,8 @@ namespace ProbablyStolenTools
                 if (_visualProbeEpoch == _epoch && ReferenceEquals(probe, _active))
                     probe.Customer.Log(probe.Id, "next-frame");
             }
-            if (!Enabled) { if (History.Items.Count > 0 || ClosedNode?.Graph != null) Clear("已禁用"); return; }
+            if (!Enabled) { if (History.Items.Count > 0 || Abandoned.Count > 0 || ClosedNode?.Graph != null) Clear("已禁用"); return; }
+            TryCaptureDayStart();
             if (_armed && Time.unscaledTime >= _nextCapturePoll)
             {
                 _nextCapturePoll = Time.unscaledTime + 0.1f;
@@ -258,6 +273,8 @@ namespace ProbablyStolenTools
                     // Sleeping after a rewind creates a new timeline, not a second copy of tomorrow.
                     History.CommitBranch();
                     History.RemoveWhere(node => node.Day < day - 1 || node.Day > day);
+                    Abandoned.RemoveAll(node => node.Day < day - 1 || node.Day > day);
+                    _morningAttemptDay = -1;
                     if (ClosedNode?.Graph == null) ClosedNode = null;
                     RebuildRetainedItems();
                     _active = null;
@@ -297,6 +314,7 @@ namespace ProbablyStolenTools
 
         internal static string Name(Snapshot node)
         {
+            if (node.IsDayStart) return InspectionLocale.Text("开业前", "Day start");
             if (node.IsManual) return InspectionLocale.Text("手动", "Manual");
             if (node.IsClosed) return InspectionLocale.Text("闭店", "Closed");
             // displayName is the exact resolved name used by the game's dialogue/recorder.
@@ -365,6 +383,8 @@ namespace ProbablyStolenTools
             SettleLog.Reset();
             ReleaseAllSnapshotViews();
             History.Clear();
+            Abandoned.Clear();
+            _morningAttemptDay = -1;
             if (ClosedNode != null)
             {
                 ClosedNode.Dispose();
@@ -386,6 +406,37 @@ namespace ProbablyStolenTools
             AppraisalPatch.Reset();
             Status = "Waiting for a new customer";
         }
+
+        // A native reload replaces object identities. Retain a live morning graph instead,
+        // so whole-day navigation can use the same reversible history as customer nodes.
+        private static void TryCaptureDayStart()
+        {
+            var store = Plugin.Store();
+            if (_outside || _faulted || Rewind.Restoring || Rewind.Settling || Restoring || store == null
+                || (int)store.storeState != 2 || _morningAttemptDay == Boundary.Day
+                || History.Items.Any(node => node.Day == Boundary.Day && node.IsDayStart)) return;
+#if MONO
+            if (SaveManager.IsDecoding || CurrentConverterHelper.isNightCycle
+                || EndOfDayUIManager.Instance?.IsOpen == true
+                || AdvCalendarUIManager.Instance?.UIPanel?.activeSelf == true
+                || StartOfDayUIManager.Instance?.UIPanel?.activeSelf == true) return;
+#endif
+            var dialog = DialogUIManager.Instance;
+            if (MainMenuUIController.Instance != null || StoreUIManager.Instance == null
+                || StoreUIManager.IsAnyTyping()
+                || StoreUIManager.Instance.blackscreen?.gameObject.activeSelf == true
+                || dialog == null || dialog.currentDialog != null || dialog.isConversationActiveFlag != 0
+                || dialog.isWaitingForManualAdvance || PendingCallbacks.Count != 0
+                || store.lockShutterButtonFlag != 0 || store.isClientBeingArrested || store.isHandlingShootout
+                || StoreClientMono.Instance == null || StoreClientMono.Instance.IsMoving()
+                || !ShopPhaseVisual.IsSettled() || ItemInteractionBusy()
+                || GameFields.PhoneBusy(PhoneUIManager.Instance)) return;
+            _morningAttemptDay = Boundary.Day;
+            Capture(store, false, dayStart: true);
+        }
+
+        internal static Snapshot DayStart(int day) =>
+            History.Items.LastOrDefault(node => node.Day == day && node.IsDayStart && node.Graph != null);
 
         private static void TryCaptureClosed()
         {
@@ -614,7 +665,7 @@ namespace ProbablyStolenTools
             catch (Exception e) { EventLog.Write("[Customer] settle watch failed: " + e.Message); }
         }
 
-        private static void Capture(PlayerStore store, bool closed, bool manual = false)
+        private static void Capture(PlayerStore store, bool closed, bool manual = false, bool dayStart = false)
         {
             Snapshot candidate = null;
             var timing = System.Diagnostics.Stopwatch.StartNew();
@@ -627,10 +678,11 @@ namespace ProbablyStolenTools
                 candidate = new Snapshot
                 {
                     Id = ++_nextId,
-                    Label = manual ? "手动" : closed ? "closed" : store.currentClientInstance.GetClientBlueprint().identifier,
-                    DisplayName = manual ? null : closed ? null : store.currentClientInstance.GetClientBlueprint().displayName,
+                    Label = dayStart ? "day-start" : manual ? "手动" : closed ? "closed" : store.currentClientInstance.GetClientBlueprint().identifier,
+                    DisplayName = dayStart || manual || closed ? null : store.currentClientInstance.GetClientBlueprint().displayName,
                     IsClosed = closed,
                     IsManual = manual,
+                    IsDayStart = dayStart,
                     StoreState = (int)store.storeState,
                     Day = Boundary.Day, Scene = Boundary.Scene, Store = Boundary.Store, Client = Boundary.Client,
                     Cash = store.GetCash(), At = DateTime.Now, Random = RNG.random
@@ -653,7 +705,9 @@ namespace ProbablyStolenTools
                     SnapshotFieldReader.CompileTicks - readerCompileBefore);
 #endif
                 phase = "items";
-                candidate.Customer = new CustomerVisual();
+                // Morning/closed views have no walking customer to seek. Native paths can be
+                // recreated overnight; they must not invalidate an otherwise intact empty view.
+                candidate.Customer = new CustomerVisual(capturePaths: (int)store.storeState == 1);
                 candidate.Customer.Log(candidate.Id, "capture");
                 candidate.Shop = new ShopPhaseVisual();
                 var visualIds = new HashSet<IntPtr>();
@@ -889,7 +943,7 @@ namespace ProbablyStolenTools
                 }
                 LogItemGeometry(candidate, "capture");
                 long tBeforeHistory = timing.ElapsedMilliseconds;
-                History.Add(candidate, commitBranch: !closed || manual);
+                History.Add(candidate, commitBranch: !dayStart && (!closed || manual));
                 long tHistory = timing.ElapsedMilliseconds;
                 if (ClosedNode?.Graph == null) ClosedNode = null;
                 _active = candidate;
@@ -901,7 +955,7 @@ namespace ProbablyStolenTools
                 long tRetain = timing.ElapsedMilliseconds;
                 phase = "finish";
                 // 手动节点不能改写“当前顾客已捕获”的边界，否则会挡掉该顾客稍后的自动节点。
-                if (!manual) Boundary.MarkReady();
+                if (!manual && !dayStart) Boundary.MarkReady();
                 Status = "Checkpoint: " + Name(_active);
                 if (manual) PanelNotice.Show("已建立手动节点 #" + _active.Id);
 #if MONO
@@ -940,7 +994,7 @@ namespace ProbablyStolenTools
                 EventLog.Write($"[Customer] CAPTURE FAILED phase={phase} elapsedMs={timing.ElapsedMilliseconds} " +
                     $"manual={manual} closed={closed} " +
                     $"limits(objects={MaxSnapshotObjects},slots={MaxSnapshotSlots},bytes={MaxSnapshotBytes}): " + e);
-                RecordFailure(closed, manual, e);
+                RecordFailure(closed, manual, e, dayStart);
             }
         }
 
@@ -985,9 +1039,9 @@ namespace ProbablyStolenTools
                 int state = (int)store.storeState;
                 // 手动节点允许在同一营业状态下回溯（包括早市 state=2）；自动节点仍只支持营业/闭店。
                 bool sameState = target.StoreState == state;
-                if (state != 0 && state != 1 && !(target.IsManual && sameState) && !(crossDay && state == 2))
+                if (state != 0 && state != 1 && !((target.IsManual || target.IsDayStart) && sameState) && !(crossDay && state == 2))
                     blockers.Add("state=" + state);
-                if (crossDay)
+                if (crossDay || target.IsDayStart)
                 {
 #if MONO
                     if (CurrentConverterHelper.isNightCycle) blockers.Add("nightCycle");
@@ -1307,6 +1361,7 @@ namespace ProbablyStolenTools
                             w.Value.handler.gameObject.SetActive(false);
                 History.Select(target);
                 _active = target;
+                if (target.IsDayStart) _morningAttemptDay = target.Day;
                 _armed = false;
                 _closeArmed = false;
                 Boundary.Observe(target.Store, target.Client, target.Day, target.Scene);
@@ -1319,6 +1374,7 @@ namespace ProbablyStolenTools
                 // an optional UI failure as a partially failed native restore.
                 try { RecorderUIManager.Instance?.RefreshUI(); }
                 catch (Exception e) { Plugin.LogSource.LogWarning("[Recorder] refresh failed: " + e.Message); }
+                Rewind.MemoryRestored();
                 Status = "Restored checkpoint: " + Name(target);
                 PanelNotice.Show("已回溯至 " + Name(target));
                 TraceBargain("AFTER RESTORE");
@@ -1595,6 +1651,8 @@ namespace ProbablyStolenTools
             _captureSince = 0;
             SettleLog.Reset();
             History.Clear();
+            Abandoned.Clear();
+            _morningAttemptDay = -1;
             if (ClosedNode != null)
             {
                 ClosedNode.Dispose();
@@ -1782,7 +1840,7 @@ namespace ProbablyStolenTools
 #if MONO
             private readonly CustomerPathState _mainPath, _rightPath;
 #endif
-            internal CustomerVisual()
+            internal CustomerVisual(bool capturePaths = true)
             {
                 if (_mono == null || _mono.image == null || _mono.transform.parent == null)
                     throw new InvalidOperationException("Customer view missing.");
@@ -1806,8 +1864,11 @@ namespace ProbablyStolenTools
                 _forceRenderingOff = _image.forceRenderingOff;
                 _image.GetPropertyBlock(_properties);
 #if MONO
-                _mainPath = new CustomerPathState(GameFields.Get<DG.Tweening.DOTweenPath>(_mono, "dOTweenPath"));
-                _rightPath = new CustomerPathState(_mono.pathRight);
+                if (capturePaths)
+                {
+                    _mainPath = new CustomerPathState(GameFields.Get<DG.Tweening.DOTweenPath>(_mono, "dOTweenPath"));
+                    _rightPath = new CustomerPathState(_mono.pathRight);
+                }
 #endif
                 Validate();
             }
@@ -1818,16 +1879,16 @@ namespace ProbablyStolenTools
                     throw new InvalidOperationException("Customer view no longer exists.");
                 foreach (var transform in _transforms) transform.Validate();
 #if MONO
-                _mainPath.Validate();
-                _rightPath.Validate();
+                _mainPath?.Validate();
+                _rightPath?.Validate();
 #endif
             }
             internal void Restore()
             {
                 Validate();
 #if MONO
-                _mainPath.Restore();
-                _rightPath.Restore();
+                _mainPath?.Restore();
+                _rightPath?.Restore();
 #endif
                 // OnEnable can seed IdleAnimator from the current transform: position before activation.
                 RestoreTransforms();
@@ -1852,7 +1913,7 @@ namespace ProbablyStolenTools
                 {
                     string paths = "";
 #if MONO
-                    paths = $" main=({_mainPath.Describe()}) right=({_rightPath.Describe()})";
+                    paths = $" main=({_mainPath?.Describe()}) right=({_rightPath?.Describe()})";
 #endif
                     var properties = new MaterialPropertyBlock();
                     _image.GetPropertyBlock(properties);

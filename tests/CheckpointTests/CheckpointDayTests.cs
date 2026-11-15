@@ -6,12 +6,75 @@ internal static class CheckpointDayTests
     {
         internal int Day, Disposals;
         internal bool Closed, Manual;
+        internal bool Morning;
         public void Dispose() => Disposals++;
     }
 
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
         CheckpointHistory<Node> History() => new(20, capacityGroup: n => n.Day);
+        test("morning anchors do not consume either day's twenty customer/manual slots", () =>
+        {
+            var h = new CheckpointHistory<Node>(20, n => !n.Morning, n => n.Day);
+            var anchors = new[] { new Node { Day = 1, Morning = true }, new Node { Day = 2, Morning = true } };
+            h.Add(anchors[0], false);
+            for (int day = 1; day <= 2; day++)
+            {
+                if (day == 2) h.Add(anchors[1], false);
+                for (int i = 0; i < 25; i++) h.Add(new Node { Day = day });
+            }
+            check(h.Items.Count == 42 && anchors.All(n => n.Disposals == 0));
+            h.Select(anchors[0]);
+            check(h.Items.Count == 42 && h.IsFuture(anchors[1]));
+            h.Select(anchors[1]);
+            check(h.Items.Count == 42 && anchors.All(n => n.Disposals == 0));
+            h.Clear();
+            check(anchors.All(n => n.Disposals == 1));
+        });
+        test("discard callback archives only committed branches, before releasing graph resources", () =>
+        {
+            var archived = new List<(int Day, int Disposals)>();
+            var h = new CheckpointHistory<Node>(2, abandon: node => archived.Add((node.Day, node.Disposals)));
+            var a = new Node { Day = 1 }; var b = new Node { Day = 2 }; var c = new Node { Day = 3 };
+            h.Add(a); h.Add(b); h.Add(c);
+            check(a.Disposals == 1 && archived.Count == 0);
+            h.Select(b);
+            check(archived.Count == 0 && c.Disposals == 0);
+            check(h.CommitBranch() == 1 && archived.Single() == (3, 0) && c.Disposals == 1);
+            h.Clear();
+            check(archived.Count == 1 && b.Disposals == 1);
+        });
+        test("timeline orders today's morning before all yesterday's nodes, regardless of file timestamp", () =>
+        {
+            var old = DateTime.UtcNow.AddYears(-1);
+            var entries = new List<CheckpointTimelineEntry>
+            {
+                new() { Day = 8, DayStart = false, At = DateTime.UtcNow },
+                new() { Day = 9, DayStart = true, At = old },
+                new() { Day = 8, DayStart = true, At = DateTime.UtcNow.AddDays(2) },
+                new() { Day = 9, DayStart = false, At = old.AddSeconds(1) },
+                new() { Day = 9, DayStart = false, At = old.AddSeconds(2) }
+            };
+            CheckpointTimelineEntry.Sort(entries);
+            check(entries.Select(e => e.Day).SequenceEqual(new[] { 9, 9, 9, 8, 8 }));
+            check(!entries[0].DayStart && entries[0].At > entries[1].At && entries[2].DayStart && entries[4].DayStart);
+        });
+        test("F6 selects one older row including manual nodes, arrows move and clamp, cancel releases selection", () =>
+        {
+            object newest = new(), manual = new(), morning = new(), yesterday = new();
+            object[] rows = { newest, manual, morning, yesterday };
+            var selection = new CheckpointSelection();
+            check(selection.Begin(rows, newest) && selection.Selected == manual);
+            selection.Move(-1); check(selection.Selected == newest);
+            selection.Move(-1); check(selection.Selected == newest);
+            selection.Move(2); check(selection.Selected == morning);
+            selection.Move(100); check(selection.Selected == yesterday);
+            selection.Cancel();
+            check(!selection.Active && selection.Selected == null);
+            check(selection.Begin(rows, null) && selection.Selected == newest);
+            check(selection.Begin(rows, yesterday) && selection.Selected == yesterday);
+            check(!selection.Begin(Array.Empty<object>(), null) && selection.Selected == null);
+        });
         test("file restore waits for native decode and exact day slot run identity", () =>
         {
             var gate = new CheckpointLoadGate();
@@ -25,13 +88,15 @@ internal static class CheckpointDayTests
         test("chemistry dividers preserve row separation and hotkey scroll reachability", () =>
         {
             foreach (float width in new[] { 380f, 480f, 900f })
+            foreach (int keyCount in new[] { 5, 10 })
             {
-                var layout = new PanelSettingsLayout(width, 18, 5, 7, 13);
+                var layout = new PanelSettingsLayout(width, 19, keyCount, 7, 14);
                 check(layout.Toggle(7).Y - layout.Toggle(6).Y == PanelSettingsLayout.RowHeight + 16);
-                check(layout.Toggle(13).Y - layout.Toggle(12).Y == PanelSettingsLayout.RowHeight + 16);
+                check(layout.Toggle(14).Y - layout.Toggle(13).Y == PanelSettingsLayout.RowHeight + 16);
                 check(layout.DividerY(7) > layout.Toggle(6).Y + layout.Toggle(6).Height);
-                check(layout.DividerY(13) > layout.Toggle(12).Y + layout.Toggle(12).Height);
-                check(layout.HotkeySectionY > layout.Toggle(17).Y + layout.Toggle(17).Height);
+                check(layout.DividerY(14) > layout.Toggle(13).Y + layout.Toggle(13).Height);
+                check(layout.HotkeySectionY > layout.Toggle(18).Y + layout.Toggle(18).Height);
+                check(layout.ResetY > layout.Key(keyCount - 1).Y + layout.Key(keyCount - 1).Height);
                 check(layout.ScrollOffset(float.MaxValue, 180) + 180 == layout.ContentHeight);
             }
         });

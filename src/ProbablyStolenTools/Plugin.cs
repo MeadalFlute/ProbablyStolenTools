@@ -69,6 +69,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgSemanticEntityBlocks;
         internal static ConfigEntry<bool> CfgSemanticDevelopmentChecks;
         internal static ConfigEntry<KeyCode> CfgKeyPrev;
+        internal static ConfigEntry<KeyCode> CfgKeyNewer, CfgKeyNewerAlt, CfgKeyOlder, CfgKeyOlderAlt, CfgKeyRewindConfirm;
         internal static ConfigEntry<KeyCode> CfgKeyManual;
         internal static ConfigEntry<KeyCode> CfgKeyDay;
         internal static ConfigEntry<KeyCode> CfgKeyPrevDay;
@@ -104,6 +105,8 @@ namespace ProbablyStolenTools
                 case KeyCode.None: return "<未设置>";
                 case KeyCode.Escape: return "Esc";
                 case KeyCode.Return: return "Enter";
+                case KeyCode.UpArrow: return "↑";
+                case KeyCode.DownArrow: return "↓";
                 case KeyCode.LeftShift: return "L-Shift";
                 case KeyCode.RightShift: return "R-Shift";
                 case KeyCode.LeftControl: return "L-Ctrl";
@@ -329,7 +332,12 @@ namespace ProbablyStolenTools
             CfgKeyManual = Config.Bind("Rewind", "KeyManualCheckpoint", KeyCode.F9,
                 "Create a checkpoint immediately, without waiting for a customer.");
             CfgKeyPrev = Config.Bind("Rewind", "KeyPrevCheckpoint", KeyCode.F6,
-                "Reset the current customer to their arrival checkpoint (in memory, no save-file fallback).");
+                "Select the next older checkpoint in panel order; use navigation keys and confirm to rewind.");
+            CfgKeyNewer = Config.Bind("Rewind", "KeyNewerCheckpoint", KeyCode.UpArrow, "Select one newer checkpoint in the chooser.");
+            CfgKeyNewerAlt = Config.Bind("Rewind", "KeyNewerCheckpointAlt", KeyCode.W, "Alternative newer checkpoint key.");
+            CfgKeyOlder = Config.Bind("Rewind", "KeyOlderCheckpoint", KeyCode.DownArrow, "Select one older checkpoint in the chooser.");
+            CfgKeyOlderAlt = Config.Bind("Rewind", "KeyOlderCheckpointAlt", KeyCode.S, "Alternative older checkpoint key.");
+            CfgKeyRewindConfirm = Config.Bind("Rewind", "KeyConfirmCheckpoint", KeyCode.Return, "Confirm the selected checkpoint.");
             CfgKeyDay = Config.Bind("Rewind", "KeyDayStart", KeyCode.F7,
                 "Rewind to the start of the current day.");
             CfgKeyPrevDay = Config.Bind("Rewind", "KeyPreviousDay", KeyCode.F5,
@@ -344,10 +352,15 @@ namespace ProbablyStolenTools
             Hotkeys = new List<HotkeyBinding>
             {
                 new HotkeyBinding("manual", "立即建立节点", CfgKeyManual, KeyCode.F9),
-                new HotkeyBinding("prev", "回到本顾客到店", CfgKeyPrev, KeyCode.F6),
+                new HotkeyBinding("prev", "选择上一个节点", CfgKeyPrev, KeyCode.F6),
                 new HotkeyBinding("day", "回到本日开业前", CfgKeyDay, KeyCode.F7),
                 new HotkeyBinding("prevday", "回到上一天", CfgKeyPrevDay, KeyCode.F5),
                 new HotkeyBinding("panel", "显示 / 隐藏面板", CfgKeyPanel, KeyCode.F8),
+                new HotkeyBinding("newer", "选择较新节点", CfgKeyNewer, KeyCode.UpArrow),
+                new HotkeyBinding("newerAlt", "选择较新节点（备用）", CfgKeyNewerAlt, KeyCode.W),
+                new HotkeyBinding("older", "选择较旧节点", CfgKeyOlder, KeyCode.DownArrow),
+                new HotkeyBinding("olderAlt", "选择较旧节点（备用）", CfgKeyOlderAlt, KeyCode.S),
+                new HotkeyBinding("confirmNode", "确认节点回溯", CfgKeyRewindConfirm, KeyCode.Return),
             };
 
             CfgRestoreMode = Config.Bind("Rewind", "RestoreMode", "menu",
@@ -372,9 +385,9 @@ namespace ProbablyStolenTools
             CfgHistory = Config.Bind("History", "Enabled", true,
                 "Observation-only business event log (no save writes, no state changes). Writes PSTools_history.log.");
             CfgCustomerCheckpoint = Config.Bind("CustomerCheckpoint", "Enabled", true,
-                "Keep the latest 20 customer/manual checkpoints per retained day. F6 resets the current customer; F7 keeps day-start restore.");
+                "Keep the latest 20 customer/manual checkpoints per retained day, plus one morning anchor. F6 opens checkpoint selection.");
             CfgKeepPreviousDay = Config.Bind("CustomerCheckpoint", "KeepPreviousDay", true,
-                "Keep yesterday's remaining in-memory checkpoints across normal sleep in the same shop session. Each day has an independent 20-node limit; scene changes and file reloads still expire all nodes.");
+                "Keep yesterday's checkpoints across normal sleep. F5/F7 prefer morning memory anchors to preserve history; scene changes and actual file reloads still expire object graphs.");
             CfgPanelX = Config.Bind("Panel", "X", 16f, "Panel left position in reference canvas units.");
             CfgPanelY = Config.Bind("Panel", "Y", 16f, "Panel top position in reference canvas units.");
             CfgPanelWidth = Config.Bind("Panel", "Width", 480f, "Panel width in reference canvas units.");

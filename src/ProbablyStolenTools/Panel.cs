@@ -76,6 +76,9 @@ namespace ProbablyStolenTools
         private Vector2 _pointerStart;
         private PanelBounds _gestureStart;
         private int _revision = -1, _fileCount = -1, _day = -1;
+        private int _pickerRevision = -1;
+        private bool _abandonedExpanded;
+        private static readonly object AbandonedHeader = new();
         private long _activeId = -1;
         private long _closedId = -1;
         private bool _closedUsable;
@@ -122,6 +125,14 @@ namespace ProbablyStolenTools
             try
             {
                 bool inGame = IsInGame();
+                if (CheckpointPicker.RevealPanel)
+                {
+                    CheckpointPicker.RevealPanel = false;
+                    _visible = true;
+                    _folded = false;
+                    _settingsOpen = false;
+                    if (_built) Layout();
+                }
                 bool capturingAtStart = CapturingKey;
                 if (capturingAtStart) CaptureStep();
                 if (!capturingAtStart && Plugin.Down(Plugin.CfgKeyPanel)) _visible = !_visible;
@@ -146,7 +157,8 @@ namespace ProbablyStolenTools
                 if (_revision != CustomerCheckpoint.Revision || _fileCount != Rewind.Points.Count
                     || _day != day || _activeId != CustomerCheckpoint.ActiveId
                     || _closedId != (CustomerCheckpoint.ClosedNode?.Id ?? 0)
-                    || _closedUsable != (CustomerCheckpoint.ClosedNode?.Graph != null))
+                    || _closedUsable != (CustomerCheckpoint.ClosedNode?.Graph != null)
+                    || _pickerRevision != CheckpointPicker.Revision)
                     Refresh(day);
                 string hint = (CustomerCheckpoint.CustomerCount > 0
                     ? InspectionLocale.Text($"顾客节点 {CustomerCheckpoint.CustomerCount}/20", $"Customer checkpoints {CustomerCheckpoint.CustomerCount}/20")
@@ -154,6 +166,7 @@ namespace ProbablyStolenTools
                             : (int?)Plugin.Store()?.storeState == 0 ? InspectionLocale.Text("已闭店", "Closed") : InspectionLocale.Text("尚未开业", "Not open")));
                 if (CustomerCheckpoint.LastCaptureError != null)
                     hint = InspectionLocale.Text("最近节点建立失败，旧节点仍保留；请查看日志", "Latest capture failed; earlier nodes retained. See log.");
+                if (CheckpointPicker.Active) hint = CheckpointPicker.Hint;
                 if (_hint.text != hint) _hint.text = hint;
                 if (_settingsOpen)
                 {
@@ -244,6 +257,10 @@ namespace ProbablyStolenTools
             _settingsButton = settingsButton.Rect;
             _body = NewObject("body", _nativeContent);
             _hint = Text("status", _body.transform, 12, new Color(0.45f, 0.72f, 0.90f));
+            _hint.enableAutoSizing = true;
+            _hint.fontSizeMin = 8;
+            _hint.fontSizeMax = 12;
+            _hint.enableWordWrapping = false;
             foreach (string label in new[] { InspectionLocale.Text("日期", "Day"), InspectionLocale.Text("节点", "Checkpoint"),
                 InspectionLocale.Text("现金", "Cash"), InspectionLocale.Text("状态", "State") })
             {
@@ -418,9 +435,12 @@ namespace ProbablyStolenTools
                 : Plugin.KeyName(binding.Config.Value);
 
         private static string HotkeyLabel(Plugin.HotkeyBinding binding)
-            => InspectionLocale.Text(binding.Label, binding.Id == "prev" ? "Current customer"
+            => InspectionLocale.Text(binding.Label, binding.Id == "prev" ? "Select previous checkpoint"
                 : binding.Id == "day" ? "Start of this day" : binding.Id == "prevday" ? "Previous day"
-                : binding.Id == "panel" ? "Show / hide panel" : binding.Id == "manual" ? "Manual checkpoint" : binding.Label);
+                : binding.Id == "panel" ? "Show / hide panel" : binding.Id == "manual" ? "Manual checkpoint"
+                : binding.Id == "newer" ? "Select newer checkpoint" : binding.Id == "newerAlt" ? "Select newer (alternate)"
+                : binding.Id == "older" ? "Select older checkpoint" : binding.Id == "olderAlt" ? "Select older (alternate)"
+                : binding.Id == "confirmNode" ? "Confirm checkpoint rewind" : binding.Label);
 
 #if !MONO
         [HideFromIl2Cpp]
@@ -442,6 +462,7 @@ namespace ProbablyStolenTools
         private void BeginCapture(Plugin.HotkeyBinding binding)
         {
             if (binding == null) return;
+            CheckpointPicker.Cancel();
             _captureTarget = binding;
             CapturingKey = true;
             _captureStartedFrame = Time.frameCount;
@@ -551,13 +572,20 @@ namespace ProbablyStolenTools
         private void ClickRow(Row row)
         {
             if (_dragging || _resizing || row.Node == null) return;
+            if (ReferenceEquals(row.Node, AbandonedHeader))
+            {
+                _abandonedExpanded = !_abandonedExpanded;
+                Refresh(CurrentDay());
+                return;
+            }
             if (!_click.Click(row.Node, Time.unscaledTime)) return;
-            if (row.Node is CustomerCheckpoint.Snapshot snapshot) CustomerCheckpoint.Restore(snapshot);
-            else if (row.Node is Rewind.Point point) Rewind.Restore(point);
+            CheckpointPicker.Restore(row.Node);
         }
 
         private void Refresh(int day)
         {
+            bool pickerChanged = _pickerRevision != CheckpointPicker.Revision;
+            _pickerRevision = CheckpointPicker.Revision;
             _revision = CustomerCheckpoint.Revision;
             _fileCount = Rewind.Points.Count;
             _activeId = CustomerCheckpoint.ActiveId;
@@ -566,27 +594,39 @@ namespace ProbablyStolenTools
             _day = day;
             _click.Reset();
             _shown = 0;
+            int needed = CustomerCheckpoint.Nodes.Count + CustomerCheckpoint.Failures.Count + 3
+                + (_abandonedExpanded ? CustomerCheckpoint.Abandoned.Count : 0);
+            while (_rows.Count < Math.Min(132, needed)) _rows.Add(NewRow(_rows.Count));
             var closed = CustomerCheckpoint.ClosedNode;
             if (closed != null && closed.Day == day && closed.Graph == null)
                 Bind(_rows[_shown++], closed, closed.Day, InspectionLocale.Text("闭店", "Closed"), closed.Cash,
                     closed.Graph == null ? closed.ExpiredReason : closed.Id == _activeId ? InspectionLocale.Text("当前", "Current")
                         : CustomerCheckpoint.IsFuture(closed) ? InspectionLocale.Text("后续", "Later") : "", closed.Graph != null);
-            var nodes = CustomerCheckpoint.Nodes;
-            for (int i = nodes.Count - 1; i >= 0; i--)
+            foreach (var entry in CheckpointPicker.Timeline())
             {
-                var node = nodes[i];
                 if (_shown >= _rows.Count) continue;
-                string label = CustomerCheckpoint.Name(node);
-                Bind(_rows[_shown++], node, node.Day, label, node.Cash,
-                    node.Id == _activeId ? InspectionLocale.Text("当前", "Current") : CustomerCheckpoint.IsFuture(node) ? InspectionLocale.Text("后续", "Later") : "", true);
+                var row = _rows[_shown++];
+                Bind(row, entry.Node, entry.Day, entry.Label, entry.Cash, entry.State, true);
+                if (ReferenceEquals(entry.Node, CheckpointPicker.Selected))
+                {
+                    row.Bg.color = new Color(0.24f, 0.52f, 0.40f, row.IdleColor.a);
+                    row.State.text = InspectionLocale.Text("选中", "Selected");
+                }
             }
-            for (int i = Rewind.Points.Count - 1; i >= 0; i--)
+            var abandoned = CustomerCheckpoint.Abandoned;
+            if (abandoned.Count > 0 && _shown < _rows.Count)
             {
-                var p = Rewind.Points[i];
-                if (_shown >= _rows.Count || p.Day != day || !p.IsDayStart || p.State != 2 || p.SlotId != Plugin.Store()?.saveSlotId
-                    || p.RunId != Plugin.Store()?.runID) continue;
-                Bind(_rows[_shown++], p, p.Day, InspectionLocale.Text("开业前", "Day start"), p.Cash, InspectionLocale.Text("存档", "File"), true);
-                break;
+                var header = _rows[_shown++];
+                Bind(header, AbandonedHeader, day,
+                    (_abandonedExpanded ? "v " : "> ") + InspectionLocale.Text($"丢弃节点（{abandoned.Count}）",
+                        $"Discarded checkpoints ({abandoned.Count})"), 0, "", true);
+                header.Time.text = header.Cash.text = "";
+                if (_abandonedExpanded)
+                    for (int i = abandoned.Count - 1; i >= 0 && _shown < _rows.Count; i--)
+                    {
+                        var node = abandoned[i];
+                        Bind(_rows[_shown++], null, node.Day, node.Label, node.Cash, InspectionLocale.Text("丢弃", "Discarded"), false);
+                    }
             }
             // 建立失败的节点也列出来：名字可见、状态为“损坏”，悬停显示失败原因。
             var failures = CustomerCheckpoint.Failures;
@@ -608,6 +648,18 @@ namespace ProbablyStolenTools
             _title.text = day < 0 ? InspectionLocale.Text("回溯", "Rewind") : InspectionLocale.Text($"回溯 · 第 {day} 天", $"Rewind - Day {day}");
             _empty.gameObject.SetActive(_shown == 0);
             Layout();
+            if (pickerChanged && CheckpointPicker.Active)
+            {
+                int selectedRow = _rows.FindIndex(row => ReferenceEquals(row.Node, CheckpointPicker.Selected));
+                if (selectedRow >= 0)
+                {
+                    float visible = _viewport.rect.height;
+                    float offset = Math.Max(0, Math.Min(_shown * RowH - visible,
+                        selectedRow * RowH - (visible - RowH) / 2));
+                    _scroll.StopMovement();
+                    _content.anchoredPosition = new Vector2(_content.anchoredPosition.x, offset);
+                }
+            }
         }
 
 #if !MONO
@@ -623,6 +675,7 @@ namespace ProbablyStolenTools
             row.State.text = state;
             row.Bg.color = state == InspectionLocale.Text("当前", "Current") ? new Color(0.28f, 0.45f, 0.85f, row.IdleColor.a) : row.IdleColor;
             row.Button.interactable = usable;
+            try { row.Element?.SetTooltip(null); } catch { }
         }
 
         private void Layout()

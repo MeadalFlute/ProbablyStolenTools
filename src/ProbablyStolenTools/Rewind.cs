@@ -7,8 +7,8 @@ using UnityEngine;
 namespace ProbablyStolenTools
 {
     /// <summary>
-    /// 开业前文件检查点：只复制游戏自己写好的存档，F7 通过主菜单重载。
-    /// 顾客级 F6 内存回退独立实现于 CustomerCheckpoint，不使用这里的文件恢复。
+    /// 开业前文件检查点：只复制游戏自己写好的存档，文件回退通过主菜单重载。
+    /// F5/F7 优先使用 CustomerCheckpoint 晨间锚点；F6 与面板共用节点选择。
     /// </summary>
     internal static class Rewind
     {
@@ -56,6 +56,13 @@ namespace ProbablyStolenTools
         internal static void ResetAfterFileReload()
         {
             Busy = false;
+            MemoryRestored();
+        }
+
+        internal static void MemoryRestored()
+        {
+            // The native slot may still describe a later day. Do not parse it every
+            // two seconds after an in-memory rewind; the next native save re-arms capture.
             var store = Plugin.Store();
             _captureStore = Id(store);
             _captureDay = store == null ? -1 : StoreStation.GetDayCounter();
@@ -222,6 +229,8 @@ namespace ProbablyStolenTools
         {
             var store = Plugin.Store();
             if (store == null) return;
+            var morning = CustomerCheckpoint.DayStart(StoreStation.GetDayCounter());
+            if (morning != null) { CustomerCheckpoint.Restore(morning); return; }
             for (int i = Points.Count - 1; i >= 0; i--)
             {
                 if (Points[i].IsDayStart && Points[i].State == 2 && Points[i].SlotId == store.saveSlotId
@@ -247,6 +256,26 @@ namespace ProbablyStolenTools
             int today;
             try { today = StoreStation.GetDayCounter(); }
             catch { return; }
+
+            if (Plugin.CfgKeepPreviousDay?.Value == true)
+            {
+                var morning = CustomerCheckpoint.DayStart(today - 1);
+                if (morning != null)
+                {
+                    EventLog.Write($"[Rewind] previous-day in-memory restore day={morning.Day}; history retained");
+                    CustomerCheckpoint.Restore(morning);
+                    return;
+                }
+                // Never silently invalidate a retained graph by replacing all runtime objects.
+                if (CustomerCheckpoint.Nodes.Count > 0)
+                {
+                    EventLog.Write("[Rewind] previous-day file reload refused: morning graph unavailable; history retained");
+                    PanelNotice.Show(InspectionLocale.Text(
+                        "上一天的开业前内存节点不可用，已保留现有节点。\n可在面板选择上一天的其他节点。",
+                        "Yesterday's morning checkpoint is unavailable; history retained.\nChoose another checkpoint from yesterday in the panel."), true);
+                    return;
+                }
+            }
 
             Point best = null;
             try
@@ -328,7 +357,7 @@ namespace ProbablyStolenTools
                 ? Plugin.KeyName(Plugin.CfgKeyPrevDay.Value)
                 : Plugin.KeyName(Plugin.CfgKeyDay.Value);
             string what = action == WholeDayAction.DayStart ? "回到本日开业前" : "回到上一天";
-            string body = $"{what} 会直接载入节点文件，不改动当前存档；之后的存档由游戏自己写入。\n\n" +
+            string body = $"{what} 优先使用内存节点并保留回溯历史；文件读档会使旧内存节点失效。不改动当前存档文件。\n\n" +
                           $"点击下方按钮确认，或直接再按一次 {other} 确认。";
             try
             {
@@ -748,8 +777,12 @@ namespace ProbablyStolenTools
             if (CheckpointPanel.CapturingKey) return;   // 正在改键：这一帧的所有热键都让路
             try
             {
+                if (CheckpointPicker.TickInput()) return;
                 if (Plugin.Down(Plugin.CfgKeyPrev))
-                    CustomerCheckpoint.Restore();
+                {
+                    CheckpointPicker.Begin();
+                    return;
+                }
 
                 if (Plugin.CfgKeyManual != null && Plugin.Down(Plugin.CfgKeyManual))
                     CustomerCheckpoint.CaptureManual();

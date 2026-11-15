@@ -9,16 +9,19 @@ namespace ProbablyStolenTools
         private readonly int _capacity;
         private readonly Predicate<T> _countsTowardCapacity;
         private readonly Func<T, int> _capacityGroup;
+        private readonly Action<T> _abandon;
         private T _selected;
         internal IReadOnlyList<T> Items => _items;
         internal int Revision { get; private set; }
 
-        internal CheckpointHistory(int capacity, Predicate<T> countsTowardCapacity = null, Func<T, int> capacityGroup = null)
+        internal CheckpointHistory(int capacity, Predicate<T> countsTowardCapacity = null, Func<T, int> capacityGroup = null,
+            Action<T> abandon = null)
         {
             if (capacity < 1) throw new ArgumentOutOfRangeException(nameof(capacity));
             _capacity = capacity;
             _countsTowardCapacity = countsTowardCapacity ?? (_ => true);
             _capacityGroup = capacityGroup ?? (_ => 0);
+            _abandon = abandon;
         }
 
         internal void Add(T item, bool commitBranch = true)
@@ -76,6 +79,7 @@ namespace ProbablyStolenTools
                 var abandoned = _items[i];
                 _items.RemoveAt(i);
                 if (ReferenceEquals(_selected, abandoned)) _selected = null;
+                _abandon?.Invoke(abandoned);
                 abandoned.Dispose();
             }
             Revision++;
