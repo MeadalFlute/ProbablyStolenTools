@@ -287,6 +287,11 @@ namespace ProbablyStolenTools
             NewSetting(InspectionLocale.Text("显示快速鉴定摘要", "Show quick inspection summary"), Plugin.CfgQuickInspection);
             NewSetting(InspectionLocale.Text("水质标注", "Water quality labels"), Plugin.CfgWaterQuality);
             NewSetting(InspectionLocale.Text("化学辅助", "Chemistry assist"), Plugin.CfgChemistry);
+            NewSetting(InspectionLocale.Text("扩展化学标注容量", "Extended chemistry capacities"), Plugin.CfgChemistryExtendedContainers);
+            NewSetting(InspectionLocale.Text("区分空容器名称", "Distinct empty container names"), Plugin.CfgEmptyContainerNames);
+            NewSetting(InspectionLocale.Text("自动搅拌", "Auto blend"), Plugin.CfgAutoBlend);
+            NewSetting(InspectionLocale.Text("自动萃取", "Auto extract"), Plugin.CfgAutoExtraction);
+            NewSetting(InspectionLocale.Text("隔夜产物预览", "Overnight output preview"), Plugin.CfgFacilityPreview);
             NewSetting(InspectionLocale.Text("酿酒标注", "Wine annotations"), Plugin.CfgWineAppraisal);
             NewSetting(InspectionLocale.Text("整日回退需确认", "Confirm whole-day rewind"), Plugin.CfgConfirmWholeDay);
             NewSetting(InspectionLocale.Text("详细诊断日志", "Verbose diagnostics"), Plugin.CfgVerboseLog);

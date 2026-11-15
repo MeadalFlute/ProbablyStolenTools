@@ -4,7 +4,7 @@ namespace ProbablyStolenTools
 {
     /// <summary>
     /// 液体成分分析：找出水/酒精之外占比最高的成分，并估算提纯后的纯度与评级。
-    /// 仅用于 2999ml 及以下的容器（大桶不参与显示）。
+    /// 不改变实际容器名称或液体内容。
     /// </summary>
     internal static class LiquidComposition
     {
@@ -43,7 +43,7 @@ namespace ProbablyStolenTools
         }
 
         /// <summary>
-        /// 滴管、量筒/量杯这类小容器（普遍低于 200mL）不参与“用成分名替换物品名”。
+        /// 滴管、量筒/量杯不参与成分改名；水罐虽有刻度，但不属于量器。
         /// </summary>
         internal static bool NoRename(GameItem item)
         {
@@ -51,9 +51,10 @@ namespace ProbablyStolenTools
             {
                 if (item == null) return true;
                 if (item.IsTag("LIQUID_CONTAINER_DROPPER_TAG")) return true;
-                if (item.IsTag("GRADUATED_CONTAINER_TAG")) return true;
-                int capacity = WaterHelper.GetTotalCapacityML(item);
-                return capacity > 0 && capacity < 200;
+                if (item.IsTag("GRADUATED_CONTAINER_TAG") && item.identifier != "water_pitcher"
+                    && item.identifier != "water_tank") return true;
+                int capacity = ChemistryData.Capacity(item) / 1000;
+                return capacity < (ExtendedContainers ? 150 : 200);
             }
             catch { return true; }
         }
@@ -61,8 +62,8 @@ namespace ProbablyStolenTools
         {
             try
             {
-                int capacity = WaterHelper.GetTotalCapacityML(item);
-                return capacity > 0 && capacity <= MaxVolumeMl;
+                int capacity = ChemistryData.Capacity(item) / 1000;
+                return ExtendedContainers ? capacity >= 150 : capacity > 0 && capacity <= MaxVolumeMl;
             }
             catch { return false; }
         }
@@ -72,13 +73,13 @@ namespace ProbablyStolenTools
             try
             {
                 if (item == null || !item.IsTag("LIQUID_CONTAINER_TAG")) return null;
-                int capacity = WaterHelper.GetTotalCapacityML(item);
-                if (capacity <= 0 || capacity > MaxVolumeMl) return null;
+                int capacity = ChemistryData.Capacity(item) / 1000;
+                if (ExtendedContainers ? capacity < 150 : capacity <= 0 || capacity > MaxVolumeMl) return null;
 
                 var result = new Analysis { SizeName = SizeFor(capacity) };
                 var liquids = Liquid.Liquids;
                 if (liquids == null || liquids.Count == 0) return null;
-                int[] parts = WaterHelper.GetLiquidParts(item);
+                int[] parts = ChemistryData.Parts(item);
                 if (parts == null || parts.Length != liquids.Count) return null;
 
                 long total = 0;
@@ -91,6 +92,7 @@ namespace ProbablyStolenTools
                     string id = liquids[i]?.identifier;
                     if (id == Water) { water = amount; continue; }
                     if (id == Alcohol) { alcohol = amount; continue; }
+                    if (id == PlantMatter) continue;
                     if (amount > bestAmount) { bestAmount = amount; best = i; }
                 }
                 result.Empty = total <= 0;
@@ -114,6 +116,7 @@ namespace ProbablyStolenTools
                 }
                 if (best < 0)
                 {
+                    if (water == 0 && alcohol == 0) return result;
                     // 只剩水/酒精且都没超过 70%：退回占比最高的一侧。
                     if (water >= alcohol) { result.WaterTop = true; return result; }
                     result.AlcoholTop = true;
@@ -137,6 +140,23 @@ namespace ProbablyStolenTools
                 return result;
             }
             catch { return null; }
+        }
+
+        private static bool ExtendedContainers => Plugin.CfgChemistryExtendedContainers?.Value ?? true;
+
+        internal static string EmptyName(GameItem item, Analysis analysis)
+        {
+            if (!(Plugin.CfgEmptyContainerNames?.Value ?? true))
+                return InspectionLocale.Text("空瓶（" + analysis.SizeName + "）", "Empty bottle (" + analysis.SizeName + ")");
+            if (item.identifier == "water_pitcher") return InspectionLocale.Text("空水罐", "Empty water pitcher");
+            if (item.identifier == "water_jug") return InspectionLocale.Text("空水桶", "Empty water jug");
+            if (item.identifier == "water_tank")
+            {
+                string litres = (ChemistryData.Capacity(item) / 1000000.0).ToString("0.###",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                return InspectionLocale.Text("空储水罐（" + litres + "L）", "Empty water tank (" + litres + " L)");
+            }
+            return InspectionLocale.Text("空瓶（" + analysis.SizeName + "）", "Empty bottle (" + analysis.SizeName + ")");
         }
 
         /// <summary>
@@ -186,6 +206,8 @@ namespace ProbablyStolenTools
 
         internal static string SizeFor(int capacityMl)
         {
+            if (capacityMl <= 150 && (Plugin.CfgEmptyContainerNames?.Value ?? true))
+                return InspectionLocale.Text("微型", "Micro");
             if (capacityMl <= 250) return InspectionLocale.Text("迷你", "Mini");
             if (capacityMl <= 450) return InspectionLocale.Text("小", "Small");
             if (capacityMl <= 750) return InspectionLocale.Text("标准", "Standard");

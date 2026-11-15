@@ -74,7 +74,7 @@ namespace ProbablyStolenTools
                 // 空瓶：把尺寸写进名字（水质行不再重复）。
                 if (analysis.Empty)
                 {
-                    __result = InspectionLocale.Text("空瓶（" + analysis.SizeName + "）", "Empty bottle (" + analysis.SizeName + ")");
+                    __result = LiquidComposition.EmptyName(__instance, analysis);
                     return;
                 }
                 // 酒精最高：名字显示 酒精 / 医用酒精 / 脱水乙醇。

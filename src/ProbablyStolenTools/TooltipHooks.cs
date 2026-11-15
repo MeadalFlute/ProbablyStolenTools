@@ -46,6 +46,7 @@ namespace ProbablyStolenTools
             catch (Exception e) { Warn("wine", e); }
             try { WaterQualityPatch.AddTooltip(builder, item); }
             catch (Exception e) { Warn("water", e); }
+            FacilityPreview.AddTooltip(builder, item);
         }
 #endif
 

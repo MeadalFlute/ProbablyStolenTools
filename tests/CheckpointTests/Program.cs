@@ -8,6 +8,7 @@ void Test(string name, Action action)
 void Check(bool condition) { if (!condition) throw new Exception("Assertion failed"); }
 
 ManagedSnapshotTests.Run(Test, Check);
+ChemistryRulesTests.Run(Test, (condition, message) => { if (!condition) throw new Exception(message); });
 SnapshotOptimizationTests.Run(Test, Check);
 SnapshotValueComparisonTests.Run(Test, Check);
 SnapshotArrayBudgetTests.Run(Test, Check);

@@ -315,6 +315,7 @@ namespace ProbablyStolenTools
         {
             if (Restoring) return;
 #if MONO
+            ChemistryAutomation.Reset();
             _semanticShadowAttempted = false;
             _entityBoundaryAttempted = false;
             EntitySamples.Reset();
@@ -1089,6 +1090,7 @@ namespace ProbablyStolenTools
                 tPreflight = timing.ElapsedMilliseconds;
                 phase = "selection-reset";
 #if MONO
+                ChemistryAutomation.Reset();
                 // Native selectedHomes and ghost offsets belong to the abandoned timeline.
                 // Active gestures were refused above; Cancel here only clears a static selection.
                 var selection = ItemMultiSelectHandler.current;
@@ -1517,6 +1519,7 @@ namespace ProbablyStolenTools
         {
             _visualProbe = null;
 #if MONO
+            ChemistryAutomation.Reset();
             _semanticShadowAttempted = false;
             _entityBoundaryAttempted = false;
             EntitySamples.Reset();

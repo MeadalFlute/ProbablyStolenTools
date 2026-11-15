@@ -39,6 +39,8 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgQuickInspection;
         internal static ConfigEntry<bool> CfgWaterQuality;
         internal static ConfigEntry<bool> CfgChemistry;
+        internal static ConfigEntry<bool> CfgChemistryExtendedContainers, CfgEmptyContainerNames;
+        internal static ConfigEntry<bool> CfgAutoBlend, CfgAutoExtraction, CfgFacilityPreview;
         internal static ConfigEntry<bool> CfgWineAppraisal;
         internal static ConfigEntry<float> CfgInspectionX, CfgInspectionY;
 
@@ -200,6 +202,7 @@ namespace ProbablyStolenTools
         public void OnEnable() => Initialize();
         public void OnDisable()
         {
+            ChemistryAutomation.Reset();
             TooltipHooks.Disable();
             OverlayBootstrap.Release();
         }
@@ -248,6 +251,17 @@ namespace ProbablyStolenTools
             CfgChemistry = Config.Bind("Chemistry", "Enabled", true,
                 "Show the composition / share / purity / grade row and rename liquid containers by their main component.");
             CfgChemistry.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
+            CfgChemistryExtendedContainers = Config.Bind("Chemistry", "ExtendedContainers", true,
+                "Include containers from 150 mL with no upper capacity limit. Droppers and measuring vessels remain excluded from component naming.");
+            CfgChemistryExtendedContainers.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
+            CfgEmptyContainerNames = Config.Bind("Chemistry", "EmptyContainerNames", true,
+                "Distinguish empty micro bottles, water pitchers, jugs and variable-capacity water tanks in tooltips.");
+            CfgAutoBlend = Config.Bind("Chemistry", "AutoBlend", true,
+                "Blend compatible ingredients after player placement. Mixed-product batches leave incompatible ingredients at their source; whole-item outputs must fit.");
+            CfgAutoExtraction = Config.Bind("Chemistry", "AutoExtraction", true,
+                "Adding alcohol converts all dream/nightmare/coffee mush into equal amounts of extract and plant matter. Does not consume alcohol; volume may exceed capacity.");
+            CfgFacilityPreview = Config.Bind("Chemistry", "FacilityPreview", true,
+                "Show read-only next-cycle projections for aquaculture, purifiers, hydroponics and evaporators.");
             CfgWineAppraisal = Config.Bind("Wine", "Enabled", true,
                 "Show glowberry condition and unfermented-bottle quality annotations.");
             CfgAutoAppraisal.SettingChanged += (_, _) => AppraisalPatch.Reset();
