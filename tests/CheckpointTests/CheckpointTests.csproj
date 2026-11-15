@@ -30,6 +30,7 @@
     <Compile Include="../../src/ProbablyStolenTools/CustomerPathState.cs" Link="CustomerPathState.cs" />
     <Compile Include="../../src/ProbablyStolenTools/PanelModel.cs" Link="PanelModel.cs" />
     <Compile Include="../../src/ProbablyStolenTools/SaveMetadata.cs" Link="SaveMetadata.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/CheckpointLoadGate.cs" Link="CheckpointLoadGate.cs" />
     <Compile Include="../../src/ProbablyStolenTools/InspectionChecks.cs" Link="InspectionChecks.cs" />
     <Compile Include="../../src/ProbablyStolenTools/ModConfig.cs" Link="ModConfig.cs" />
     <Compile Include="../../src/ProbablyStolenTools/ManagedStateAccess.cs" Link="ManagedStateAccess.cs" />

@@ -12,6 +12,16 @@ internal static class CheckpointDayTests
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
         CheckpointHistory<Node> History() => new(20, capacityGroup: n => n.Day);
+        test("file restore waits for native decode and exact day slot run identity", () =>
+        {
+            var gate = new CheckpointLoadGate();
+            gate.Begin(new SaveMetadata(93, 0, 2, 2, "run"));
+            check(!gate.Completed);
+            check(!gate.Loaded(94, 2, "run") && !gate.Loaded(93, 1, "run") && !gate.Loaded(93, 2, "other"));
+            check(gate.Loaded(93, 2, "run") && gate.Completed);
+            gate.Reset();
+            check(!gate.Completed && !gate.Loaded(93, 2, "run"));
+        });
         test("two days each retain twenty nodes without cross-day eviction", () =>
         {
             var h = History();

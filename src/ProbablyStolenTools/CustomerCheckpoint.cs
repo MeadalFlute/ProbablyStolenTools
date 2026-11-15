@@ -277,7 +277,7 @@ namespace ProbablyStolenTools
                     Clear();
                     if (ClosedNode?.Day != day) ClosedNode = null;
                 }
-                _outside = false;
+                if (!nextDay) _outside = false;
                 AppraisalPatch.Reset();
                 _faulted = false;
             }
@@ -317,7 +317,13 @@ namespace ProbablyStolenTools
         internal static void Leaving()
         {
             if (Restoring) return;
-            Clear("已离店");
+            if (Plugin.CfgKeepPreviousDay?.Value == true && !_faulted)
+            {
+                _armed = false;
+                _closeArmed = false;
+                EventLog.Write($"[Customer] LEFT SHOP nodes={History.Items.Count} retained; restore suspended until return");
+            }
+            else Clear("已离店");
             _outside = true;
             Status = "Left the shop; in-memory checkpoints expired.";
         }
@@ -1573,6 +1579,8 @@ namespace ProbablyStolenTools
 
         private static void Clear(string reason = "场景切换")
         {
+            if (History.Items.Count > 0)
+                EventLog.Write($"[Customer] CLEAR reason={reason} nodes={History.Items.Count} day={Boundary.Day}");
             _visualProbe = null;
 #if MONO
             ChemistryAutomation.Reset();

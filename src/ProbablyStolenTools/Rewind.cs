@@ -29,6 +29,15 @@ namespace ProbablyStolenTools
         internal static readonly List<Point> Points = new List<Point>();
         internal static bool Busy;
         internal static bool Restoring => Busy || PendingMenuReload || PendingPoint != null;
+        internal static readonly CheckpointLoadGate LoadGate = new();
+        internal static float LoadStartedAt;
+        internal static void NativeLoaded(PlayerStore store)
+        {
+            if (PendingPoint == null) return;
+            bool matched = LoadGate.Loaded(StoreStation.GetDayCounter(), store.saveSlotId, store.runID);
+            EventLog.Write($"[Rewind] native load completed day={StoreStation.GetDayCounter()} expectedDay={PendingPoint.Day} matched={matched}");
+            if (!matched) PanelNotice.Show("载入结果与节点不符，已停止回溯收尾，请查看日志", true);
+        }
         private static IntPtr _captureStore;
         private static int _captureDay = -1;
         private static float _nextCapture;
@@ -432,6 +441,8 @@ namespace ProbablyStolenTools
 
                 string mode = Plugin.CfgRestoreMode.Value;
                 PendingPoint = p;
+                LoadGate.Begin(new SaveMetadata(p.Day, p.Cash, p.State, p.SlotId, p.RunId));
+                LoadStartedAt = Time.unscaledTime;
                 if (mode == "menu")
                 {
                     GoToMenuAndAutoLoad(slot);
@@ -660,6 +671,13 @@ namespace ProbablyStolenTools
             OverlayBootstrap.Ensure();
             Rewind.Saved();
         }
+    }
+
+    [HarmonyPatch(typeof(PlayerStore), nameof(PlayerStore.LoadGame))]
+    internal static class RewindNativeLoadPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(PlayerStore __instance) => Rewind.NativeLoaded(__instance);
     }
 
     /// <summary>热键 + 事件日志。IMGUI 在这个 build 里被裁掉了，UI 用日志替代。</summary>
@@ -902,6 +920,19 @@ namespace ProbablyStolenTools
             if (_resumeStage == 0)
             {
                 if (Rewind.PendingMenuReload) return;
+                if (!Rewind.LoadGate.Completed)
+                {
+                    if (Time.unscaledTime - Rewind.LoadStartedAt > 90f)
+                    {
+                        EventLog.Write("[Rewind] native load completion not verified within 90s; staged checkpoint retained, resume cancelled.");
+                        PanelNotice.Show("回溯载入未确认完成，请查看日志", true);
+                        Rewind.PendingPoint = null;
+                        Rewind.PendingLoadFile = null;
+                        Rewind.LoadGate.Reset();
+                        Rewind.Settling = false;
+                    }
+                    return;
+                }
                 PlayerStore s = null;
                 s = Plugin.Store();
                 if (s == null) return;
@@ -913,6 +944,7 @@ namespace ProbablyStolenTools
                 // 载入完成：恢复正常按槽位加载，避免下次“继续游戏”还去读检查点文件。
                 try { if (NewGameData.Instance != null) NewGameData.Instance.saveFile = null; } catch { }
                 Rewind.PendingLoadFile = null;
+                Rewind.LoadGate.Reset();
                 try { File.Delete(Path.Combine(Application.persistentDataPath, "pstools_restore.es3")); } catch { }
                 Rewind.ResetAfterFileReload();
                 ResetPollingAfterFileReload();
