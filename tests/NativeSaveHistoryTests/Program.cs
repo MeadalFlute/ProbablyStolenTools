@@ -3,6 +3,7 @@ using System.Text.Json;
 using ProbablyStolenTools;
 
 int passed = 0;
+ModLogger.Log = new ModLog();
 void Check(bool value) { if (!value) throw new Exception("Check failed."); }
 void Test(string name, Action action)
 {
@@ -124,4 +125,27 @@ Test("index write failure does not escape into native save recovery or alter act
     Check(EventLog.Lines.Last().Contains("cleanup incomplete"));
     Check(SaveFiles.LoadHistory(2).Count == 0);
 });
-Console.WriteLine($"{passed} native history IO fixture tests passed; Unity/native ES3 writing requires game verification.");
+Test("native gear editor mirrors XML limits and writes applied values to XML immediately", () =>
+{
+    string path = Path.Combine(SaveFiles.Root, "PSTools.settings.xml");
+    var config = new ProbablyStolenTools.ModConfig(path) { SaveOnConfigSet = true };
+    Plugin.CfgMaxObjects = config.Bind("Snapshot", "MaxObjects", 350000, "");
+    Plugin.CfgMaxSlots = config.Bind("Snapshot", "MaxSlots", 3000000, "");
+    Plugin.CfgMaxBytesMb = config.Bind("Snapshot", "MaxBytesMB", 256, "");
+    NativeSnapshotSettings.Register();
+    Check(ModHelper.Config.Entries["Snapshot.MaxObjects"].Value == 350000);
+    ModHelper.Config.Entries["Snapshot.MaxObjects"].Set(500000);
+    Check(Plugin.CfgMaxObjects.Value == 500000 && File.ReadAllText(path).Contains("500000"));
+    ModHelper.Config.Entries["Snapshot.MaxObjects"].Set(2000000);
+    Check(Plugin.CfgMaxObjects.Value == 1000000);
+    Plugin.CfgMaxBytesMb.Value = 512;
+    Check(ModHelper.Config.Entries["Snapshot.MaxBytesMB"].Value == 512);
+    var old = ModHelper.Config.Entries["Snapshot.MaxObjects"];
+    NativeSnapshotSettings.Register();
+    old.Set(300000);
+    Check(Plugin.CfgMaxObjects.Value == 1000000);
+    NativeSnapshotSettings.Disable();
+    ModHelper.Config.Entries["Snapshot.MaxObjects"].Set(400000);
+    Check(Plugin.CfgMaxObjects.Value == 1000000);
+});
+Console.WriteLine($"{passed} native history/settings IO fixture tests passed; Unity/native ES3 writing requires game verification.");

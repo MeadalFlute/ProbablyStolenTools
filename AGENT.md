@@ -22,9 +22,11 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-当前开发候选：**426 项**离线参考测试，另有 9 项原版历史文件 IO 夹具测试；Harmony 挂点与字段检查数量见最新验证日志，另检查三个漏斗静态门控字段；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归，以及 500 组原版比例耗水对照。离线通过 **不等于** Unity 活体验收。基础见 `research/2026-11-15-chemistry-crossday-handoff.md`，测试反馈修正见 `research/2026-11-15-feedback-followup.md`，跨天/F6 选择修正见 `research/2026-11-15-rewind-picker-followup.md`，返店/文件去重与存档恢复见 `research/2026-11-15-return-archive-followup.md`，活动档去重与晨报卡顿跟进见 `research/2026-11-15-active-history-morning-followup.md`。
+当前开发候选：**430 项**离线参考测试，另有 10 项原版历史/齿轮设置 IO 夹具测试、10 项玩家生成工具断言；Harmony 挂点与字段检查数量见最新验证日志，另检查三个漏斗静态门控字段；两个发布 DLL 合并扫描只剩 `files`，`HardFlags` 为空。静态表另有游戏 Mono 下 2861 类型/8108 字段精确对照、完整图六轮往返及版本拒绝测试；新增生成/遍历边界普查、nullable 标量与装箱标量回归，以及 500 组原版比例耗水对照。离线通过 **不等于** Unity 活体验收。基础见 `research/2026-11-15-chemistry-crossday-handoff.md`，测试反馈修正见 `research/2026-11-15-feedback-followup.md`，跨天/F6 选择修正见 `research/2026-11-15-rewind-picker-followup.md`，返店/文件去重与存档恢复见 `research/2026-11-15-return-archive-followup.md`，活动档去重与晨报卡顿跟进见 `research/2026-11-15-active-history-morning-followup.md`。
 
 ### 版本与发布
+
+玩家静态表工具的独立分发流程：运行 `scripts/Publish-StaticLayoutTool.ps1`，取得 `out/static-layout-tool-日期/ProbablyStolenTools-StaticLayoutGenerator-win-x64.zip`。在 GitHub 单独上传附件，不能把工具 exe/Mono.Cecil 放进 Mod 的 Assemblies 或 Mods。玩家完整用法见 `tools/StaticSnapshotLayouts/PLAYER-README.md` 与 README；先退出游戏，执行 `Generate-StaticLayouts.ps1 -GameDir "<游戏目录>"`，默认只生成。`-Install` 只支持默认 `Mods/ProbablyStolenTools` 安装，会把旧 helper 备份到工具 generated 目录，再只替换 helper。该工具不能自动适配任意第三方类型或修复游戏 API 变化，不代表新版本已验收。当前机器无可用 GitHub 发布凭据，附件已打包测试，但**尚未上传**；不要声称已可从 Release 下载。
 
 - 唯一真源：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
 - 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.2**。
@@ -125,6 +127,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 - `EventLog.Write` 品牌头：`[QuickSL]` / `[QuickSL/子系统]`；关键捕获/恢复/失败不随 verbose 关闭。
 - 默认日志：Session/语言状态、CAPTURE/RESTORE 阶段耗时与规模/后端、失败/拒绝/超限、真实 full 回退、释放错误、群拖异常。
+- 建点失败 toast、损坏节点悬停和 LastCaptureError 使用同一具体原因：静态表错误显示底层异常及生成工具/更新指引，日志输出项目地址；object/slot/byte 超限显示当前有效限额、建议 XML 项和齿轮入口。提示按纯文本绘制，避免 `<Entry .../>` 被 TMP 当标签吞掉；未知错误保留异常类型/消息。不再只显示“详情请查看日志”。
+- 主菜单模组齿轮注册 `Snapshot.MaxObjects` / `MaxSlots` / `MaxBytesMB`，与既有 XML 双向同步，重启时 XML 为真源（手改不被 native JSON 旧值覆盖）。对象 1000–1000000、槽 10000–8000000、MiB 16–2048。上限仅控制拒绝边界，不扩大未超限节点的遍历量或按上限预分配；允许更大图后实际耗时/内存可能提高，字节预算不代表整个 Mod 的物理内存上限。
 - `[Load] native ms(...)` 每次载入一条，区分 Entry/PreLoad/LoadGame/DecodeSaveItem/历史清理；原版解码后的 onLoaded 等阶段也处于化学自动化禁止区间。晨报关闭另记 `closeMs` 与 `morningAnchorPending`，关闭后晨间锚点同步完整捕获耗时仍见 `CAPTURE client=day-start captureMs`。不把原生载入、关闭回调与后续捕获混作同一耗时。
 - `[QuickSL/Geom]` 只在物品视图异常（DESTROYED/MISSING/NOSPRITE/HIDDEN/MISPLACED）时输出。
 - `PSTools.log` 4MiB × 3 归档；独立错误日志 1MiB × 2；`PSTools_history.log` 保留并轮转。
@@ -147,6 +151,8 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 该批实机 5 次平均 1286 ms，同样未明显提速。恢复阶段现另有精简候选：静态固定布局 `CensusForRestore` 仅遍历完整引用拓扑并保留所有布局/预算检查，不再探测当前标量；目标 `ValidateRestore` 对显式稳定存储及已批准块只验证原 owner 保留身份，不计算被丢弃的写前差异；未知后端/块保持原完整读取。owner 修复计划并入同一次完整差异扫描，消除后续全槽规划遍历。原生刷新后扫描及最终全量校验/失败 full fallback 保留；日志用 `censusMode` / `preflightMode` 识别实际路径。同夹具三组离线对照中普查 427→303 ms、预检 275→20 ms，恢复相关阶段合计中位数 1599→1237 ms（约 -22.6%），不含 Unity 刷新，实机待验收。证明、回退边界及验证见 `research/2026-11-12-restore-stage-consolidation.md`；不能把写前稳定存储证明推广成恢复后免校验。
 
 最新阶段精简后的 16:37 会话简单节点测试：5 次恢复平均 **1004.8 ms**，上一批为 1285.8 ms，约缩短 21.9%；全部 diff=0 / releaseOk=True，走 topology / retained-storage，无 finalFallback。不是严格同操作 A/B，亦不是完整功能矩阵验收。首节点仍 1479 ms，初始化卡顿没有解决。暂未发现低风险且明确显著的进一步阶段删减，停止追加性能候选，转入审查。完整范围及风险清单见 `research/2026-11-12-loader-migration-review-handoff.md`。
+
+2026-11-15 晨报关闭停顿跟进：载入后的晨间节点约 18.6 万对象/102 万槽，普通约 15 万对象/83 万槽，不能把旧 1.3 秒当作同规模对照。每日仍需完整读取新晨间锚点，类型缓存本已跨日保留。新增独立性能提交：ManagedObjects 弱身份表清理从每 4096 个反复扫全表改为按新身份数/表规模摊销，最终局部游戏 Mono 对照（双方均缓存回调）490.50→161.46ms，不等于整体快照提速；StateGraph 用现有 _sources 做唯一成员索引，不再保存第二个 HashSet，完整图串行对照 215.48→213.57ms，未显著提速。所有预算/完整恢复/校验保留。CAPTURE 额外记 identitySweepMs/identitySweeps/identityVisited 与 GC 三代次数。证明及实机待验收边界见 `research/2026-11-15-morning-capture-amortization.md`。
 
 - 技术依据：`research/2026-11-12-static-type-token-proof.md` 证明构建时固定 ldtoken 可表达私有泛型 Entry/Slot。窄探针之后已完成生产源码替换及离线完整图测试，已有基本节点实机反馈，但完整功能矩阵仍待验收；工具/原生离线宿主绝不随 Mod 发布。
 - 官方公告 **2026-12-10** 起拒绝 `dynamic-code` 与 `reflection-external`（以及 native/threads）；当前 0.9.0 只保证**当前游戏版本**可用，发行说明不得写“已兼容下一版”。

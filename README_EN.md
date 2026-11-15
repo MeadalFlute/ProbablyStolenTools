@@ -3,7 +3,43 @@
 English | [中文](README.md)
 
 A helper mod for **Probably Stolen**, targeting the full release **0.9.2**.
-The full release runs Unity 2021.3.45f2 / Mono / x64 (game 0.46D) and provides its own **IMod / Harmony** loader — MelonLoader and BepInEx are not required.
+The full release uses Unity 2021.3.45f2 / Mono / x64 (game 0.46D), with its own
+**IMod / Harmony** loader. MelonLoader and BepInEx are not required.
+
+## Snapshot Limits and Manual Layout Generator
+
+Snapshot failures now show the concrete exception, effective limit and recovery
+instructions. Include that screenshot and `PSTools.log` in a bug report.
+
+Use the mod's gear button in the main-menu Mods screen to change object, slot
+and byte limits. Apply also updates `PSTools.settings.xml`; manual edits to that
+XML while the game is closed remain authoritative on restart.
+
+The default object cap is 200000 (supported: 1000–1000000). Raising it does not
+traverse additional objects or preallocate the entire higher limit for graphs
+already below the old cap. It does allow larger captures, which may use more
+memory and take longer. Slot/byte budgets are logical payload limits, not a cap
+on the whole mod's physical memory footprint.
+
+After a game update, a static-layout mismatch may be recoverable with the
+separate Windows x64 **Static Layout Generator**. Extract it outside Mods and
+close the game, then run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Generate-StaticLayouts.ps1 -GameDir "E:\SteamLibrary\steamapps\common\Probably Stolen"
+```
+
+Use your own game directory. Copy only the generated helper DLL from
+`generated-<timestamp>` into the actual mod folder, keeping the old helper outside
+Mods. For the default `Mods\ProbablyStolenTools` installation, `-Install` backs up
+and replaces only the helper. The player package needs no .NET SDK/runtime.
+
+Read [the player guide](tools/StaticSnapshotLayouts/PLAYER-README.md) for rollback
+and limitations. This does not automatically support arbitrary third-party mod
+types or changed gameplay APIs. Report persistent failures instead of bypassing
+validation. Maintainers package the separate release attachment with
+`scripts/Publish-StaticLayoutTool.ps1`; its executable and Mono.Cecil never belong
+in Mods.
 
 ---
 

@@ -32,3 +32,18 @@ dotnet run -c Release --project tools/StaticSnapshotLayouts -- "<GAME_DIR>" "<HO
 Run `scripts/Test-StaticLayouts.ps1` for target-Mono field coverage, actual graph
 round trips, all shipped DLL capability scanning, reproducibility and rejection
 tests. A successful build/scan is not Unity gameplay or future-version acceptance.
+
+## Player Package
+
+`scripts/Publish-StaticLayoutTool.ps1` creates a self-contained Windows x64
+single-file executable, PowerShell wrapper, matching source, file hashes and
+the [player instructions](PLAYER-README.md) in a separate zip under `out/`.
+The player build excludes host/mismatch-fixture switches and host BCL lookup.
+Test with `tests/Test-PlayerLayoutTool.ps1 -GameDir <game> -ToolDir <extracted-tool>`.
+Upload that zip separately; none of it belongs in Mods.
+
+The wrapper generates outside the game by default. `-Install` supports only
+the default mod path, preserves the old helper outside Mods, refuses linked
+installation paths and a running game, and never writes a save/main DLL/manifest
+or loader approval. Generation supports the installed game's fixed type set,
+not arbitrary third-party type adaptation or changed gameplay contracts.

@@ -210,6 +210,7 @@ namespace ProbablyStolenTools
         public void OnEnable() => Initialize();
         public void OnDisable()
         {
+            NativeSnapshotSettings.Disable();
             ChemistryAutomation.Reset();
             TooltipHooks.Disable();
             OverlayBootstrap.Release();
@@ -398,6 +399,10 @@ namespace ProbablyStolenTools
             Config.SaveOnConfigSet = true;
             Instance.Config.Save();
 
+#if MONO
+            try { NativeSnapshotSettings.Register(); }
+            catch (Exception e) { EventLog.Write("[Settings] native snapshot settings unavailable; XML retained: " + e); }
+#endif
             LogSource.LogInfo($"Probably Stolen Tools {Version} loading...");
             LogSource.LogInfo($"persistentDataPath = {Application.persistentDataPath}");
 

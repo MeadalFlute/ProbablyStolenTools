@@ -46,10 +46,62 @@ public static class SaveFiles
                 DateTimeStyles.None, out stamp);
     }
 }
+public static class ModHelper
+{
+    public static readonly ModConfig Config = new();
+    public static ModConfig GetConfig(string id) => Config;
+}
+public sealed class ModConfig
+{
+    public readonly Dictionary<string, ConfigEntry<int>> Entries = new();
+    public ConfigEntry<int> Define(string key, int defaultValue, string section, Func<string> label,
+        int? min = null, int? max = null, Func<string> tooltip = null)
+    {
+        var entry = new ConfigEntry<int>(defaultValue, min.Value, max.Value);
+        Entries[key] = entry;
+        return entry;
+    }
+}
+public sealed class ConfigEntry<T>
+{
+    public T Value { get; private set; }
+    public event Action<T> OnChanged;
+    private readonly int _min, _max;
+    public ConfigEntry(T initial, int min, int max) { Value = initial; _min = min; _max = max; }
+    public void Set(T value)
+    {
+        if (value is int number) value = (T)(object)Math.Clamp(number, _min, _max);
+        if (EqualityComparer<T>.Default.Equals(Value, value)) return;
+        Value = value;
+        OnChanged?.Invoke(value);
+    }
+}
+public sealed class ModLog
+{
+    public void Log(string s) { }
+    public void Warning(string s) { }
+    public void Error(string s) { }
+}
+namespace UnityEngine
+{
+    public static class Application { public static string persistentDataPath => SaveFiles.Root; }
+    public static class Debug
+    {
+        public static void Log(string s) { }
+        public static void LogWarning(string s) { }
+        public static void LogError(string s) { }
+    }
+}
 namespace ProbablyStolenTools
 {
     internal sealed class Setting { public bool Value = true; }
-    internal static class Plugin { internal static Setting CfgRewind = new(); }
+    internal static class Plugin
+    {
+        internal const string Guid = "fixture";
+        internal static Setting CfgRewind = new();
+        internal static ConfigEntry<int> CfgMaxObjects, CfgMaxSlots, CfgMaxBytesMb;
+    }
+    internal static class InspectionLocale { internal static string Text(string zh, string en) => en; }
     internal static class EventLog
     {
         internal static List<string> Lines = new();

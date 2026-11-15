@@ -14,11 +14,14 @@ public static partial class OfflineMonoFixture
         }
         private readonly ConditionalWeakTable<object, Identity> _ids = new ConditionalWeakTable<object, Identity>();
         private readonly Dictionary<IntPtr, WeakReference<object>> _objects = new Dictionary<IntPtr, WeakReference<object>>();
+        private readonly ConditionalWeakTable<object, Identity>.CreateValueCallback _create;
         private long _next;
         internal long Visited;
-        internal IntPtr Id(object value) => _ids.GetValue(value, obj =>
+        internal LegacyIdentityRegistry() { _create = Create; }
+        internal IntPtr Id(object value) => _ids.GetValue(value, _create).Id;
+        private Identity Create(object obj)
         {
-            var id = new IntPtr(++_next);
+            var id = new IntPtr(System.Threading.Interlocked.Increment(ref _next));
             _objects[id] = new WeakReference<object>(obj);
             if (_objects.Count % 4096 == 0)
             {
@@ -29,7 +32,7 @@ public static partial class OfflineMonoFixture
                 foreach (var key in dead) _objects.Remove(key);
             }
             return new Identity { Id = id };
-        }).Id;
+        }
     }
 
     private static void CheckManagedIdentities(Assembly mod)

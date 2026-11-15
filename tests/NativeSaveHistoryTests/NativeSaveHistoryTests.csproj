@@ -12,5 +12,7 @@
     <Compile Include="../../src/ProbablyStolenTools/CheckpointFileCatalog.cs" Link="CheckpointFileCatalog.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CheckpointStorage.cs" Link="CheckpointStorage.cs" />
     <Compile Include="../../src/ProbablyStolenTools/LocalePolicy.cs" Link="LocalePolicy.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/MonoModConfig.cs" Link="MonoModConfig.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/NativeSnapshotSettings.cs" Link="NativeSnapshotSettings.cs" />
   </ItemGroup>
 </Project>

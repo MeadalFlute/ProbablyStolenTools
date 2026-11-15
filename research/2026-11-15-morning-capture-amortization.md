@@ -23,7 +23,8 @@
 
 游戏自带 Mono 的独立局部对照，185714 个对象：
 
-- 首轮旧 400.68ms / 新 136.44ms；复测旧 451.76ms / 新 162.94ms。
+- 最终复核（新旧双方均缓存身份回调）旧 490.50ms / 新 161.46ms；
+  早期夹具未缓存旧回调的数字不作为最终对照依据。
 - 弱表检查量从 4239360 降至 258048。
 - 这只是身份注册局部收益，不是 Unity 完整捕获收益。
 
@@ -44,6 +45,7 @@ StateGraph.Discover 已由 _sources 保证唯一入队，处理序列不必再�
   重复查询不触发额外 sweep；空身份保持零。
 - 完整图/预算/预检/实体块/分区/恢复后 diff/MVID/官方能力扫描均保持。
 - 集成测试日志：`out/validation-20261115-morning-errors-tool.log`。
+- 最终身份夹具复核：`out/identity-cached-delegate-20261115.log`。
 - 两组串行大图日志：`out/morning-perf-serial-{0,1}-20261115.log`。
 - 实机 CAPTURE 新增 identitySweepMs/identitySweeps/identityVisited 与三代 GC 次数，
   用于区分首次身份分配、后续普通捕获、弱表清理和 GC 波动。

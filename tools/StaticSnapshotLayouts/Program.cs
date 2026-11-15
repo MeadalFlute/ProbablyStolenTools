@@ -4,17 +4,29 @@ using System.Reflection;
 using MethodAttributes = Mono.Cecil.MethodAttributes;
 using TypeAttributes = Mono.Cecil.TypeAttributes;
 
+#if PLAYER_LAYOUT_TOOL
+if (args.Length != 2)
+    throw new ArgumentException("Usage: StaticSnapshotLayouts <GAME_DIR> <output.dll>");
+#else
 if (args.Length < 2 || args.Length > 3 || args.Length == 3
     && args[2] != "--host" && args[2] != "--test-mismatched-version")
     throw new ArgumentException("Usage: StaticSnapshotLayouts <GAME_DIR> <output.dll> [--host|--test-mismatched-version]");
+#endif
 string managed = Path.Combine(Path.GetFullPath(args[0]), "Probably Stolen_Data", "Managed");
 string output = Path.GetFullPath(args[1]);
 if (output.StartsWith(managed + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
     throw new IOException("Refusing to write a generated table into the game's managed assemblies.");
+#if PLAYER_LAYOUT_TOOL
+const bool host = false;
+const bool mismatch = false;
+using var core = ModuleDefinition.ReadModule(Path.Combine(managed, "mscorlib.dll"));
+using var collections = ModuleDefinition.ReadModule(Path.Combine(managed, "System.Core.dll"));
+#else
 bool host = args.Length == 3 && args[2] == "--host";
 bool mismatch = args.Length == 3 && args[2] == "--test-mismatched-version";
 using var core = ModuleDefinition.ReadModule(host ? typeof(object).Assembly.Location : Path.Combine(managed, "mscorlib.dll"));
 using var collections = ModuleDefinition.ReadModule(host ? typeof(HashSet<>).Assembly.Location : Path.Combine(managed, "System.Core.dll"));
+#endif
 using var game = ModuleDefinition.ReadModule(Path.Combine(managed, "Assembly-CSharp.dll"));
 using var unity = ModuleDefinition.ReadModule(Path.Combine(managed, "UnityEngine.CoreModule.dll"));
 using var module = ModuleDefinition.CreateModule("ProbablyStolenTools.StaticLayouts", ModuleKind.Dll);

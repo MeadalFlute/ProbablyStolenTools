@@ -26,7 +26,7 @@ namespace ProbablyStolenTools
             // 多行提示需要更长的阅读时间。
             int lines = 1;
             for (int i = 0; i < message.Length; i++) if (message[i] == '\n') lines++;
-            Until = Time.unscaledTime + (warning ? 3.2f : 2.2f) + (lines - 1) * 1.1f;
+            Until = Time.unscaledTime + (warning ? 5f : 2.2f) + (lines - 1) * 1.1f + message.Length / 80f;
         }
     }
 
@@ -380,6 +380,8 @@ namespace ProbablyStolenTools
             Stretch(toastBg.rectTransform);
             _toastText = NewObject("noticeText", _toast.transform).AddComponent<TextMeshProUGUI>();
             _toastText.fontSize = 14;
+            _toastText.richText = false;
+            _toastText.enableWordWrapping = true;
             _toastText.alignment = TextAlignmentOptions.Center;
             _toastText.raycastTarget = false;
             _noticeDefaultFont = _toastText.font;
@@ -397,13 +399,12 @@ namespace ProbablyStolenTools
             _toast.SetActive(notice);
             if (!notice) return;
             _toastText.text = PanelNotice.Message;
-            int noticeLines = 1;
-            for (int i = 0; i < PanelNotice.Message.Length; i++) if (PanelNotice.Message[i] == '\n') noticeLines++;
-            var noticeRect = _toast.GetComponent<RectTransform>();
-            noticeRect.sizeDelta = new Vector2(640, Mathf.Max(30, 14 + noticeLines * 20));
             var font = LocalePolicy.IsLanguage(InspectionLocale.Code, "zh")
                 ? FontLoader.Instance?.simplifiedChineseFont : _noticeDefaultFont;
             if (font != null) { _toastText.font = font; _toastText.fontSharedMaterial = font.material; }
+            var noticeRect = _toast.GetComponent<RectTransform>();
+            noticeRect.sizeDelta = new Vector2(760, Mathf.Max(30,
+                16 + _toastText.GetPreferredValues(PanelNotice.Message, 760, 0).y));
             _toastText.color = PanelNotice.Warning ? new Color(1, 0.8f, 0.65f) : new Color(0.78f, 0.94f, 0.86f);
             _toastAlpha.alpha = Mathf.Clamp01((PanelNotice.Until - Time.unscaledTime) / 0.55f);
         }

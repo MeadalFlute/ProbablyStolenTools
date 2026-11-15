@@ -93,15 +93,18 @@ namespace ProbablyStolenTools
                     }
                     catch { }
                 }
-                string reason = e == null ? "unknown" : e.GetType().Name + ": " + (e.Message ?? "").Trim();
-                if (reason.Length > 400) reason = reason.Substring(0, 400) + "…";
+                string reason = CheckpointFailureMessage.Describe(e, LocalePolicy.IsLanguage(InspectionLocale.Code, "zh"));
                 Failures.Insert(0, new Failure { Label = label, Reason = reason, At = DateTime.Now, Day = Boundary.Day });
                 LastCaptureError = reason;
                 _failureRevision++;
-                string noticeKey = e is SnapshotLimitException ? "snapshot-limit" : reason;
+                string noticeKey = reason;
                 if (manual || noticeKey != _failureNoticeKey)
+                {
                     PanelNotice.Show(InspectionLocale.Text("节点建立失败，已保留旧节点：", "Checkpoint skipped; previous checkpoints retained: ")
-                        + label + "\n" + InspectionLocale.Text("详情请查看日志", "See the log for details"), true);
+                        + label + "\n" + reason, true);
+                    EventLog.Write("[Snapshot] capture failure guidance: " + reason.Replace("\n", " | ")
+                        + " project=" + CheckpointFailureMessage.ProjectUrl);
+                }
                 _failureNoticeKey = noticeKey;
                 while (Failures.Count > 5) Failures.RemoveAt(Failures.Count - 1);
             }
@@ -738,6 +741,12 @@ namespace ProbablyStolenTools
             var timing = System.Diagnostics.Stopwatch.StartNew();
             string phase = "access";
             string entitySample = "none";
+#if MONO
+            long identitySweepTicks = ManagedObjects.SweepTicks;
+            long identitySweeps = ManagedObjects.SweepCount;
+            long identityVisited = ManagedObjects.SweepVisited;
+            int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
+#endif
             try
             {
                 var access = Access(store, out var roots);
@@ -1030,6 +1039,9 @@ namespace ProbablyStolenTools
                 string readers = $" backend={access.BlockMode} tagBlocks={_active.Graph.BlockCount - access.IntArrayBlockCount - _active.EntityBlockOwners} " +
                     $"entityBlocks={_active.EntityBlockOwners} entityBlockSlots={_active.EntityBlockSlots} " +
                     $"entityRuntimeSlots={_active.EntityRuntimeSlots} entitySchemaFallbacks={access.EntityBlocks?.FallbackCount ?? 0} " +
+                    $"identitySweepMs={(ManagedObjects.SweepTicks - identitySweepTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0} " +
+                    $"identitySweeps={ManagedObjects.SweepCount - identitySweeps} identityVisited={ManagedObjects.SweepVisited - identityVisited} " +
+                    $"gc={GC.CollectionCount(0) - gc0}/{GC.CollectionCount(1) - gc1}/{GC.CollectionCount(2) - gc2} " +
                     $"developmentChecks={developmentChecks} blockOracleMs={blockOracleMs} " +
                     $"intArrayBlocks={access.IntArrayBlockCount} intArraySlots={access.IntArraySlotCount}";
                 if (EventLog.Verbose)

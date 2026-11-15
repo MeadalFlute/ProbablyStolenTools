@@ -29,6 +29,7 @@
     <Compile Include="../../src/ProbablyStolenTools/CheckpointHistory.cs" Link="CheckpointHistory.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CheckpointSelection.cs" Link="CheckpointSelection.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CheckpointReturnGate.cs" Link="CheckpointReturnGate.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/CheckpointFailureMessage.cs" Link="CheckpointFailureMessage.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CheckpointItemInteraction.cs" Link="CheckpointItemInteraction.cs" />
     <Compile Include="../../src/ProbablyStolenTools/CustomerPathState.cs" Link="CustomerPathState.cs" />
     <Compile Include="../../src/ProbablyStolenTools/PanelModel.cs" Link="PanelModel.cs" />

@@ -7,11 +7,23 @@ namespace ProbablyStolenTools
 {
     internal sealed class SnapshotLimitException : InvalidOperationException
     {
+        internal string Kind { get; }
+        internal int MaxObjects { get; }
+        internal int MaxSlots { get; }
+        internal long MaxBytes { get; }
+        internal int Discovered { get; }
         internal SnapshotLimitException(string kind, int objects, int slots, long bytes,
             int maxObjects, int maxSlots, long maxBytes, int pending, string source, int? discovered = null)
             : base($"Snapshot {kind} limit exceeded: objects={objects}/{maxObjects}, slots={slots}/{maxSlots}, " +
                 $"bytes={bytes}/{maxBytes}, pending={pending}, discovered={discovered ?? objects}, source={source}. " +
-                "This checkpoint was skipped; existing checkpoints were retained. No partial snapshot is usable.") { }
+                "This checkpoint was skipped; existing checkpoints were retained. No partial snapshot is usable.")
+        {
+            Kind = kind;
+            MaxObjects = maxObjects;
+            MaxSlots = maxSlots;
+            MaxBytes = maxBytes;
+            Discovered = discovered ?? objects;
+        }
     }
 
     // The backend exposes real storage slots, never computed/gameplay properties.
