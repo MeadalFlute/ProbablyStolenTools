@@ -1,9 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Mod>
   <ID>dsh.probablystolen.tools</ID>
   <Name>Probably Stolen Tools</Name>
   <Author>米德</Author>
-  <ModVersion>0.9.3</ModVersion>
+  <ModVersion>0.9.4</ModVersion>
   <Description>Includes version-selected static snapshot layouts for stable 0.46D and beta 1.0.0.14.</Description>
   <GameVersions>
     <GameVersion>0.46D</GameVersion>

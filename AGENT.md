@@ -1,6 +1,6 @@
 ﻿# Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.9.3**（2026-11-15）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
+> 适用源码：正式版 **0.9.4**（2026-11-16）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
 > 旧版本文档（0.2.1–0.6.0、Demo、早期性能优化过程）归档在 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
 本文只写当前仍成立的事实。实现细节以源码为准，阶段记录与实验数据看 `research/`。
@@ -37,7 +37,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 玩家静态表工具的独立分发流程：运行 `scripts/Publish-StaticLayoutTool.ps1`，取得 `out/static-layout-tool-日期/ProbablyStolenTools-StaticLayoutGenerator-win-x64.zip`。在 GitHub 单独上传附件，不能把工具 exe/Mono.Cecil 放进 Mod 的 Assemblies 或 Mods。玩家完整用法见 `tools/StaticSnapshotLayouts/PLAYER-README.md` 与 README；先退出游戏，执行 `Generate-StaticLayouts.ps1 -GameDir "<游戏目录>"`，默认只生成。`-Install` 只支持默认 `Mods/ProbablyStolenTools` 安装，会把旧 helper 备份到工具 generated 目录，再只替换 helper。该工具不能自动适配任意第三方类型或修复游戏 API 变化，不代表新版本已验收。当前机器无可用 GitHub 发布凭据，附件已打包测试，但**尚未上传**；不要声称已可从 Release 下载。
 
 - 唯一真源：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
-- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.3**。
+- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.4**。
 - 纯文档提交不单独升版；推送前重新构建 → 两组测试 → 部署 → 正常 `push`（不 force）。
 - 推送使用用户临时 token，不写入文件、日志或命令历史。
 - `release/manifest.xml` 只声明稳定游戏 0.46D；`release/beta/manifest.xml` 只声明 beta 1.0.0.14；`release/universal/manifest.xml` 声明两版。三个 ModVersion 必须与 Plugin.Version 一起更新。不能仅改 manifest 宣称新版本兼容。
@@ -151,7 +151,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 2026-11-16 beta 适配：在任何 KnownTypes/KnownFactories 令牌解析前，以固定 PlayerStore/object/HashSet/Vector3 模块锚点校验全部 MVID。KnownTypes/Factories 禁止内联；错误版本负例同时含不存在的类型令牌，须先版本拒绝。新版官方保护名单增加 ModWindowControl，生成器与运行时共享排除并离线核对官方全名单。保留全部其余业务闭包，不能泛化排除 CompilerGeneratedAttribute。单分支表复用相同泛型元数的空声明字段工厂，不减覆盖；beta 单表 664576 字节，同 beta/同边界未合并工厂基线 687616 字节。后续通用包通过离线 MergeStaticLayouts 合并两版，4871 工厂去重至 2055，保留完整的各版本注册表；按游戏 MVID 选择、主 DLL 再检查全部模块。无运行时 Assembly.Load/解压/生成，不扩大能力声明；当前 beta Mono/隔离负例通过，正式版活体未复验。
 
-**0.9.3 的 Mono 发布路径已使用构建时静态布局表**，详见 `research/2026-11-12-static-runtime-graph-migration.md` 与 `research/2026-11-12-loader-migration-review-handoff.md`。构建时生成目标 Mono 字段表，包含私有 Entry/Slot 固定类型令牌；版本严格 MVID 门控，未知布局不动态回退。Mono 编译排除旧表达式生成路径，通用 GameFields 用官方 ModReflect；恢复字段/集合物理存储与安全检查不减。两个发布 DLL 均列入 manifest，仅声明/检测 files；ReleaseCompatibility 的退役能力门槛已加入，net8 宿主表隔离于 out。`scripts/Test-StaticLayouts.ps1` 全套通过；实机仍只覆盖简单节点回溯，完整功能矩阵和多 Mod 组合未验收。下方为迁移过程中的性能记录。
+**0.9.4 的 Mono 发布路径已使用构建时静态布局表**，详见 `research/2026-11-12-static-runtime-graph-migration.md` 与 `research/2026-11-12-loader-migration-review-handoff.md`。构建时生成目标 Mono 字段表，包含私有 Entry/Slot 固定类型令牌；版本严格 MVID 门控，未知布局不动态回退。Mono 编译排除旧表达式生成路径，通用 GameFields 用官方 ModReflect；恢复字段/集合物理存储与安全检查不减。两个发布 DLL 均列入 manifest，仅声明/检测 files；ReleaseCompatibility 的退役能力门槛已加入，net8 宿主表隔离于 out。`scripts/Test-StaticLayouts.ps1` 全套通过；实机仍只覆盖简单节点回溯，完整功能矩阵和多 Mod 组合未验收。下方为迁移过程中的性能记录。
 
 后续实机反馈：基本回溯未发现功能异常，但明显变慢。已独立优化批量物品布局的字段访问：两个固定私有缓存字段采用字面 FieldInfo，公开原点属性直接读取；其他低频访问仍用 ModReflect。完整离线测试及能力扫描通过，后续实机结果见下。该项耗时分布与边界见 `research/2026-11-12-static-layout-restore-performance.md`。
 

@@ -2,7 +2,7 @@
 
 [English](README_EN.md) | 中文
 
-《深空当铺 / Probably Stolen》的自研辅助 Mod，适配正式版 **0.9.3**。
+《深空当铺 / Probably Stolen》的自研辅助 Mod，适配正式版 **0.9.4**。
 正式版为 Unity 2021.3.45f2 / Mono / x64（游戏 0.46D），使用游戏自带的 **IMod / Harmony** 加载器，不需要 MelonLoader 或 BepInEx。
 
 ### 游戏 Beta 分支
@@ -236,7 +236,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 ## 版本管理
 
 - **唯一真源是 `release/manifest.xml` 的 `ModVersion`**。
-- 版本规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**（例如 0.9.2 → 0.9.3）。
+- 版本规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**（例如 0.9.3 → 0.9.4）。
 - README 文案更新不推进版本号。
 
 ---
