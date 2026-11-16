@@ -3,7 +3,7 @@
   <ID>dsh.probablystolen.tools</ID>
   <Name>Probably Stolen Tools</Name>
   <Author>米德</Author>
-  <ModVersion>0.9.4</ModVersion>
+  <ModVersion>0.9.5</ModVersion>
   <Description>Beta candidate for game 1.0.0.14. Includes beta-specific static snapshot layouts.</Description>
   <GameVersions>
     <GameVersion>1.0.0.14</GameVersion>

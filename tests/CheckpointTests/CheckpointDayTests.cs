@@ -125,20 +125,21 @@ internal static class CheckpointDayTests
         test("chemistry dividers preserve row separation and hotkey scroll reachability", () =>
         {
             foreach (float width in new[] { 380f, 480f, 900f })
+            foreach (int toggleCount in new[] { 18, 19, 20 })
             foreach (int keyCount in new[] { 5, 10, 12 })
             foreach (int actionCount in new[] { 0, 2 })
             {
-                var layout = new PanelSettingsLayout(width, 19, keyCount, 7, 14, actionCount);
+                var layout = new PanelSettingsLayout(width, toggleCount, keyCount, 7, 14, actionCount);
                 check(layout.Toggle(7).Y - layout.Toggle(6).Y == PanelSettingsLayout.RowHeight + 16);
                 check(layout.Toggle(14).Y - layout.Toggle(13).Y == PanelSettingsLayout.RowHeight + 16);
                 check(layout.DividerY(7) > layout.Toggle(6).Y + layout.Toggle(6).Height);
                 check(layout.DividerY(14) > layout.Toggle(13).Y + layout.Toggle(13).Height);
-                check(layout.HotkeySectionY > layout.Toggle(18).Y + layout.Toggle(18).Height);
+                check(layout.HotkeySectionY > layout.Toggle(toggleCount - 1).Y + layout.Toggle(toggleCount - 1).Height);
                 for (int i = 0; i < actionCount; i++)
                 {
                     var action = layout.Action(i);
                     check(action.X >= 0 && action.X + action.Width <= width);
-                    check(action.Y > layout.Toggle(18).Y + layout.Toggle(18).Height);
+                    check(action.Y > layout.Toggle(toggleCount - 1).Y + layout.Toggle(toggleCount - 1).Height);
                     check(action.Y + action.Height < layout.HotkeySectionY);
                     if (i > 0) check(action.Y > layout.Action(i - 1).Y + layout.Action(i - 1).Height);
                 }

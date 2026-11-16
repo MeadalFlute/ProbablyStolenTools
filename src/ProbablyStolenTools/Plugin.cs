@@ -7,7 +7,7 @@ using MelonLoader;
 using UnityEngine;
 
 #if !MONO
-[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "Probably Stolen Tools", "0.9.4", "Probably Stolen Tools contributors")]
+[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "Probably Stolen Tools", "0.9.5", "Probably Stolen Tools contributors")]
 [assembly: MelonLoader.HarmonyDontPatchAll]
 #endif
 
@@ -21,7 +21,7 @@ namespace ProbablyStolenTools
 #endif
     {
         public const string Guid = "dsh.probablystolen.tools";
-        public const string Version = "0.9.4";
+        public const string Version = "0.9.5";
 
         internal static ModLogger LogSource;
         internal static Plugin Instance;
@@ -197,6 +197,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgPreviewPanel;
         internal static ConfigEntry<bool> CfgHistory;
         internal static ConfigEntry<bool> CfgCustomerCheckpoint;
+        internal static ConfigEntry<bool> CfgAutoCheckpoints;
         internal static ConfigEntry<bool> CfgKeepPreviousDay;
         internal static ConfigEntry<float> CfgPanelX, CfgPanelY, CfgPanelWidth, CfgPanelHeight;
         internal static ConfigEntry<bool> CfgPanelFolded;
@@ -396,6 +397,8 @@ namespace ProbablyStolenTools
                 "Observation-only business event log (no save writes, no state changes). Writes PSTools_history.log.");
             CfgCustomerCheckpoint = Config.Bind("CustomerCheckpoint", "Enabled", true,
                 "Keep the latest 20 customer/manual checkpoints per retained day, plus one morning anchor. F6 opens checkpoint selection.");
+            CfgAutoCheckpoints = Config.Bind("CustomerCheckpoint", "AutoCapture", false,
+                "Automatically capture morning, customer, closed-shop and return checkpoints. Manual capture remains available when disabled; F5/F7 use file reloads. Native save backup copies remain available for previous-day reloads.");
             CfgKeepPreviousDay = Config.Bind("CustomerCheckpoint", "KeepPreviousDay", true,
                 "Keep yesterday's checkpoints across normal sleep. F5/F7 prefer morning memory anchors to preserve history; scene changes and actual file reloads still expire object graphs.");
             CfgPanelX = Config.Bind("Panel", "X", 16f, "Panel left position in reference canvas units.");

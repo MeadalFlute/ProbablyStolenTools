@@ -94,7 +94,8 @@ namespace ProbablyStolenTools
         {
             if (started == 0) return;
             double ms = (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
-            bool pending = CustomerCheckpoint.DayStart(StoreStation.GetDayCounter()) == null;
+            bool pending = CustomerCheckpoint.AutoCapture
+                && CustomerCheckpoint.DayStart(StoreStation.GetDayCounter()) == null;
             EventLog.Write(FormattableString.Invariant(
                 $"[Load] morning-report closeMs={ms:F1} ok={error == null} morningAnchorPending={pending}; anchor duration is separate CAPTURE client=day-start captureMs"));
         }

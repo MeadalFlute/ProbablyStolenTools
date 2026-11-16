@@ -265,6 +265,7 @@ namespace ProbablyStolenTools
         {
             var store = Plugin.Store();
             if (store == null) return;
+            if (!CustomerCheckpoint.AutoCapture) { GameSaveActions.Reload(); return; }
             var morning = CustomerCheckpoint.DayStart(StoreStation.GetDayCounter());
             if (morning != null) { CustomerCheckpoint.Restore(morning); return; }
             for (int i = Points.Count - 1; i >= 0; i--)
@@ -293,7 +294,7 @@ namespace ProbablyStolenTools
             try { today = StoreStation.GetDayCounter(); }
             catch { return; }
 
-            if (Plugin.CfgKeepPreviousDay?.Value == true)
+            if (CustomerCheckpoint.AutoCapture && Plugin.CfgKeepPreviousDay?.Value == true)
             {
                 var morning = CustomerCheckpoint.DayStart(today - 1);
                 if (morning != null)
@@ -382,9 +383,10 @@ namespace ProbablyStolenTools
 
             var ui = StoreUIManager.Instance;
             var panel = ui == null ? null : ui.confirmPanelUIManager;
+            bool requiresFileReload = action == WholeDayAction.QuickReload || !CustomerCheckpoint.AutoCapture;
             if (panel == null)
             {
-                if (action == WholeDayAction.QuickReload)
+                if (requiresFileReload)
                 {
                     PendingWholeDay = WholeDayAction.None;
                     PanelNotice.Show(InspectionLocale.Text("确认界面尚未就绪，未执行重载",
@@ -400,10 +402,15 @@ namespace ProbablyStolenTools
             string other = action == WholeDayAction.DayStart
                 ? Plugin.KeyName(Plugin.CfgKeyPrevDay.Value)
                 : Plugin.KeyName(Plugin.CfgKeyDay.Value);
-            string what = action == WholeDayAction.QuickReload ? "快速重载存档"
-                : action == WholeDayAction.DayStart ? "回到本日开业前" : "回到上一天";
+            string what = action == WholeDayAction.QuickReload ? InspectionLocale.Text("快速重载存档", "Quick reload save")
+                : action == WholeDayAction.DayStart ? InspectionLocale.Text("回到本日开业前", "Return to today's start")
+                : InspectionLocale.Text("回到上一天", "Return to the previous day");
             string body = $"{what} 优先使用内存节点并保留回溯历史；文件读档会使旧内存节点失效。不改动当前存档文件。\n\n" +
                           $"点击下方按钮确认，或直接再按一次 {other} 确认。";
+            if (!CustomerCheckpoint.AutoCapture)
+                body = InspectionLocale.Text(
+                    $"{what} 将读取磁盘存档，未保存进度与全部内存节点将丢失。不会先保存当前进度。\n\n点击下方按钮确认，或再按一次 {other} 确认。",
+                    $"{what}: reload from disk. Unsaved progress and all memory checkpoints will be lost. Current progress will not be saved first.\n\nConfirm below, or press {other} again.");
             if (action == WholeDayAction.QuickReload)
                 body = InspectionLocale.Text("重载当前槽位最近保存的存档？未保存进度及全部内存回溯节点将丢失。不会先保存当前进度。",
                     "Reload the active slot's latest save? Unsaved progress and all memory checkpoints will be lost. Current progress will not be saved first.");
@@ -417,7 +424,7 @@ namespace ProbablyStolenTools
             {
                 EventLog.Write($"[Rewind] confirm panel failed: {e.GetType().Name}: {e.Message}");
                 PendingWholeDay = WholeDayAction.None;
-                if (action != WholeDayAction.QuickReload) Execute(action);
+                if (!requiresFileReload) Execute(action);
                 else PanelNotice.Show(InspectionLocale.Text("无法显示确认界面，已取消重载",
                     "Could not show confirmation; reload cancelled"), true);
             }

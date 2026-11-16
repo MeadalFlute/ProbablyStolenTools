@@ -110,6 +110,7 @@ public static partial class OfflineMonoFixture
         const BindingFlags statics = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
         var game = Assembly.Load("Assembly-CSharp");
         var unity = Assembly.Load("UnityEngine.CoreModule");
+        CheckAutomaticCheckpointGates(mod);
         CheckManagedIdentities(mod);
         CheckVectorReaders(mod);
         CheckScalarComparisons(mod);

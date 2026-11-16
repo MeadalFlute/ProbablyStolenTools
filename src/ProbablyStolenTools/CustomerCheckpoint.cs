@@ -56,6 +56,7 @@ namespace ProbablyStolenTools
         internal static bool Restoring { get; private set; }
         internal static bool PatchesReady;
         internal static bool Enabled => Plugin.CfgCustomerCheckpoint?.Value == true && PatchesReady;
+        internal static bool AutoCapture => Enabled && Plugin.CfgAutoCheckpoints?.Value == true;
         internal static string Status { get; private set; } = "Waiting for a new customer";
         internal static IReadOnlyList<Snapshot> Nodes => History.Items;
         internal static int CustomerCount => Nodes.Count(node => node.Day == Boundary.Day && !node.IsDayStart && (!node.IsClosed || node.IsManual || node.IsReturn));
@@ -154,7 +155,7 @@ namespace ProbablyStolenTools
 
         internal static void Arrival()
         {
-            if (!Enabled || Restoring || Rewind.Restoring || _faulted) return;
+            if (!AutoCapture || Restoring || Rewind.Restoring || _faulted) return;
             Observe();
             if (Boundary.Client == IntPtr.Zero || Boundary.Attempted) return;
             var intent = Plugin.Store().currentClientInstance.GetClientBlueprint().clientIntent;
@@ -191,6 +192,16 @@ namespace ProbablyStolenTools
                     probe.Customer.Log(probe.Id, "next-frame");
             }
             if (!Enabled) { if (History.Items.Count > 0 || Abandoned.Count > 0 || ClosedNode?.Graph != null) Clear("已禁用"); return; }
+            if (!AutoCapture)
+            {
+                _armed = false;
+                _closeArmed = false;
+                _captureSince = _settledSince = 0;
+                ReturnGate.CancelPending();
+                SettleLog.Reset();
+                ShutterWatchdog();
+                return;
+            }
             TryCaptureDayStart();
             TryCaptureReturn();
             if (_armed && Time.unscaledTime >= _nextCapturePoll)
@@ -337,7 +348,7 @@ namespace ProbablyStolenTools
             Observe();
             _active = null;
             _armed = false;
-            _closeArmed = true;
+            _closeArmed = AutoCapture;
             _closeAfter = Time.unscaledTime + 1f;
             _settledSince = 0;
         }
@@ -363,6 +374,7 @@ namespace ProbablyStolenTools
         {
             bool outside = ReturnGate.Outside;
             ReturnGate.Return();
+            if (!AutoCapture) { ReturnGate.CancelPending(); return; }
             if (!outside) return;
             _returnBlocker = null;
             _returnNextLog = Time.unscaledTime + 5f;
@@ -371,7 +383,7 @@ namespace ProbablyStolenTools
 
         private static void TryCaptureReturn()
         {
-            if (!ReturnGate.Pending) return;
+            if (!AutoCapture || !ReturnGate.Pending) return;
             var store = Plugin.Store();
             var ui = StoreUIManager.Instance;
             var dialog = DialogUIManager.Instance;
@@ -481,6 +493,7 @@ namespace ProbablyStolenTools
         // so whole-day navigation can use the same reversible history as customer nodes.
         private static void TryCaptureDayStart()
         {
+            if (!AutoCapture) return;
             var store = Plugin.Store();
             if (_outside || _faulted || Rewind.Restoring || Rewind.Settling || Restoring || store == null
                 || (int)store.storeState != 2 || _morningAttemptDay == Boundary.Day
@@ -510,7 +523,7 @@ namespace ProbablyStolenTools
 
         private static void TryCaptureClosed()
         {
-            if (!_closeArmed || _outside || _faulted || Rewind.Restoring || Time.unscaledTime < _closeAfter) return;
+            if (!AutoCapture || !_closeArmed || _outside || _faulted || Rewind.Restoring || Time.unscaledTime < _closeAfter) return;
             var store = Plugin.Store();
             var dialog = DialogUIManager.Instance;
             var mono = StoreClientMono.Instance;
@@ -571,7 +584,7 @@ namespace ProbablyStolenTools
         private static float _lastManualAt;
         internal static void TryCapture()
         {
-            if (!_armed || !Enabled || Restoring || Rewind.Restoring || Boundary.Attempted || _faulted) return;
+            if (!_armed || !AutoCapture || Restoring || Rewind.Restoring || Boundary.Attempted || _faulted) return;
             var store = Plugin.Store();
             if (!IsSettled(store)) { _captureSince = 0; WatchSettle(store); return; }
             // 节点必须建立在“开场对话已经播完”之后：卖货顾客的商品是那段对话里才摆上柜台的，
@@ -737,6 +750,7 @@ namespace ProbablyStolenTools
 
         private static void Capture(PlayerStore store, bool closed, bool manual = false, bool dayStart = false, bool returned = false)
         {
+            if (!manual && !AutoCapture) return;
             Snapshot candidate = null;
             var timing = System.Diagnostics.Stopwatch.StartNew();
             string phase = "access";
