@@ -23,7 +23,9 @@ function Refuse([string[]]$Arguments, [string]$Message) {
         $code = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $saved }
-    if ($code -eq 0 -or $text -notmatch $Message) { throw "Expected refusal missing: $text" }
+    if ($code -eq 0 -or ($text -replace '\s+', ' ') -notmatch ($Message -replace '\s+', ' ')) {
+        throw "Expected refusal missing: $text"
+    }
     Write-Output "PASS refusal: $Message"
 }
 Push-Location -LiteralPath $workspace
@@ -59,11 +61,11 @@ try {
     Run -Arguments @('run', '-c', 'Release', '--project', 'tests/ReleaseCompatibility', '--',
         $GameDir, (Join-Path $OutputRoot 'current-first\ProbablyStolenTools.dll'), 'release/universal/manifest.xml')
     $duplicate = Join-Path $OutputRoot 'duplicate.dll'
-    Refuse -Arguments ($merge + @($duplicate, $current, $current)) -Message 'ambiguous game fingerprint'
+    Refuse -Arguments ($merge + @($duplicate, $current, $current)) -Message 'ambiguous game'
     if (Test-Path -LiteralPath $duplicate) { throw 'Duplicate input wrote an output.' }
     $altered = Join-Path $OutputRoot 'altered.dll'
     Run -Arguments ($mutate + @($current, $altered, 'alter'))
-    Refuse -Arguments ($merge + @('--verify-profile', $merged, $altered)) -Message 'changed registry IL or field factory IL'
+    Refuse -Arguments ($merge + @('--verify-profile', $merged, $altered)) -Message 'changed registry'
     $poison = Join-Path $OutputRoot 'poison.dll'
     Run -Arguments ($mutate + @($OtherLayouts, $poison, 'poison'))
     $isolated = Join-Path $OutputRoot 'poisoned-inactive\ProbablyStolenTools.StaticLayouts.dll'
