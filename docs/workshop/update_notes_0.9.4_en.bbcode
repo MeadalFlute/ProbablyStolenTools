@@ -1,0 +1,28 @@
+[h1]0.9.4: Cross-day rewind, chemistry, and beta support[/h1]
+
+[h2]Rewind[/h2]
+[list]
+[*]Keep today/yesterday: up to 20 customer/manual/closed checkpoints per day, plus a free opening anchor. Older days are released after a third day.
+[*]F5/F7 use the in-memory morning anchor. F6 opens a picker (Up/W, Down/S, Enter, Esc, double-click); old nodes can be viewed without deleting the future, and up to 80 summaries remain.
+[*]Leaving pauses capture; returning adds a node after ~0.5s. Closed shops may stay locked overnight; OPEN/MORNING must unlock.
+[/list]
+
+[h2]Chemistry[/h2]
+[list]
+[*]Auto-blend follows native rules/sound; products stay separate and capacity is checked.
+[*]Rapid extraction converts the three mushroom mashes using native ratios; a separate switch adds nine non-thermal reactions (max 512 steps).
+[*]Labels start at 150 mL; empty containers/seeds get names. Facility tooltips show overnight output/removal and missing supplies/power.
+[/list]
+
+[h2]Settings and beta[/h2]
+[list]
+[*]Morning capture scans less; time still depends on save size. The gear panel adjusts object/slot/byte limits (XML also works); higher limits allow bigger checkpoints but may pause longer. Failures show cause and suggestion.
+[*]One package supports stable 0.46D and beta 1.0.0.14 and selects at startup; an unsupported game update gets a clear message. Beta users should back up saves.
+[/list]
+
+[h2]Safety and notes[/h2]
+[list]
+[*]File checkpoints never write the active save and keep .pre_restore; duplicate cleanup protects pending/shared files; a mismatched load cancels immediately and keeps the recovery file.
+[*]No price, output, customer, economy or difficulty changes; auto-blend, extraction and rapid reactions are optional.
+[*]Large/modded saves may still be slow or hit limits. Only 0.46D and 1.0.0.14 are targeted; future updates need a mod update. For help, send PSTools.log, game version and mod list.
+[/list]
