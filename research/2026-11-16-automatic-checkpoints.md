@@ -32,3 +32,16 @@
 - 游戏 Mono 完整图往返、身份/集合/闭包/随机源、预算/未知布局拒绝、完整差异验证通过。
 - 离线 Mono 不包含 Unity 引擎 native internal calls，JIT 输出未绑定调用提示；没有启动游戏，
   上述提前返回与纯托管图断言通过不等于场景/热键/手动建点实机验收。
+
+## 本机部署
+
+- 代码提交 `0d9aa8e`，版本 0.9.5，未推送；候选目录
+  `out/automatic-checkpoints-candidate-0d9aa8e/ProbablyStolenTools`。
+- 外置 provenance.json 明确 BuildDirty=true，仅剩原有文档改动，不冒充 clean 正式包。
+- 主 DLL SHA256 `4DFD315E46F3F7EB41173CE2782F9776F821BDF00856A1511ABBCCC36A63027A`。
+- 双版本 helper SHA256 `8503FA2D6D99E6C14D25EE09A2A9E87E4F76C8E98FD1ACD5AF60C0C245AE7B49`。
+- 实际合并候选官方扫描仅 files，HardFlags/Error 空；两版完整注册表离线等价验证通过。
+- 构建/扫描/Mono/部署日志分别为 `out/automatic-checkpoints-{build,compatibility,mono,deploy}-0d9aa8e.log`。
+- 已部署至本机 beta Mods/ProbablyStolenTools，部署备份
+  `out/full-release-deploy-20261116-233615`；87 个既有存档目录文件校验未变，
+  游戏程序集及其他 Mod 校验未变；未启动/停止游戏。
