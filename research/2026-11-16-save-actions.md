@@ -53,3 +53,21 @@
 5. 打字/改键/对话/拖拽/夜间结算/载入中不触发；读档/设置错误提示具体原因。
 
 工作区原有 AGENT/README/Workshop 文档改动属于其他工作，本轮不覆盖、不一并提交。
+
+## 本机测试部署
+
+代码提交 `af8f93d90cb013cdeecdb39ad0fdbe518ff84474`，版本仍 0.9.4，无推送。
+构建/暂存产物：`out/save-actions-candidate-af8f93d/ProbablyStolenTools`。
+外置 provenance.json 明确 `BuildDirty=true`：剩余改动仅既有 AGENT/README/Workshop 文档，
+没有把它冒充 Package-FullRelease 的 clean 正式发行包；本轮生产源码与测试已独立提交。
+
+- 主 DLL：489472 bytes，SHA256 `45AF7D8020204E0CAF1D8ACBD20B9034ED6860E5330F50F21BBF31CDD39F7020`。
+- 合并 helper：783872 bytes，SHA256 `8503FA2D6D99E6C14D25EE09A2A9E87E4F76C8E98FD1ACD5AF60C0C245AE7B49`，未改变静态布局内容。
+- 最终构建：`out/save-actions-build-af8f93d.log`。
+- 实际合并候选 API/官方扫描：`out/save-actions-package-compatibility-af8f93d.log`，仅 files，HardFlags/Error 空。
+- 实际合并候选游戏 Mono 完整图：`out/save-actions-mono-af8f93d.log`，完整恢复/身份/集合/闭包/预算/差异校验通过。
+- 单测/参考/历史：`out/save-actions-unit-20261116.log`、`out/save-actions-reference-20261116.log`、
+  `out/save-actions-history-20261116.log`（13 / 430 / 14 项）。
+- 部署日志：`out/save-actions-deploy-af8f93d.log`；备份 `out/full-release-deploy-20261116-224728`。
+- 部署前游戏已关闭；未启动/终止游戏，87 个既有存档目录文件、游戏程序集和其他 Mod 校验未变。
+- 仅本机 beta 离线通过，两个新动作与正式版分支仍需各自实机验收，不宣称正式分支已重验。
