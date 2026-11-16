@@ -37,7 +37,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 
 上一批统一审查入口：`research/2026-11-15-feature-batch-review-handoff.md`，覆盖 `44cf260..48853fb`；回执见 `2026-11-15-feature-batch-review-receipt.md`，0.9.3 已由 DS 推送。本轮补 N1/N2 文件保护、N3 不匹配立即取消、N4 脏源码拒绝打包；beta 适配及构建来源以 `research/2026-11-16-beta-static-layout-compatibility.md` 为准，不把旧 0.46D 实测当作 beta 验收。
 
-0.46D 的 2861 类型/8108 字段属于旧分支表，不能混用本轮 beta 的程序集或验收记录。通用包见 `research/2026-11-16-universal-static-layouts.md`：离线合并旧正式表与当前 beta 表，主 DLL 接口不变；只共享相同访问代码，各版本完整注册表/MVID 仍独立，未知指纹拒绝。当前安装以本轮 clean 构建的 0.9.5 通用包为准（主 DLL/helper/ZIP 的实际哈希在打包后写入部署记录）；正式版原始程序集仍缺，不能宣称正式分支重验通过。
+0.46D 的 2861 类型/8108 字段属于旧分支表，不能混用本轮 beta 的程序集或验收记录。通用包见 `research/2026-11-16-universal-static-layouts.md`：离线合并旧正式表与当前 beta 表，主 DLL 接口不变；只共享相同访问代码，各版本完整注册表/MVID 仍独立，未知指纹拒绝。当前安装为 `8fd29fd` clean 构建的 0.9.5 通用包（主 DLL `F5E8804A…`、helper `8503FA2D…`、ZIP `F2AA18BA…`，包 `out/universal-release-0.9.5-auto-on`）；正式版原始程序集仍缺，不能宣称正式分支重验通过。
 
 ### 版本与发布
 
