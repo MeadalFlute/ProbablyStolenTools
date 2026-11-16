@@ -18,7 +18,7 @@ namespace ProbablyStolenTools
     }
 
     internal readonly record struct PanelSettingsLayout(float Width, int ToggleCount, int KeyCount,
-        int GroupStart = -1, int GroupEnd = -1)
+        int GroupStart = -1, int GroupEnd = -1, int ActionCount = 0)
     {
         internal const float Padding = 4, Gap = 8, RowHeight = 34, SectionHeight = 26;
         internal float RowWidth => Math.Max(1, Width - Padding * 2);
@@ -28,7 +28,9 @@ namespace ProbablyStolenTools
         internal float DividerSpace(int index) => (GroupStart >= 0 && index >= GroupStart ? Gap * 2 : 0)
             + (GroupEnd >= 0 && index >= GroupEnd ? Gap * 2 : 0);
         internal float DividerY(int index) => Toggle(index).Y - Gap;
-        internal float HotkeySectionY => Padding + SectionHeight + ToggleCount * RowHeight + DividerSpace(ToggleCount) + Gap;
+        internal float ActionY => Padding + SectionHeight + ToggleCount * RowHeight + DividerSpace(ToggleCount) + Gap;
+        internal float HotkeySectionY => ActionY + ActionCount * RowHeight;
+        internal PanelBounds Action(int index) => new(Padding, ActionY + index * RowHeight, RowWidth, RowHeight - 2);
         internal float ResetY => HotkeySectionY + SectionHeight + KeyCount * RowHeight + Gap;
         internal float LogY => ResetY + RowHeight + Gap;
         internal float StorageY => LogY + RowHeight + Gap;

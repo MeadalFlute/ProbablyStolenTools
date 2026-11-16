@@ -23,6 +23,7 @@ namespace ProbablyStolenTools
             public int Day = -1;
             public DateTime At;
             public bool IsDayStart;
+            public bool IsQuickReload;
             public string RunId;
         }
 
@@ -363,13 +364,14 @@ namespace ProbablyStolenTools
 
         // ---------- 整日回退的二次确认 ----------
 
-        internal enum WholeDayAction { None, DayStart, PreviousDay }
+        internal enum WholeDayAction { None, DayStart, PreviousDay, QuickReload }
 
         internal static WholeDayAction PendingWholeDay = WholeDayAction.None;
         private static float _pendingUntil;
 
         internal static void RequestDayStart() => Request(WholeDayAction.DayStart);
         internal static void RequestPreviousDay() => Request(WholeDayAction.PreviousDay);
+        internal static void RequestQuickReload() => Request(WholeDayAction.QuickReload);
 
         private static void Request(WholeDayAction action)
         {
@@ -382,6 +384,13 @@ namespace ProbablyStolenTools
             var panel = ui == null ? null : ui.confirmPanelUIManager;
             if (panel == null)
             {
+                if (action == WholeDayAction.QuickReload)
+                {
+                    PendingWholeDay = WholeDayAction.None;
+                    PanelNotice.Show(InspectionLocale.Text("确认界面尚未就绪，未执行重载",
+                        "Confirmation UI is unavailable; reload cancelled"), true);
+                    return;
+                }
                 EventLog.Write("[Rewind] confirm panel unavailable; executing immediately.");
                 Execute(action);
                 PendingWholeDay = WholeDayAction.None;
@@ -391,19 +400,26 @@ namespace ProbablyStolenTools
             string other = action == WholeDayAction.DayStart
                 ? Plugin.KeyName(Plugin.CfgKeyPrevDay.Value)
                 : Plugin.KeyName(Plugin.CfgKeyDay.Value);
-            string what = action == WholeDayAction.DayStart ? "回到本日开业前" : "回到上一天";
+            string what = action == WholeDayAction.QuickReload ? "快速重载存档"
+                : action == WholeDayAction.DayStart ? "回到本日开业前" : "回到上一天";
             string body = $"{what} 优先使用内存节点并保留回溯历史；文件读档会使旧内存节点失效。不改动当前存档文件。\n\n" +
                           $"点击下方按钮确认，或直接再按一次 {other} 确认。";
+            if (action == WholeDayAction.QuickReload)
+                body = InspectionLocale.Text("重载当前槽位最近保存的存档？未保存进度及全部内存回溯节点将丢失。不会先保存当前进度。",
+                    "Reload the active slot's latest save? Unsaved progress and all memory checkpoints will be lost. Current progress will not be saved first.");
             try
             {
                 panel.OpenPanel(body, ConfirmPending, CancelPending, false);
-                EventLog.Write($"[Rewind] confirm requested: {what} (confirm key {other})");
+                EventLog.Write($"[Rewind] confirm requested: {what}"
+                    + (action == WholeDayAction.QuickReload ? " (button confirmation)" : $" (confirm key {other})"));
             }
             catch (Exception e)
             {
                 EventLog.Write($"[Rewind] confirm panel failed: {e.GetType().Name}: {e.Message}");
-                Execute(action);
                 PendingWholeDay = WholeDayAction.None;
+                if (action != WholeDayAction.QuickReload) Execute(action);
+                else PanelNotice.Show(InspectionLocale.Text("无法显示确认界面，已取消重载",
+                    "Could not show confirmation; reload cancelled"), true);
             }
         }
 
@@ -427,6 +443,7 @@ namespace ProbablyStolenTools
         {
             if (action == WholeDayAction.DayStart) RestoreDayStart();
             else if (action == WholeDayAction.PreviousDay) RestorePreviousDay();
+            else if (action == WholeDayAction.QuickReload) GameSaveActions.Reload();
         }
 
         /// <summary>确认框被外部关掉或超时，清掉待确认状态。</summary>
@@ -445,7 +462,7 @@ namespace ProbablyStolenTools
         }
 
 
-        internal static void Restore(Point p, bool allowDayChange = false)
+        internal static void Restore(Point p, bool allowDayChange = false, bool forceMenu = false)
         {
             if (Busy) { PanelNotice.Show("上一次回溯仍在进行，请稍候", true); return; }
             if (PendingMenuReload || PendingPoint != null) { PanelNotice.Show("正在载入存档，请稍候", true); return; }
@@ -489,7 +506,7 @@ namespace ProbablyStolenTools
                     return;
                 }
 
-                EventLog.Write($"[Rewind] restoring '{p.Label}' (mode={Plugin.CfgRestoreMode.Value})");
+                EventLog.Write($"[Rewind] restoring '{p.Label}' (mode={(forceMenu ? "menu" : Plugin.CfgRestoreMode.Value)})");
 
                 // 只加载、不覆盖当前存档：把 NewGameData.saveFile 指向检查点文件，
                 // 游戏自己经 SaveFiles.ResolveLoadFile() 读取；之后的写档仍由游戏按自己的节奏执行。
@@ -503,7 +520,7 @@ namespace ProbablyStolenTools
                 // 给当前状态留一份备份（只复制，不改动原存档）
                 try { File.Copy(active, active + ".pre_restore", true); } catch { }
 
-                string mode = Plugin.CfgRestoreMode.Value;
+                string mode = forceMenu ? "menu" : Plugin.CfgRestoreMode.Value;
                 PendingPoint = p;
                 LoadGate.Begin(new SaveMetadata(p.Day, p.Cash, p.State, p.SlotId, p.RunId));
                 LoadStartedAt = Time.unscaledTime;
@@ -826,6 +843,11 @@ namespace ProbablyStolenTools
             try
             {
                 if (CheckpointPicker.TickInput()) return;
+                if (!StoreUIManager.IsAnyTyping())
+                {
+                    if (Plugin.Down(Plugin.CfgKeyQuickReload)) { GameSaveActions.RequestReload(); return; }
+                    if (Plugin.Down(Plugin.CfgKeyReroll)) { GameSaveActions.Reroll(); return; }
+                }
                 if (Plugin.Down(Plugin.CfgKeyPrev))
                 {
                     CheckpointPicker.Begin();
@@ -995,6 +1017,13 @@ namespace ProbablyStolenTools
         /// </summary>
         private void PostLoadResume()
         {
+            // A second verified reload can start before the old diagnostic tail ends.
+            // Its load gate and metadata must take precedence over the previous point.
+            if (Rewind.PendingPoint != null && !ReferenceEquals(Rewind.PendingPoint, _resumePoint))
+            {
+                _resumePoint = null;
+                _resumeStage = 0;
+            }
             var p = _resumePoint ?? Rewind.PendingPoint;
             if (p == null) { _resumeStage = 0; Rewind.Settling = false; return; }
 
@@ -1035,6 +1064,17 @@ namespace ProbablyStolenTools
             if (_resumeStage == 1)
             {
                 if (Time.time < _resumeT + 3f) return;
+
+                if (p.IsQuickReload)
+                {
+                    // This action requests an ordinary native load, not checkpoint repair.
+                    // Do not reconstruct customers, dismiss them or modify the shutter.
+                    EventLog.Write("[SaveActions] RELOAD OK native-load-verified; memory checkpoints expired");
+                    Rewind.Settling = false;
+                    _resumePoint = null;
+                    _resumeStage = 0;
+                    return;
+                }
 
                 // 随机数状态：这个 build 的 interop 没有暴露 Random.State，先跳过。
 

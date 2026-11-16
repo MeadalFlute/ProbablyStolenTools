@@ -73,6 +73,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<KeyCode> CfgKeyManual;
         internal static ConfigEntry<KeyCode> CfgKeyDay;
         internal static ConfigEntry<KeyCode> CfgKeyPrevDay;
+        internal static ConfigEntry<KeyCode> CfgKeyQuickReload, CfgKeyReroll;
         internal static ConfigEntry<bool> CfgConfirmWholeDay;
         internal static ConfigEntry<bool> CfgRepairStuckShutter;
         internal static ConfigEntry<KeyCode> CfgKeyPanel;
@@ -345,8 +346,12 @@ namespace ProbablyStolenTools
                 "Rewind to the start of the current day.");
             CfgKeyPrevDay = Config.Bind("Rewind", "KeyPreviousDay", KeyCode.F5,
                 "回到上一天 / back to previous day");
+            CfgKeyQuickReload = Config.Bind("Rewind", "KeyQuickReload", KeyCode.None,
+                "Reload the active native save through the menu, discarding unsaved changes and memory checkpoints. Unbound by default.");
+            CfgKeyReroll = Config.Bind("Rewind", "KeyRerollRandom", KeyCode.None,
+                "Reseed the game and Unity random streams for future rolls, without reloading or regenerating existing content. Unbound by default.");
             CfgConfirmWholeDay = Config.Bind("Rewind", "ConfirmWholeDayRewind", true,
-                "Ask for confirmation before the whole-day rewinds (F5 / F7), since they overwrite the current save slot.");
+                "Ask for confirmation before whole-day rewinds and quick file reloads. File reloads discard unsaved progress and memory checkpoints; the active save is not overwritten.");
             CfgRepairStuckShutter = Config.Bind("Rewind", "RepairStuckShutter", true,
                 "If the shutter stays locked for 10s with no dialog, movement or shootout in progress, clear the lock so the shop can be closed again.");
             CfgKeyPanel = Config.Bind("Rewind", "KeyTogglePanel", KeyCode.F8,
@@ -358,6 +363,8 @@ namespace ProbablyStolenTools
                 new HotkeyBinding("prev", "选择上一个节点", CfgKeyPrev, KeyCode.F6),
                 new HotkeyBinding("day", "回到本日开业前", CfgKeyDay, KeyCode.F7),
                 new HotkeyBinding("prevday", "回到上一天", CfgKeyPrevDay, KeyCode.F5),
+                new HotkeyBinding("reload", "快速重载存档", CfgKeyQuickReload, KeyCode.None),
+                new HotkeyBinding("reroll", "重掷随机数", CfgKeyReroll, KeyCode.None),
                 new HotkeyBinding("panel", "显示 / 隐藏面板", CfgKeyPanel, KeyCode.F8),
                 new HotkeyBinding("newer", "选择较新节点", CfgKeyNewer, KeyCode.UpArrow),
                 new HotkeyBinding("newerAlt", "选择较新节点（备用）", CfgKeyNewerAlt, KeyCode.W),

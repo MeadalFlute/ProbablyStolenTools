@@ -1549,6 +1549,42 @@ namespace ProbablyStolenTools
             }
         }
 
+        internal static string SaveActionBlocker()
+        {
+            var store = Plugin.Store();
+            var ui = StoreUIManager.Instance;
+            if (store == null || ui == null || MainMenuUIController.Instance != null)
+                return InspectionLocale.Text("请先进入商店", "Enter the shop first");
+            if (Rewind.Restoring || Rewind.Settling || Restoring
+                || Rewind.PendingWholeDay != Rewind.WholeDayAction.None)
+                return InspectionLocale.Text("请先完成当前读档、回溯或确认", "Finish the current load, rewind or confirmation first");
+#if MONO
+            if (SaveManager.IsDecoding || CurrentConverterHelper.isNightCycle
+                || EndOfDayUIManager.Instance?.IsOpen == true
+                || AdvCalendarUIManager.Instance?.UIPanel?.activeSelf == true
+                || StartOfDayUIManager.Instance?.UIPanel?.activeSelf == true
+                || GameOverUIManager.Instance?.IsShowing == true
+                || ModReflect.GetStatic<bool>(typeof(HopperHelper), "batchQueued")
+                || ModReflect.GetStatic<bool>(typeof(HopperHelper), "batchRunning")
+                || ModReflect.GetStatic<bool>(typeof(HopperHelper), "transferring"))
+                return InspectionLocale.Text("请等待载入、跨天结算或设施工作结束，并关闭结算界面",
+                    "Wait for loading, overnight work or machine transfers to finish and close the reports");
+#endif
+            if (_outside || StoreUIManager.IsAnyTyping() || ui.isShootingMode
+                || ui.blackscreen?.gameObject.activeSelf == true
+                || store.isClientBeingArrested || store.isHandlingShootout
+                || _closeArmed || Transaction.IsOpen || PendingCallbacks.Count != 0
+                || !ShopPhaseVisual.IsSettled() || ItemInteractionBusy()
+                || StoreClientMono.Instance?.IsMoving() == true
+                || GameFields.PhoneBusy(PhoneUIManager.Instance))
+                return InspectionLocale.Text("请先结束当前操作并返回商店", "Finish the current operation and return to the shop first");
+            var dialog = DialogUIManager.Instance;
+            if (dialog == null || dialog.currentDialog != null || dialog.isConversationActiveFlag != 0
+                || dialog.isWaitingForManualAdvance)
+                return InspectionLocale.Text("请先结束对话", "Finish the conversation first");
+            return null;
+        }
+
         private static bool ItemInteractionBusy()
         {
             bool single = ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem;

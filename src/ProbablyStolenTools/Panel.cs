@@ -53,6 +53,7 @@ namespace ProbablyStolenTools
         private string _localeCode;
         private TMP_FontAsset _noticeDefaultFont;
         private RectTransform _resetKeys, _openLog;
+        private readonly List<RectTransform> _saveActions = new();
         private ScrollRect _settingsScroll;
         private Plugin.HotkeyBinding _captureTarget;
         private int _captureStartedFrame;
@@ -323,6 +324,10 @@ namespace ProbablyStolenTools
             NewSetting(InspectionLocale.Text("保留上一天节点", "Keep previous day checkpoints"), Plugin.CfgKeepPreviousDay);
             NewSetting(InspectionLocale.Text("整日回退需确认", "Confirm whole-day rewind"), Plugin.CfgConfirmWholeDay);
             NewSetting(InspectionLocale.Text("详细诊断日志", "Verbose diagnostics"), Plugin.CfgVerboseLog);
+            _saveActions.Add(NativeButton(_settingsContent, InspectionLocale.Text("快速重载存档", "Quick reload save"),
+                GameSaveActions.RequestReload).Rect);
+            _saveActions.Add(NativeButton(_settingsContent, InspectionLocale.Text("重掷随机数", "Reroll random"),
+                GameSaveActions.Reroll).Rect);
             _keysHeading = Text("keys-heading", _settingsContent, 13, new Color(0.55f, 0.85f, 1f));
             _keysHeading.text = InspectionLocale.Text("快捷键", "Hotkeys");
             _keyRows.Clear();
@@ -442,7 +447,8 @@ namespace ProbablyStolenTools
                 : binding.Id == "panel" ? "Show / hide panel" : binding.Id == "manual" ? "Manual checkpoint"
                 : binding.Id == "newer" ? "Select newer checkpoint" : binding.Id == "newerAlt" ? "Select newer (alternate)"
                 : binding.Id == "older" ? "Select older checkpoint" : binding.Id == "olderAlt" ? "Select older (alternate)"
-                : binding.Id == "confirmNode" ? "Confirm checkpoint rewind" : binding.Label);
+                : binding.Id == "confirmNode" ? "Confirm checkpoint rewind"
+                : binding.Id == "reload" ? "Quick reload save" : binding.Id == "reroll" ? "Reroll random" : binding.Label);
 
 #if !MONO
         [HideFromIl2Cpp]
@@ -706,7 +712,7 @@ namespace ProbablyStolenTools
             _settingsGo.SetActive(_settingsOpen);
             float settingsHeight = Math.Max(1, contentH - 24);
             Place(_settingsViewport, 0, 0, w, settingsHeight);
-            var settingsLayout = new PanelSettingsLayout(w, _settings.Count, _keyRows.Count, _chemistryStart, _chemistryEnd);
+            var settingsLayout = new PanelSettingsLayout(w, _settings.Count, _keyRows.Count, _chemistryStart, _chemistryEnd, _saveActions.Count);
             float scrollOffset = settingsLayout.ScrollOffset(_settingsContent.anchoredPosition.y, settingsHeight);
             Place(_settingsContent, 0, scrollOffset, w, settingsLayout.ContentHeight);
             Place(_optionsHeading.rectTransform, PanelSettingsLayout.Padding, -PanelSettingsLayout.Padding,
@@ -728,6 +734,7 @@ namespace ProbablyStolenTools
             }
             Place(_chemistryTop, PanelSettingsLayout.Padding, -settingsLayout.DividerY(_chemistryStart), settingsLayout.RowWidth, 1);
             Place(_chemistryBottom, PanelSettingsLayout.Padding, -settingsLayout.DividerY(_chemistryEnd), settingsLayout.RowWidth, 1);
+            for (int i = 0; i < _saveActions.Count; i++) Place(_saveActions[i], settingsLayout.Action(i));
             for (int i = 0; i < _keyRows.Count; i++)
             {
                 var row = _keyRows[i];
@@ -857,6 +864,7 @@ namespace ProbablyStolenTools
             _text.Clear();
             _columns.Clear();
             _settings.Clear();
+            _saveActions.Clear();
             _keyRows.Clear();
             _callbacks.Clear();
             _settingsOpen = false;
