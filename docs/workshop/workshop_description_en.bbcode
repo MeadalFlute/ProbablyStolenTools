@@ -1,53 +1,98 @@
-[h1]QuickSL[/h1]
+[h1]QuickSL / Probably Stolen Tools[/h1]
 Made a bad deal? Found something great you couldn't afford? Regret it the moment the customer walks out?
 [b]QuickSL[/b] lets you rewind the whole pawnshop a few minutes into the past — shelves, cash, offers and customers, all of it.
 
 [hr][/hr]
 
-[h2]◆ Core Features[/h2]
+[h2]◆ Rewind[/h2]
 
 [list]
-[*][b]Customer Checkpoints[/b] — a full snapshot is captured automatically when each customer arrives. Double-click a checkpoint to jump back to the moment they walked in.
-[*][b]Back to Today's Opening[/b] — redo the entire day from the opening. As long as you don't touch the window display, your customer queue stays intact.
-[*][b]Back to Previous Day[/b] — returns to the start of the previous day. The save slot is overwritten when the day ends.
-[*][b]In-game Panel[/b] — double-click a checkpoint to rewind, no hotkeys to memorise. Regret the rewind? You can undo it until the next customer arrives.
+[*][b]Customer checkpoints[/b]: a full snapshot is captured automatically after each ordinary customer's opening dialogue; double-click a checkpoint to return to that moment.
+[*][b]Manual checkpoints[/b]: press F9 at any time; no customer needs to be present.
+[*][b]Cross-day history[/b]: the session keeps today and yesterday; up to 20 customer/manual/closed-shop checkpoints per day, plus one free day-start anchor. Older days are released when a third day begins.
+[*][b]F5 / F7[/b]: back to the previous day / back to today's opening, preferring the in-memory morning anchor. Adjacent days stay browsable after a rewind.
+[*][b]F6 picker[/b]: Up/W and Down/S to move, Enter to confirm, Esc to cancel, or double-click a node. Middle/side mouse buttons can be assigned to navigation.
+[*][b]Branch summaries[/b]: old nodes can be browsed without deleting the future; it is discarded only when a new branch starts, leaving up to 80 summaries.
+[*][b]Leaving and returning[/b]: leaving pauses capture; returning and staying settled for ~0.5 seconds creates a node. Closed shops may keep the shutter locked overnight; OPEN/MORNING must unlock.
 [/list]
 
 [hr][/hr]
 
-[h2]◆ Extras[/h2]
+[h2]◆ Chemistry assist[/h2]
 
 [list]
-[*][b]Quick Appraisal[/b] — the inspection screen lists authenticity, issues and a suggested price directly. Auto-submit can be enabled in Settings.
-[*][b]Water Quality Labels[/b] — water quality labels are checked live and turn red when the label doesn't match the real quality.
-[*][b]Double-click for the Magnifier[/b] — double-click an inspectable item to use the magnifier you already own, saving a drag every time.
-[*][b]Dialogue Fast-Forward[/b] — small talk from ordinary customers advances automatically, and stops for choices, SEC and important dialogue.
+[*][b]Composition and water labels[/b]: shows the main component, share, purity and grade; empty containers/seeds get proper names, and plant matter no longer takes over the main component.
+[*][b]Auto-blend[/b]: dropping blendable items into a blender follows the game's own blend rules and sound; different products stay separate, and the batch is stopped early when capacity is insufficient.
+[*][b]Rapid extraction[/b]: adding liquid to a container with a positive amount of alcohol converts the three mushroom-mash types into their extracts using the original ratios, rounding and conditions.
+[*][b]Rapid reactions[/b]: a separate switch for only the nine explicit non-thermal reactions, with at most 512 extra steps per run and stopping as soon as nothing changes.
+[*][b]Facility projections[/b]: tooltips for the water purifier, evaporator, hydroponic tray and fish tank/RAS show expected overnight output or removal, with warnings for missing water, containers or power.
+[*]Every assist can be disabled independently. Automation never runs while loading, restoring or during forbidden night transitions.
 [/list]
-
-Every one of these can be toggled individually in the panel's [b]Settings[/b].
 
 [hr][/hr]
 
-[h2]◆ How to Use[/h2]
+[h2]◆ Other tools[/h2]
 
 [list]
-[*][b]1.[/b] Enable [b]QuickSL[/b] in [b]Mods[/b] and restart when the game asks.
-[*][b]2.[/b] Load into your shop and press [b]F8[/b] to open the panel (press again to collapse).
-[*][b]3.[/b] A list of customer checkpoints appears — [b]double-click any entry[/b] to rewind to that moment. Note that checkpoints are created after the customer finishes talking, so quickly calling in the next customer can skip one.
-[*][b]4.[/b] For whole-day rewinds, use the "Back to Opening" / "Back to Previous Day" buttons in the panel (or F7 / F5).
+[*][b]Quick appraisal[/b]: the inspection screen lists authenticity, issues and a suggested price, with optional auto-submit.
+[*][b]Double-click to inspect[/b]: double-click an inspectable item to use a magnifying glass from your inventory, saving a drag.
+[*][b]Water quality labels[/b]: water quality is labelled in real time and mismatches are highlighted in red.
+[*][b]Wine labels[/b]: shows glowberry condition; unfermented bottles show expected quality, with low water reported separately.
+[*][b]Dialogue fast-forward[/b]: advances ordinary customer small talk and stops at choices, SEC encounters and important dialogue.
+[*][b]Multi-language[/b]: annotations read the game's native localization keys and follow the selected game language.
 [/list]
-
-The panel can be dragged, resized and collapsed; its position and settings persist between sessions.
 
 [hr][/hr]
 
-[h2]◆ Good to Know[/h2]
+[h2]◆ Settings and actions[/h2]
 
 [list]
-[*]Checkpoints live in memory and are [b]same shop, same day only[/b]. Leaving the shop, crossing midnight or changing scenes releases them — this keeps a broken state from ever being written to your save.
-[*]"Back to Opening" / "Back to Previous Day" [b]writes the current save slot[/b] and keeps a [i].pre_restore[/i] backup before overwriting. Saving manually first is still recommended.
-[*]The mod [b]never calls the game's save on its own[/b], and won't touch save files while you're not using it.
-[*]If anything looks wrong after a rewind, quit to the main menu and load your save again.
+[*]Automatic checkpoints are on by default. When disabled, automatic morning/customer/closed/return nodes stop; manual F9, the picker and retained-node rewinds still work, while F5/F7 load a save file. Settings also has quick reload save and reroll random, both unbound by default.
+[/list]
+
+[hr][/hr]
+
+[h2]◆ Snapshot limits and diagnostics[/h2]
+
+[list]
+[*]The gear panel under Main Menu -> Mods -> Probably Stolen Tools can adjust object, field-slot and byte limits; PSTools.settings.xml can also be edited after closing the game.
+[*]Higher limits allow larger checkpoints but may use more memory and cause longer pauses; below-limit graphs do not traverse extra objects.
+[*]A failed capture shows the concrete exception, current limits and an actionable suggestion; logs include timing, object/slot scale and cleanup information.
+[*]Settings -> View log shows the end of PSTools.log in game and copies the log path.
+[/list]
+
+[hr][/hr]
+
+[h2]◆ Save safety[/h2]
+
+[list]
+[*]The mod never calls the game's save function on its own and never modifies save files while idle.
+[*]Customer/manual checkpoints are pure memory restores. F5/F7 load a copy of the checkpoint without writing the active save, and keep a [i].pre_restore[/i] backup before restore.
+[*]Duplicate-history cleanup protects files waiting to be restored and files shared by other history entries; a mismatched load cancels immediately and keeps the recovery file.
+[*]A manual save before the first use is still recommended, especially with many mods.
+[/list]
+
+[hr][/hr]
+
+[h2]◆ Installation and hotkeys[/h2]
+
+[list]
+[*]Click Subscribe on the Steam Workshop page, enable the mod in the game's Mods menu and restart when prompted.
+[*]Load a save, enter the shop and press [b]F8[/b] to open the panel (press again to collapse).
+[*]Defaults: F6 picker, F5 previous day, F7 today's opening, F8 panel, F9 manual checkpoint.
+[*]All keys are rebindable: F8 -> Settings -> Hotkeys; conflicting keys are swapped automatically.
+[*]For manual installation, keep both [b]ProbablyStolenTools.dll[/b] and [b]ProbablyStolenTools.StaticLayouts.dll[/b]; do not replace only the main DLL.
+[/list]
+
+[hr][/hr]
+
+[h2]◆ Compatibility[/h2]
+
+[list]
+[*]One package contains compatibility data for [b]stable 0.46D[/b] and [b]beta 1.0.0.14[/b], selected automatically at startup; future game versions still need a mod update.
+[*]1.0.0.14 is still a beta; back up saves before first use. If checkpoints fail after switching back to stable, report the game version, PSTools.log and mod list.
+[*]Requires only the [b]files[/b] capability and no network access; reflection-external and dynamic-code are no longer required.
+[*]Generally compatible with mods that do not modify the same UI or add very large object graphs. Large saves may hit a snapshot limit; raise it in the gear panel if needed.
 [/list]
 
 [hr][/hr]
@@ -55,49 +100,28 @@ The panel can be dragged, resized and collapsed; its position and settings persi
 [h2]◆ FAQ[/h2]
 
 [b]Q: The customer disappeared after I rewound.[/b]
-A: Make sure you rewound to a checkpoint taken [b]before[/b] that customer arrived. Checkpoints are created once the dialogue ends, so they may already be in the trading phase.
+A: Rewind to a checkpoint taken [b]before[/b] the customer arrived; checkpoints are created after the dialogue ends.
 
-[b]Q: Why is my checkpoint list shorter?[/b]
-A: Serving the next customer truncates the abandoned future branch; leaving the shop or crossing midnight also frees in-memory checkpoints. Rewinding across scenes may cause unexpected bugs.
+[b]Q: Why is the checkpoint list shorter?[/b]
+A: Browsing old nodes does not delete the future immediately; it is truncated only when the next customer starts a new branch. Leaving pauses capture, and cross-day history keeps only the adjacent two days.
 
 [b]Q: Will this corrupt my save?[/b]
-A: Files are only written when you actively trigger a rewind, and a backup is kept first. The game itself also keeps daily save history, so even a bad save is easy to restore. Still, back up important progress manually.
+A: The mod never writes saves on its own; F5/F7 load a copy and keep .pre_restore. Still back up important progress manually.
+
+[b]Q: Checkpoints fail after a game update.[/b]
+A: Wait for a mod update and do not put DLLs from unofficial sources into Mods; include the game version and log so the cause can be identified.
 
 [hr][/hr]
 
-[h2]◆ Compatibility[/h2]
-
-[list]
-[*]For the full release of Probably Stolen, using the game's built-in mod loader.
-[*]Requires the [b]files[/b] and [b]reflection-external[/b] capabilities. No network access.
-[*]Generally compatible with mods that don't modify the same UI.
-[/list]
-
-[hr][/hr]
-
-[h2]◆ Source & Adapting[/h2]
+[h2]◆ Source and feedback[/h2]
 
 This project is fully open source: [url=https://github.com/MeadalFlute/ProbablyStolenTools]github.com/MeadalFlute/ProbablyStolenTools[/url]
 
-There is no shared modding framework for this game, and every mod is built its own way, so hand-writing compatibility for each one is not realistic. That is why the source and the handoff docs are public:
-
-[list]
-[*][b]AGENT.md[/b] in the repo documents the project layout, Harmony hook points, snapshot field constraints, build and deploy steps.
-[*]If another mod conflicts with this one, [b]you do not have to wait for me[/b] — hand the repo and that mod to your own AI assistant and ask it to read AGENT.md and produce an adapted build.
-[*]Compatibility patches are welcome as pull requests, together with logs and reproduction steps.
-[/list]
-
-I have not finished the vanilla game myself, so I will not be proactively adapting this to every third-party mod. This route hands the cost to whoever actually needs it.
-
-[hr][/hr]
-
-[h2]◆ Feedback[/h2]
-
-If something goes wrong, please tell us [b]what you were doing[/b] and [b]whether you had rewound[/b], and attach the log file:
+If something goes wrong, tell us [b]what you were doing[/b] and [b]whether you had rewound[/b], and attach the log:
 
 [code]C:\Users\<your username>\AppData\LocalLow\Questing Goose Studio\Probably Stolen\PSTools.log[/code]
 
-With the log we can almost always pinpoint the cause. You can also open a [url=https://github.com/MeadalFlute/ProbablyStolenTools/issues]GitHub issue[/url] — attachments are easier to keep track of there.
+You can also open a [url=https://github.com/MeadalFlute/ProbablyStolenTools/issues]GitHub issue[/url]. Source and AGENT.md are public for adaptation.
 
 [hr][/hr]
 

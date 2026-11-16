@@ -2,26 +2,13 @@
 
 English | [中文](README.md)
 
-A helper mod for **Probably Stolen**, targeting the full release **0.9.4**.
-The full release uses Unity 2021.3.45f2 / Mono / x64 (game 0.46D), with its own
-**IMod / Harmony** loader. MelonLoader and BepInEx are not required.
+A helper mod for **Probably Stolen**, currently **0.9.5**. The game uses Unity 2021.3.45f2 / Mono / x64 and its own **IMod / Harmony** loader; MelonLoader and BepInEx are not required. One 0.9.5 package contains compatibility data for both **stable 0.46D** and **beta 1.0.0.14** and selects automatically at startup.
 
 ## Game Beta Branch
 
-Game **1.0.0.14 is beta**, separate from stable 0.46D. This source provides a
-beta-specific static-layout candidate with offline validation; live acceptance
-is still required. A new universal candidate contains the main DLL and one
-merged helper for both 0.46D and 1.0.0.14. An offline tool deduplicates identical
-field accessors; version-specific type tokens remain isolated behind fingerprint
-selection. No runtime code generation, extraction or dynamic loading is added.
-Switching between these two recorded versions needs no replacement helper;
-unknown fingerprints are still rejected. The player generator replaces the
-merged helper with a single-version table for the installed game.
-
-Maintainers use `release/universal/manifest.xml` for the universal candidate;
-single-branch manifests remain available. See
-`research/2026-11-16-universal-static-layouts.md`. Only beta Mono tests were rerun:
-the stable branch still needs revalidation with its original game assemblies.
+Game **1.0.0.14 is beta**, separate from stable 0.46D. The 0.9.5 main DLL plus merged helper selects the 0.46D or 1.0.0.14 layout by assembly fingerprint, so switching between these two recorded builds needs no manual helper swap; future versions are still rejected when the fingerprint is unknown.
+The merge only shares identical field-access code; version-specific type tokens stay isolated. No runtime code generation, extraction or dynamic loading is added, and game closure state is not dropped.
+Maintainers use `release/universal/manifest.xml`; the single-branch entries remain. Only the beta Mono suite was rerun: the stable branch's original assemblies are unavailable and its universal-package branch still needs its own live acceptance. This is not a claim of compatibility with future beta builds or arbitrary third-party mods. See `research/2026-11-16-universal-static-layouts.md`.
 
 ## Snapshot Limits and Manual Layout Generator
 
@@ -38,8 +25,8 @@ already below the old cap. It does allow larger captures, which may use more
 memory and take longer. Slot/byte budgets are logical payload limits, not a cap
 on the whole mod's physical memory footprint.
 
-After a game update, a static-layout mismatch may be recoverable with the
-separate Windows x64 **Static Layout Generator**. Extract it outside Mods and
+After a game update, wait for a mod update. A separately published Windows x64
+**Static Layout Generator** may help once available; extract it outside Mods and
 close the game, then run:
 
 ```powershell
@@ -66,12 +53,13 @@ in Mods.
 
 - **Customer checkpoints**: a full snapshot is taken automatically after each ordinary customer's opening dialogue; double-click a row to return to that moment.
 - **Manual checkpoints**: press `F9` at any time; they appear as "Manual" and do not require a customer.
-- **Back to before opening** (`F7`) and **back to the previous day** (`F5`).
-- Up to **20** customer/manual checkpoints, plus separate day-start and closed-shop nodes.
+- **Back to before opening** (`F7`) and **back to the previous day** (`F5`); the in-memory morning anchor is preferred and adjacent days remain browsable.
+- A session keeps today and yesterday: up to **20** customer/manual/closed-shop checkpoints per day, plus one free day-start anchor; older days are released when a third day begins.
+- **F6 picker**: Up/W and Down/S to move, Enter to confirm, Esc to cancel, or double-click a node; middle/side mouse buttons can be rebound.
 - **Cross-customer rewind**: while the third customer is present you can return to the second customer's checkpoint.
+- Browsing old nodes does not delete the future; it is truncated only when the next customer starts a new branch, leaving up to 80 read-only summaries.
 - Manual checkpoints created while closed (including the morning state before opening) can be restored.
-- Abandoned future branches are truncated only when the next customer is accepted.
-- Memory checkpoints are released when you leave the shop, the day changes or the scene changes; cross-scene rewinds are not supported.
+- Leaving the same shop pauses capture; returning and staying settled for about 0.5 seconds adds a node, and cross-day history keeps the adjacent two days.
 - **Since 0.9.0**: customer/manual checkpoints use a hybrid "full object graph + exact entity payload" backend that keeps original object identities, full verification and fail-closed fallback. It is still an in-memory rewind backend, not vanilla save replacement.
 
 ### Languages
@@ -85,8 +73,12 @@ in Mods.
 - **Quick appraisal**: the appraisal screen lists authenticity, issues and a suggested price, with optional auto-submit.
 - **Double-click to inspect**: double-click an inspectable item to use a magnifying glass from your inventory.
 - **Water quality labels**: tags water quality in real time and highlights mismatches in red.
-- **Chemistry assist**: the water-quality row shows the dominant component and `share% | purity% | grade`; empty bottles show their size; droppers, graduated cylinders and containers under 200 mL keep their original names.
-- **Wine labels**: shows glowberry condition; unfermented bottles show an expected quality, low water is reported on its own line, and a negative estimate reads "Brewing failed"; illegal yeast gets a separate native-style "Contraband" tag line.
+- **Chemistry assist**: the water-quality row shows the dominant component and `share% | purity% | grade`; empty containers show size/name, hydroponic seeds show the matching item name, and labels start at 150 mL with no maximum capacity cap.
+- **Auto-blend**: dropping blendable items into a blender follows the game's own blend rules and sound; different products stay separate and insufficient capacity is rejected early.
+- **Rapid extraction**: adding liquid to a container with a positive amount of alcohol converts the three mushroom-mash types into extracts using the original ratios, rounding and conditions.
+- **Rapid reactions**: a separate switch for the nine explicit non-thermal reactions, at most 512 extra steps per run, stopping when nothing changes.
+- **Facility projections**: tooltips for the water purifier, evaporator, hydroponic tray and fish tank/RAS show expected overnight output or removal, with missing water/container/power warnings.
+- **Wine labels**: shows glowberry condition; unfermented bottles show an expected quality, low water is reported separately, and illegal yeast gets a separate native-style "Contraband" line.
 - **Dialogue fast-forward**: advances ordinary customer small talk and stops at choices, SEC encounters and important dialogue.
 
 ### Logs
@@ -100,11 +92,12 @@ in Mods.
 
 | Default | Action |
 |---|---|
-| `F6` | Return to the current customer's arrival checkpoint (memory restore) |
+| `F6` | Open the checkpoint picker; Up/W, Down/S, Enter to confirm |
 | `F5` | Return to the previous day's before-opening checkpoint |
 | `F7` | Return to before opening today |
 | `F8` | Show / hide the checkpoint panel |
 | `F9` | Create a manual checkpoint immediately |
+| Unbound | Quick reload save / reroll random (assignable in Settings) |
 
 All keys are rebindable: `F8` → Settings → Hotkeys. Click a row and press the new key; `Esc` cancels, `Backspace` restores that row's default, `Delete` disables the hotkey, and "Reset hotkeys" restores everything. A conflicting key is swapped automatically.
 
@@ -118,6 +111,8 @@ All keys are rebindable: `F8` → Settings → Hotkeys. Click a row and press th
 - Double-click a checkpoint to rewind. When refused, every concrete reason is listed (customer moving, dragging, on the phone, wrong state, ...) and the log is suggested.
 - Failed captures appear as "Damaged" rows; hover to see the reason.
 - The settings page scrolls and contains feature toggles, hotkeys and "View log".
+- **Automatic checkpoints** are on by default. When disabled, morning/customer/closed-shop/return nodes are no longer created automatically; manual F9, the picker and restoring retained nodes still work, while F5/F7 load a save file.
+- The settings page also has **Quick reload save** and **Reroll random** actions; both are unbound by default and can be assigned in the hotkeys section. Quick reload reads the active slot's latest disk save, warns that unsaved progress and all memory checkpoints will be lost, does not save first, and does not overwrite the active save. Reroll only changes future random results, does not rebuild existing customers/items or reload a save, and a new seed does not guarantee a different outcome.
 
 ---
 
@@ -155,16 +150,18 @@ Manual installation:
 2. Enable **Probably Stolen Tools** in the game's Mods menu and restart when prompted.
 3. Load a save, enter the shop and press `F8`.
 
-Requires the `files`, `reflection-external` and `dynamic-code` capabilities; no network access.
+Requires only the `files` capability and no network access; `reflection-external` and `dynamic-code` are no longer required. Keep both `ProbablyStolenTools.dll` and `ProbablyStolenTools.StaticLayouts.dll`; do not replace only the main DLL.
 
 ---
 
 ## Compatibility
 
-- Built for the **full release** (Mono); Demo / MelonLoader paths are no longer maintained.
+- This package contains compatibility data for **stable 0.46D** and **beta 1.0.0.14**; switching between these recorded versions needs no helper swap, but future game versions still require a mod update.
+- 1.0.0.14 is still a beta; back up saves before first use. If checkpoints fail after switching back to 0.46D, include the game version, log and mod list.
+- Stable and beta use different game assemblies; the universal package does not replace each branch's own live acceptance.
 - Generally compatible with mods that don't modify the same UI or add new data structures to the game.
 - Snapshots walk the game's business object graph, so mods that add a very large object graph **can** make capture fail (the panel then shows a "Damaged" row with the reason).
-- **Forward-compatibility note**: the loader has announced that `dynamic-code` / `reflection-external` will be refused from 2026-12-10. 0.9.4 is only verified for the **current game version**; do not claim next-loader compatibility until the migration lands (see `research/2026-11-12-loader-capability-migration.md`).
+- The shipped package declares only `files`; layout tables are bound to the target game/Mono assembly version and unknown layouts fail closed instead of capturing incomplete state.
 
 ---
 
@@ -174,8 +171,11 @@ Requires the `files`, `reflection-external` and `dynamic-code` capabilities; no 
 src/ProbablyStolenTools/         The mod (Harmony patches, snapshot engine, native UI, config)
 tests/CheckpointTests/           Snapshot / graph round-trip and layout regressions
 tests/ReleaseCompatibility/      Patch targets and private fields against the release DLL
+release/manifest.xml             Mod manifest (stable 0.46D)
+release/beta/manifest.xml        Beta 1.0.0.14 manifest
+release/universal/manifest.xml   Dual-version universal manifest
+scripts/Package-FullRelease.ps1  Clean-source package build (single/universal)
 scripts/Deploy-FullRelease.ps1   Backup and deploy into the game's Mods folder
-release/manifest.xml             Mod manifest (ID, version, capabilities)
 research/                        Reverse-engineering, design and issue notes
 docs/workshop/                   Workshop description text
 tools/                           Reverse-engineering tools (MetaDump / ILDump)
@@ -217,7 +217,16 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 .\scripts\Deploy-FullRelease.ps1
 ```
 
-Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **380** tests; the release build passes **57** Harmony targets, **76** fields and the official mod scanner. The single-pass entity backend ships with 0.9.0; offline tests are not a substitute for in-game verification.
+For the current beta installation, use the beta manifest. Build the universal package from a clean tree with the other version's original helper:
+
+```powershell
+.\scripts\Test-StaticLayouts.ps1 -GameDir "<game folder>" -ManifestPath release/beta/manifest.xml
+.\scripts\Package-FullRelease.ps1 -GameDir "<game folder>" -ManifestPath release/universal/manifest.xml `
+  -AdditionalLayoutPaths "<stable original helper>" -OutputRoot "<new output folder>"
+.\scripts\Deploy-FullRelease.ps1 -GameDir "<game folder>" -PackageDirectory "<output>\ProbablyStolenTools"
+```
+
+Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **430** tests; the release build passes **84** Harmony targets, **76** fields and the official mod scanner, with 16 official guarded owners, 13 save-action tests, 14 native history/settings IO fixtures and 11 player-tool assertions. The single-pass entity backend ships with 0.9.0; offline tests are not a substitute for in-game verification.
 
 `Snapshot.SemanticDevelopmentChecks` gates duplicate development snapshots and defaults to false for release. Enabling it adds time and memory to the primary and extra manual sample. Disabling it preserves complete preflight, verification, repair and necessary diagnostics. `Snapshot.SemanticEntityBlocks` controls the new backend. Restart the game after changing these settings.
 
@@ -226,7 +235,7 @@ Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **380**
 ## Versioning
 
 - The single source of truth is `ModVersion` in `release/manifest.xml`.
-- Rule: **major and minor versions are manual; the patch version increments before every `git push`** (for example 0.9.3 → 0.9.4).
+- Rule: **major and minor versions are manual; the patch version increments before every `git push`** (for example 0.9.4 → 0.9.5).
 - README-only changes do not bump the version.
 
 ---

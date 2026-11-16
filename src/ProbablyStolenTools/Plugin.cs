@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using HarmonyLib;
 #if !MONO
@@ -397,8 +397,8 @@ namespace ProbablyStolenTools
                 "Observation-only business event log (no save writes, no state changes). Writes PSTools_history.log.");
             CfgCustomerCheckpoint = Config.Bind("CustomerCheckpoint", "Enabled", true,
                 "Keep the latest 20 customer/manual checkpoints per retained day, plus one morning anchor. F6 opens checkpoint selection.");
-            CfgAutoCheckpoints = Config.Bind("CustomerCheckpoint", "AutoCapture", false,
-                "Automatically capture morning, customer, closed-shop and return checkpoints. Manual capture remains available when disabled; F5/F7 use file reloads. Native save backup copies remain available for previous-day reloads.");
+            CfgAutoCheckpoints = Config.Bind("CustomerCheckpoint", "AutoCapture", true,
+                "Automatically capture morning, customer, closed-shop and return checkpoints (default on). Manual capture remains available when disabled; F5/F7 use file reloads. Native save backup copies remain available for previous-day reloads.");
             CfgKeepPreviousDay = Config.Bind("CustomerCheckpoint", "KeepPreviousDay", true,
                 "Keep yesterday's checkpoints across normal sleep. F5/F7 prefer morning memory anchors to preserve history; scene changes and actual file reloads still expire object graphs.");
             CfgPanelX = Config.Bind("Panel", "X", 16f, "Panel left position in reference canvas units.");
