@@ -84,3 +84,26 @@ R4 已让"确认阶段"的同类异常有日志，但 `Execute` 真正执行时�
 3. 重新部署并核对 `deployment.json` 两个哈希；更新 `AGENT.md` 部署段与 README 基线（已同步，只需改版本号）。
 4. 视情况顺手处理 §五 的静默返回（2–3 行）。
 5. 以上通过后向用户索取 fine-grained token 并 `git push`（不 force）。
+
+## 八、执行与实机首启补充（2026-11-23 23:2x）
+
+清单 1–3 已执行：源码提交 `8169488`（0.9.6），推送 `main` 成功；随后按正式流程重新打包（`Package-FullRelease.ps1`，clean、构建提交 `8169488`）并部署。
+
+- 包：`D:\Program\GameProject\out\release-0.9.6-universal`（ZIP `609C1D8E…`、573261 bytes，provenance 记录 `BuildDirty=false`）。
+- 部署记录：`out/full-release-deploy-20261123-232330/deployment.json`；主 DLL `37E9FE8E…`、helper `6129A2D3…`（808448 bytes，双 profile 未变，与预测一致：helper 由游戏类型生成，不随版本号变化）；90 个存档文件未变、未导入玩家配置。
+- 打包内 `ReleaseCompatibility` 本次在无沙箱限制下完整通过（84 挂点 / 76 字段、官方扫描仅 `files`、HardFlags/Error 空、Mono 夹具含 192 组确认路径与冲突写盘失败恢复），即第一轮报告的 `File.Replace` 失败确系环境限制。
+
+**实机首启（游戏 1.0.0.16，Claims 已安装）**：
+
+```
+23:24:20.666 [QuickSL/Session] version=0.9.6 game=1.0.0.16 layoutBackend=static-token-v1 ...
+23:24:33.066 [QuickSL/Compatibility] first conflict detected mod=yexiaoyang.InteriorExpansion;
+             DisableMemory=true; manual override will be preserved across restarts
+23:24:33.073 [QuickSL/Compatibility] brewing=True claims=True memoryCheckpoints=False fileRestore=native-menu
+```
+
+`PSTools.settings.xml`（23:24:33 单次落盘，`.bak` 为 23:24:20 启动前副本）已持久化
+`Compatibility.HandledMemoryConflicts=yexiaoyang.InteriorExpansion` 与 `CustomerCheckpoint.DisableMemory=True`，
+启动后无任何异常/失败行。这直接验证了 M2 的"首次检测→批量赋值→显式保存→不重复写盘"与 L4 的 Trim 匹配在真实环境下成立。
+
+尚未覆盖（需人工操作）：面板状态行文案与建点失败提示优先级、`DisableMemory` 关闭后再重启是否保留、F5/F7 确认文案与实际路径、卷帘门维护在内存禁用下是否照常。游戏进程仍在运行（PID 31644，Responding=True），可继续就地验收。
