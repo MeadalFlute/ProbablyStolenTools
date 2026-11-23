@@ -7,7 +7,7 @@ using MelonLoader;
 using UnityEngine;
 
 #if !MONO
-[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "Probably Stolen Tools", "0.9.5", "Probably Stolen Tools contributors")]
+[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "Probably Stolen Tools", "0.9.6", "Probably Stolen Tools contributors")]
 [assembly: MelonLoader.HarmonyDontPatchAll]
 #endif
 
@@ -21,7 +21,7 @@ namespace ProbablyStolenTools
 #endif
     {
         public const string Guid = "dsh.probablystolen.tools";
-        public const string Version = "0.9.5";
+        public const string Version = "0.9.6";
 
         internal static ModLogger LogSource;
         internal static Plugin Instance;
@@ -197,6 +197,8 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgPreviewPanel;
         internal static ConfigEntry<bool> CfgHistory;
         internal static ConfigEntry<bool> CfgCustomerCheckpoint;
+        internal static ConfigEntry<bool> CfgDisableMemoryCheckpoints, CfgWholeDayMemory;
+        internal static ConfigEntry<string> CfgHandledMemoryConflicts;
         internal static ConfigEntry<bool> CfgAutoCheckpoints;
         internal static ConfigEntry<bool> CfgKeepPreviousDay;
         internal static ConfigEntry<float> CfgPanelX, CfgPanelY, CfgPanelWidth, CfgPanelHeight;
@@ -274,9 +276,9 @@ namespace ProbablyStolenTools
                 "Distinguish empty micro bottles, water pitchers, jugs and variable-capacity water tanks in tooltips.");
             CfgAutoBlend = Config.Bind("Chemistry", "AutoBlend", true,
                 "Blend compatible ingredients after player placement. Mixed-product batches leave incompatible ingredients at their source; whole-item outputs must fit.");
-            CfgAutoExtraction = Config.Bind("Chemistry", "AutoExtraction", true,
+            CfgAutoExtraction = Config.Bind("Chemistry", "AutoExtraction", false,
                 "Complete alcohol extraction of mushroom and coffee mush. Volume may exceed capacity; independent of RapidReactions.");
-            CfgRapidReactions = Config.Bind("Chemistry", "RapidReactions", true,
+            CfgRapidReactions = Config.Bind("Chemistry", "RapidReactions", false,
                 "Complete the nine supported non-thermal reagent reactions. Independent of AutoExtraction; preserve native conditions, bounded progress and thermal rates.");
             CfgFacilityPreview = Config.Bind("Chemistry", "FacilityPreview", true,
                 "Show read-only next-cycle projections for aquaculture, purifiers, hydroponics and evaporators.");
@@ -397,6 +399,12 @@ namespace ProbablyStolenTools
                 "Observation-only business event log (no save writes, no state changes). Writes PSTools_history.log.");
             CfgCustomerCheckpoint = Config.Bind("CustomerCheckpoint", "Enabled", true,
                 "Keep the latest 20 customer/manual checkpoints per retained day, plus one morning anchor. F6 opens checkpoint selection.");
+            CfgDisableMemoryCheckpoints = Config.Bind("CustomerCheckpoint", "DisableMemory", false,
+                "Disable all memory checkpoint capture and restore. A newly detected blacklisted mod turns this on once; turning it off manually accepts unsupported conflict risks.");
+            CfgHandledMemoryConflicts = Config.Bind("Compatibility", "HandledMemoryConflicts", "",
+                "Mod IDs whose one-time memory-disable default has already been applied. Preserve this value to retain a manual override across restarts.");
+            CfgWholeDayMemory = Config.Bind("Rewind", "WholeDayUseMemory", true,
+                "Prefer memory morning anchors for whole-day rewind when automatic capture is enabled. Off uses disk saves; individual memory nodes remain available.");
             CfgAutoCheckpoints = Config.Bind("CustomerCheckpoint", "AutoCapture", true,
                 "Automatically capture morning, customer, closed-shop and return checkpoints (default on). Manual capture remains available when disabled; F5/F7 use file reloads. Native save backup copies remain available for previous-day reloads.");
             CfgKeepPreviousDay = Config.Bind("CustomerCheckpoint", "KeepPreviousDay", true,

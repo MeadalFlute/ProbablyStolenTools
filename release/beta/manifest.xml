@@ -1,12 +1,12 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Mod>
   <ID>dsh.probablystolen.tools</ID>
   <Name>Probably Stolen Tools</Name>
   <Author>米德</Author>
-  <ModVersion>0.9.5</ModVersion>
-  <Description>Beta candidate for game 1.0.0.14. Includes beta-specific static snapshot layouts.</Description>
+  <ModVersion>0.9.6</ModVersion>
+  <Description>Beta candidate for game 1.0.0.16. Includes beta-specific static snapshot layouts.</Description>
   <GameVersions>
-    <GameVersion>1.0.0.14</GameVersion>
+    <GameVersion>1.0.0.16</GameVersion>
   </GameVersions>
   <Assemblies>
     <Assembly>ProbablyStolenTools.dll</Assembly>

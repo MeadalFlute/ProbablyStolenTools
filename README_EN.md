@@ -1,14 +1,21 @@
-﻿# Probably Stolen Tools
+# Probably Stolen Tools
 
 English | [中文](README.md)
 
-A helper mod for **Probably Stolen**, currently **0.9.5**. The game uses Unity 2021.3.45f2 / Mono / x64 and its own **IMod / Harmony** loader; MelonLoader and BepInEx are not required. One 0.9.5 package contains compatibility data for both **stable 0.46D** and **beta 1.0.0.14** and selects automatically at startup.
+A helper mod for **Probably Stolen**, currently **0.9.6**. The game uses Unity 2021.3.45f2 / Mono / x64 and its own **IMod / Harmony** loader; MelonLoader and BepInEx are not required. One package contains compatibility data for both **stable 0.46D** and **beta 1.0.0.16** and selects automatically at startup.
 
 ## Game Beta Branch
 
-Game **1.0.0.14 is beta**, separate from stable 0.46D. The 0.9.5 main DLL plus merged helper selects the 0.46D or 1.0.0.14 layout by assembly fingerprint, so switching between these two recorded builds needs no manual helper swap; future versions are still rejected when the fingerprint is unknown.
+Game **1.0.0.16 is beta**, separate from stable 0.46D. The main DLL plus merged helper selects the 0.46D or 1.0.0.16 layout by assembly fingerprint, so switching between these two recorded builds needs no manual helper swap; future versions are still rejected when the fingerprint is unknown. This update replaces the old 1.0.0.14 beta profile.
 The merge only shares identical field-access code; version-specific type tokens stay isolated. No runtime code generation, extraction or dynamic loading is added, and game closure state is not dropped.
 Maintainers use `release/universal/manifest.xml`; the single-branch entries remain. Only the beta Mono suite was rerun: the stable branch's original assemblies are unavailable and its universal-package branch still needs its own live acceptance. This is not a claim of compatibility with future beta builds or arbitrary third-party mods. See `research/2026-11-16-universal-static-layouts.md`.
+
+## Optional Mods
+
+- Neither expansion is required or bundled. Missing or disabled expansions leave vanilla behavior unchanged.
+- **Vanilla Brewing Expansion 1.4.4**: preserve expansion names and native tooltips for marked products and expansion recipes (nutrifruit/dream-cap bottles and brewing buckets). Do not apply vanilla berry-wine predictions, liquid renaming or accelerated chemistry to them. Ordinary berry wine remains unchanged. Unfermented expansion bottles receive no additional prediction from this mod. Existing graph capture retains expansion tags; live fermentation/overnight rewind still needs acceptance.
+- **Claims & Uprisings**: **safe file-reload coexistence only, not full memory-rewind support** (originally audited at 1.1.18). First detection enables **Disable memory checkpoints** once and persists the handled mod ID. You may switch it off to force-enable unsupported memory rewind; that override survives restarts, but resulting bugs are unsupported. Removing the mod does not reset the switch. Independent room, resource and soldier state is not fully captured. While Claims is active, file reloads always use the full native lifecycle without extra customer/shutter repair; no save is requested.
+- Offline tests do not replace live combination testing. Details: `research/2026-11-23-optional-mod-compatibility.md`.
 
 ## Snapshot Limits and Manual Layout Generator
 
@@ -75,8 +82,8 @@ in Mods.
 - **Water quality labels**: tags water quality in real time and highlights mismatches in red.
 - **Chemistry assist**: the water-quality row shows the dominant component and `share% | purity% | grade`; empty containers show size/name, hydroponic seeds show the matching item name, and labels start at 150 mL with no maximum capacity cap.
 - **Auto-blend**: dropping blendable items into a blender follows the game's own blend rules and sound; different products stay separate and insufficient capacity is rejected early.
-- **Rapid extraction**: adding liquid to a container with a positive amount of alcohol converts the three mushroom-mash types into extracts using the original ratios, rounding and conditions.
-- **Rapid reactions**: a separate switch for the nine explicit non-thermal reactions, at most 512 extra steps per run, stopping when nothing changes.
+- **Rapid extraction** (off by default): adding liquid to a container with a positive amount of alcohol converts the three mushroom-mash types into extracts using the original ratios, rounding and conditions.
+- **Rapid reactions** (off by default): a separate switch for the nine explicit non-thermal reactions, at most 512 extra steps per run, stopping when nothing changes. Existing saved choices are preserved.
 - **Facility projections**: tooltips for the water purifier, evaporator, hydroponic tray and fish tank/RAS show expected overnight output or removal, with missing water/container/power warnings.
 - **Wine labels**: shows glowberry condition; unfermented bottles show an expected quality, low water is reported separately, and illegal yeast gets a separate native-style "Contraband" line.
 - **Dialogue fast-forward**: advances ordinary customer small talk and stops at choices, SEC encounters and important dialogue.
@@ -112,6 +119,7 @@ All keys are rebindable: `F8` → Settings → Hotkeys. Click a row and press th
 - Failed captures appear as "Damaged" rows; hover to see the reason.
 - The settings page scrolls and contains feature toggles, hotkeys and "View log".
 - **Automatic checkpoints** are on by default. When disabled, morning/customer/closed-shop/return nodes are no longer created automatically; manual F9, the picker and restoring retained nodes still work, while F5/F7 load a save file.
+- **Disable memory checkpoints** is off by default; enabling it stops memory capture and restore (see the one-time blacklist policy above). **Use memory for whole-day rewind** is on by default; turning it off routes F5/F7 to disk without disabling individual memory nodes. File reloads invalidate all old memory nodes.
 - The settings page also has **Quick reload save** and **Reroll random** actions; both are unbound by default and can be assigned in the hotkeys section. Quick reload reads the active slot's latest disk save, warns that unsaved progress and all memory checkpoints will be lost, does not save first, and does not overwrite the active save. Reroll only changes future random results, does not rebuild existing customers/items or reload a save, and a new seed does not guarantee a different outcome.
 
 ---
@@ -226,7 +234,7 @@ For the current beta installation, use the beta manifest. Build the universal pa
 .\scripts\Deploy-FullRelease.ps1 -GameDir "<game folder>" -PackageDirectory "<output>\ProbablyStolenTools"
 ```
 
-Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **430** tests; the release build passes **84** Harmony targets, **76** fields and the official mod scanner, with 16 official guarded owners, 13 save-action tests, 14 native history/settings IO fixtures and 11 player-tool assertions. The single-pass entity backend ships with 0.9.0; offline tests are not a substitute for in-game verification.
+Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **433** tests and optional-mod compatibility passes **17** tests; the release build passes **84** Harmony targets, **76** fields and the official mod scanner, with 16 official guarded owners, 13 save-action tests, 14 native history/settings IO fixtures and 11 player-tool assertions. The single-pass entity backend ships with 0.9.0; offline tests are not a substitute for in-game verification.
 
 `Snapshot.SemanticDevelopmentChecks` gates duplicate development snapshots and defaults to false for release. Enabling it adds time and memory to the primary and extra manual sample. Disabling it preserves complete preflight, verification, repair and necessary diagnostics. `Snapshot.SemanticEntityBlocks` controls the new backend. Restart the game after changing these settings.
 

@@ -53,7 +53,8 @@ namespace ProbablyStolenTools
             try
             {
                 var machine = Blender(grid);
-                return machine != null && Bottle(machine) != null;
+                var bottle = machine == null ? null : Bottle(machine);
+                return bottle != null && !OptionalModCompatibility.BrewingOwns(bottle);
             }
             catch (Exception e) { Warn("blend-group", e); return false; }
         }
@@ -61,6 +62,7 @@ namespace ProbablyStolenTools
         private static bool Compatible(GameItem bottle, GameItem ingredient, string[] ids)
         {
             if (bottle == null || ingredient == null || !ingredient.IsTag("BLENDABLE_TAG")) return false;
+            if (OptionalModCompatibility.BrewingOwns(bottle)) return false;
             string input = ChemistryRules.Signature(ids, ChemistryData.Parts(ingredient));
             var parts = ChemistryData.Parts(bottle);
             return ChemistryData.Total(parts) == 0
@@ -76,6 +78,7 @@ namespace ProbablyStolenTools
                 if (machine == null) return true;
                 var bottle = Bottle(machine);
                 if (bottle == null) return true;
+                if (OptionalModCompatibility.BrewingOwns(bottle)) return true;
                 var ids = ChemistryData.Ids();
                 bool compatible = Compatible(bottle, ingredient, ids);
                 // A single incompatible placement remains available for manual recipes.
@@ -158,7 +161,8 @@ namespace ProbablyStolenTools
         {
             if (!Available || !ExtractionEnabled || _running || _extracting
                 || container?.parentInventory == null || !container.IsTag("LIQUID_CONTAINER_TAG")
-                || container.IsTag("WINE_CONTAINER_TAG") || !GeneralHelper.IsItemOwned(container)) return;
+                || container.IsTag("WINE_CONTAINER_TAG") || OptionalModCompatibility.BrewingOwns(container)
+                || !GeneralHelper.IsItemOwned(container)) return;
             try
             {
                 var ids = ChemistryData.Ids();
@@ -200,7 +204,8 @@ namespace ProbablyStolenTools
         internal static bool CanReact(GameItem container)
             => Available && ReactionsEnabled && !_extracting
                 && container?.parentInventory != null && container.IsTag("LIQUID_CONTAINER_TAG")
-                && !container.IsTag("WINE_CONTAINER_TAG") && GeneralHelper.IsItemOwned(container);
+                && !container.IsTag("WINE_CONTAINER_TAG") && !OptionalModCompatibility.BrewingOwns(container)
+                && GeneralHelper.IsItemOwned(container);
         internal static int Alcohol(GameItem container)
         {
             if (!Available || !ExtractionEnabled) return 0;

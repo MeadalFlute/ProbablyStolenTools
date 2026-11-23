@@ -261,11 +261,13 @@ namespace ProbablyStolenTools
             EventLog.Write("[Rewind] 没有可回退的节点（营业中的节点游戏无法恢复）。");
         }
 
+        internal static bool UseWholeDayMemory => CustomerCheckpoint.AutoCapture && Plugin.CfgWholeDayMemory?.Value == true;
+
         internal static void RestoreDayStart()
         {
             var store = Plugin.Store();
             if (store == null) return;
-            if (!CustomerCheckpoint.AutoCapture) { GameSaveActions.Reload(); return; }
+            if (!UseWholeDayMemory) { GameSaveActions.Reload(); return; }
             var morning = CustomerCheckpoint.DayStart(StoreStation.GetDayCounter());
             if (morning != null) { CustomerCheckpoint.Restore(morning); return; }
             for (int i = Points.Count - 1; i >= 0; i--)
@@ -294,7 +296,7 @@ namespace ProbablyStolenTools
             try { today = StoreStation.GetDayCounter(); }
             catch { return; }
 
-            if (CustomerCheckpoint.AutoCapture && Plugin.CfgKeepPreviousDay?.Value == true)
+            if (UseWholeDayMemory && Plugin.CfgKeepPreviousDay?.Value == true)
             {
                 var morning = CustomerCheckpoint.DayStart(today - 1);
                 if (morning != null)
@@ -318,17 +320,11 @@ namespace ProbablyStolenTools
             try
             {
                 if (!System.IO.Directory.Exists(Root)) { PanelNotice.Show("还没有任何存档节点", true); return; }
+                Catalog.Refresh(Root);
                 foreach (var file in System.IO.Directory.GetFiles(Root, "*.es3"))
                 {
-                    SaveMetadata meta;
-                    try
-                    {
-                        meta = SaveMetadata.Read(File.ReadAllText(file).TrimStart('\uFEFF'));
-                    }
-                    catch { continue; }
-                    if (meta.State != 2) continue;                       // 只接受开业前(MORNING)
-                    if (meta.Slot != store.saveSlotId) continue;
-                    if (meta.Day >= today) continue;                     // 只要更早的天
+                    var meta = Catalog.ReadForRestore(file);
+                    if (meta == null || meta.State != 2 || meta.Slot != store.saveSlotId || meta.Day >= today) continue;
                     if (!string.IsNullOrEmpty(meta.RunId) && meta.RunId != store.runID) continue;
                     var at = File.GetLastWriteTime(file);
                     if (best != null && (meta.Day < best.Day || (meta.Day == best.Day && at <= best.At))) continue;
@@ -374,6 +370,12 @@ namespace ProbablyStolenTools
         internal static void RequestPreviousDay() => Request(WholeDayAction.PreviousDay);
         internal static void RequestQuickReload() => Request(WholeDayAction.QuickReload);
 
+        internal static bool RequiresFileReload(WholeDayAction action, bool hasMorningAnchor, bool hasRetainedNodes)
+            => action == WholeDayAction.QuickReload || !UseWholeDayMemory
+                || (action == WholeDayAction.PreviousDay
+                    ? Plugin.CfgKeepPreviousDay?.Value != true || (!hasMorningAnchor && !hasRetainedNodes)
+                    : !hasMorningAnchor);
+
         private static void Request(WholeDayAction action)
         {
             if (action == WholeDayAction.None) return;
@@ -383,7 +385,20 @@ namespace ProbablyStolenTools
 
             var ui = StoreUIManager.Instance;
             var panel = ui == null ? null : ui.confirmPanelUIManager;
-            bool requiresFileReload = action == WholeDayAction.QuickReload || !CustomerCheckpoint.AutoCapture;
+            bool hasMorningAnchor = false;
+            if (action != WholeDayAction.QuickReload && UseWholeDayMemory && Plugin.Store() != null)
+            {
+                try
+                {
+                    int day = StoreStation.GetDayCounter() - (action == WholeDayAction.PreviousDay ? 1 : 0);
+                    hasMorningAnchor = CustomerCheckpoint.DayStart(day) != null;
+                }
+                catch (Exception e)
+                {
+                    EventLog.Write("[Rewind] confirmation anchor unavailable: " + e.GetType().Name + ": " + e.Message);
+                }
+            }
+            bool requiresFileReload = RequiresFileReload(action, hasMorningAnchor, CustomerCheckpoint.Nodes.Count > 0);
             if (panel == null)
             {
                 if (requiresFileReload)
@@ -407,7 +422,7 @@ namespace ProbablyStolenTools
                 : InspectionLocale.Text("回到上一天", "Return to the previous day");
             string body = $"{what} 优先使用内存节点并保留回溯历史；文件读档会使旧内存节点失效。不改动当前存档文件。\n\n" +
                           $"点击下方按钮确认，或直接再按一次 {other} 确认。";
-            if (!CustomerCheckpoint.AutoCapture)
+            if (requiresFileReload)
                 body = InspectionLocale.Text(
                     $"{what} 将读取磁盘存档，未保存进度与全部内存节点将丢失。不会先保存当前进度。\n\n点击下方按钮确认，或再按一次 {other} 确认。",
                     $"{what}: reload from disk. Unsaved progress and all memory checkpoints will be lost. Current progress will not be saved first.\n\nConfirm below, or press {other} again.");
@@ -471,6 +486,10 @@ namespace ProbablyStolenTools
 
         internal static void Restore(Point p, bool allowDayChange = false, bool forceMenu = false)
         {
+            // The expansion rebuilds its independent repositories via native load
+            // hooks. An in-place graph/file reload is not an equivalent lifecycle.
+            OptionalModCompatibility.Refresh();
+            forceMenu |= OptionalModCompatibility.HasMemoryConflict;
             if (Busy) { PanelNotice.Show("上一次回溯仍在进行，请稍候", true); return; }
             if (PendingMenuReload || PendingPoint != null) { PanelNotice.Show("正在载入存档，请稍候", true); return; }
             if (CustomerCheckpoint.Restoring) { PanelNotice.Show("正在恢复顾客节点，请稍候", true); return; }
@@ -825,6 +844,7 @@ namespace ProbablyStolenTools
         {
             try
             {
+                OptionalModCompatibility.Tick();
                 RunSelfTest();
                 MenuReloadStep();
                 PostLoadResume();
@@ -1072,11 +1092,12 @@ namespace ProbablyStolenTools
             {
                 if (Time.time < _resumeT + 3f) return;
 
-                if (p.IsQuickReload)
+                if (p.IsQuickReload || OptionalModCompatibility.HasMemoryConflict)
                 {
                     // This action requests an ordinary native load, not checkpoint repair.
                     // Do not reconstruct customers, dismiss them or modify the shutter.
-                    EventLog.Write("[SaveActions] RELOAD OK native-load-verified; memory checkpoints expired");
+                    EventLog.Write((p.IsQuickReload ? "[SaveActions]" : "[Compatibility]")
+                        + " RELOAD OK native-load-verified; memory checkpoints expired; native post-load state preserved");
                     Rewind.Settling = false;
                     _resumePoint = null;
                     _resumeStage = 0;

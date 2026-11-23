@@ -19,6 +19,7 @@ try {
     $fixture = Join-Path $workspace 'tests\CapabilityMigrationProbe\MonoFixture\bin\Release\netstandard2.1\MonoFixture.dll'
     Invoke-Dotnet -Arguments @('build', 'src/ProbablyStolenTools/ProbablyStolenTools.csproj', '-c', 'Release', "-p:GameDir=$GameDir")
     Invoke-Dotnet -Arguments @('run', '-c', 'Release', '--project', 'tests/CheckpointTests/CheckpointTests.csproj')
+    Invoke-Dotnet -Arguments @('run', '-c', 'Release', '--project', 'tests/OptionalModCompatibilityTests')
     Invoke-Dotnet -Arguments @('run', '-c', 'Release', '--project', 'tests/ReleaseCompatibility', '--',
         $GameDir, $mod, $ManifestPath)
     Invoke-Dotnet -Arguments @('build', $fixtureProject, '-c', 'Release')

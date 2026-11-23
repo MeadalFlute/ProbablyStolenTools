@@ -165,6 +165,8 @@ namespace ProbablyStolenTools
                     ? InspectionLocale.Text($"顾客节点 {CustomerCheckpoint.CustomerCount}/20", $"Customer checkpoints {CustomerCheckpoint.CustomerCount}/20")
                         : ((int?)Plugin.Store()?.storeState == 1 ? InspectionLocale.Text("等待顾客节点", "Waiting for a checkpoint")
                             : (int?)Plugin.Store()?.storeState == 0 ? InspectionLocale.Text("已闭店", "Closed") : InspectionLocale.Text("尚未开业", "Not open")));
+                if (!OptionalModCompatibility.MemoryCheckpointsAllowed || OptionalModCompatibility.HasMemoryConflict)
+                    hint = OptionalModCompatibility.Status;
                 if (CustomerCheckpoint.LastCaptureError != null)
                     hint = InspectionLocale.Text("最近节点建立失败，旧节点仍保留；请查看日志", "Latest capture failed; earlier nodes retained. See log.");
                 if (CheckpointPicker.Active) hint = CheckpointPicker.Hint;
@@ -305,10 +307,11 @@ namespace ProbablyStolenTools
             NewSetting(InspectionLocale.Text("自动鉴定报价", "Auto appraisal quote"), Plugin.CfgAutoAppraisal);
             NewSetting(InspectionLocale.Text("自动提交鉴定", "Auto-submit appraisal"), Plugin.CfgAutoSubmit);
             NewSetting(InspectionLocale.Text("始终覆盖鉴定报价", "Always replace appraisal quote"), Plugin.CfgAlwaysOverwrite);
-            NewSetting(InspectionLocale.Text("跳过顾客对话", "Skip customer dialogue"), Plugin.CfgSkipCustomerDialogue);
             NewSetting(InspectionLocale.Text("双击物品快速鉴定", "Double-click to inspect"), Plugin.CfgDoubleClickInspection);
             NewSetting(InspectionLocale.Text("显示快速鉴定摘要", "Show quick inspection summary"), Plugin.CfgQuickInspection);
+            NewSetting(InspectionLocale.Text("跳过顾客对话", "Skip customer dialogue"), Plugin.CfgSkipCustomerDialogue);
             NewSetting(InspectionLocale.Text("水质标注", "Water quality labels"), Plugin.CfgWaterQuality);
+            NewSetting(InspectionLocale.Text("酿酒标注", "Wine annotations"), Plugin.CfgWineAppraisal);
             _chemistryStart = _settings.Count;
             _chemistryTop = Raw("chemistry-divider-top", _settingsContent, new Color(0.42f, 0.62f, 0.72f, 0.6f)).rectTransform;
             NewSetting(InspectionLocale.Text("化学辅助", "Chemistry assist"), Plugin.CfgChemistry);
@@ -320,9 +323,10 @@ namespace ProbablyStolenTools
             NewSetting(InspectionLocale.Text("机器产物预览", "Machine output preview"), Plugin.CfgFacilityPreview);
             _chemistryEnd = _settings.Count;
             _chemistryBottom = Raw("chemistry-divider-bottom", _settingsContent, new Color(0.42f, 0.62f, 0.72f, 0.6f)).rectTransform;
-            NewSetting(InspectionLocale.Text("酿酒标注", "Wine annotations"), Plugin.CfgWineAppraisal);
+            NewSetting(InspectionLocale.Text("禁用内存节点", "Disable memory checkpoints"), Plugin.CfgDisableMemoryCheckpoints);
             NewSetting(InspectionLocale.Text("自动建立节点", "Automatic checkpoints"), Plugin.CfgAutoCheckpoints);
             NewSetting(InspectionLocale.Text("保留上一天节点", "Keep previous day checkpoints"), Plugin.CfgKeepPreviousDay);
+            NewSetting(InspectionLocale.Text("整日回退使用内存", "Use memory for whole-day rewind"), Plugin.CfgWholeDayMemory);
             NewSetting(InspectionLocale.Text("整日回退需确认", "Confirm whole-day rewind"), Plugin.CfgConfirmWholeDay);
             NewSetting(InspectionLocale.Text("详细诊断日志", "Verbose diagnostics"), Plugin.CfgVerboseLog);
             _saveActions.Add(NativeButton(_settingsContent, InspectionLocale.Text("快速重载存档", "Quick reload save"),

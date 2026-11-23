@@ -1,9 +1,21 @@
 # Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.9.5**（2026-11-16）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
+> 适用源码：正式版 **0.9.6**（2026-11-23）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
 > 旧版本文档（0.2.1–0.6.0、Demo、早期性能优化过程）归档在 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
+> 2026-11-23 兼容候选：本机 beta 已更新至 **1.0.0.16 / VERSION 100-Rev16**，游戏 MVID `d927a6e4-ae7a-4e65-a5e2-9f9624c131f3`；beta/universal manifest 已随之更新。下文 11-16 的 1.0.0.14、已部署哈希与规模是历史记录，不是本轮验收。当前新版单表 2915 类型/8235 字段/670208 bytes。可选 Mod 检测使用两版均有的公开 `ModLoader.Mods` 只读表，不调用旧正式版不存在的 `ModHelper.IsModRunning`，不引用第三方 DLL，也不新增权限/前置依赖。酿酒扩展 1.4.4 避免标注/改名/快速反应干预；领地与革命 1.1.18 暂时仅文件读档安全共存，启用时明确禁止内存建点/恢复并强制完整原生菜单载入，不能宣称完成完整实体回溯。维护范围/后续接入要求见 `research/2026-11-23-optional-mod-compatibility.md`。
+
 本文只写当前仍成立的事实。实现细节以源码为准，阶段记录与实验数据看 `research/`。
+
+2026-11-23 设置调整（覆盖上段 Claims 强制门控的旧说明）：`CustomerCheckpoint.DisableMemory=false` 控制全部内存建点/恢复。首次检测 Claims 时置 true，`Compatibility.HandledMemoryConflicts` 持久记录已处理 ID；玩家手动关掉后不再因检测/重启覆盖，移除 Claims 也不自动复位。强制启用不代表完整支持，相关 BUG 不受理；Claims 存在时文件读档仍强制完整原生载入并跳过顾客/门修复。`Rewind.WholeDayUseMemory=true` 仅控制 F5/F7，关闭走文件、个别节点仍可用。`Chemistry.AutoExtraction/RapidReactions` 缺省改为 false，不迁移覆盖旧值。审查入口见 `research/2026-11-23-settings-compatibility-review-handoff.md`。
+
+最新部署为 `out/full-release-deploy-20261123-224852/deployment.json`：主 DLL `9BA884F8…`、双 profile helper `6129A2D3…`，安装目录哈希与最终构建一致。433 参考 + 17 可选兼容及实际游戏 Mono 配置失败/恢复、开关组合和 192 组确认路径重新通过；13 读档 + 14 历史测试沿用上一轮记录，最终合并产物扫描仍仅 `files`。90 个存档目录文件/其他本地 Mod/游戏程序集未变，未改写玩家配置、未启动游戏，实机待验收。第二轮修复失败提示优先级/确认锚点探测异常防护，同步 README；旧命名/大文件独立缓存暂缓。回执「第二轮审查跟进」列明边界。此前 `BA005FA4…` / `54C4DFD2…` / `9547C8A0…` 均为更早候选。
+
+2026-11-23 审查修复：禁用内存不再连带关闭卷帘门维护；首次冲突两个值批量赋值后显式保存，失败就地捕获/去重/5 秒重试，保存最新选择（未持久化前退出不保证跨进程记忆）。Mod 列表 1Hz 轮询，处理 ID Trim/缓存。F5 文件选择复用元数据，保留旧命名/较大 UTF-8 存档回退且不纳入清理；确认文案按锚点实际可用性判断。强行启用只追加状态提示，不追加确认弹窗，依赖偏好仍可编辑。逐项采纳与不采纳原因见 `research/2026-11-23-settings-compatibility-review-receipt.md`。
+
+2026-11-23 推送：版本升至 **0.9.6**（三处 manifest、`Plugin.Version` 与 `MelonInfo` 同步），源码提交并推送 `main`。本机安装**仍为 0.9.5**（主 DLL `9BA884F8…`、helper `6129A2D3…`，即上段部署记录）；0.9.6 的通用包与部署需在本地按 `scripts/Package-FullRelease.ps1` → `Deploy-FullRelease.ps1` 流程另行执行后，再更新本段与部署记录。三轮审查见 `research/2026-11-23-settings-compatibility-review-ds.md`、`…-round2-ds.md`、`…-round3-ds.md`；遗留项：`RestorePreviousDay` 日期读取失败仍是静默返回（HEAD 既有、低危）。
+
+2026-11-23 本轮开发候选已部署，主 DLL `9547C8A0…`、双 profile helper `6129A2D3…`（808448 bytes），记录 `out/full-release-deploy-20261123-141215/deployment.json`。基于 HEAD `48652b2` 的 dirty 工作区构建，未提交/打正式包/推送。430 参考 + 12 可选兼容 + 13 读档 + 14 历史测试、无第三方 DLL 的游戏 Mono 回归、真实 VBE 回调往返及最终合并 DLL 扫描通过；只有 `files`。未启动游戏，89 个存档和其他 Mod 校验未变。Claims 内存节点仍明确停用，组合实机待验收。
 
 ---
 
@@ -21,7 +33,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 # 部署（必须先关闭游戏）
 .\scripts\Deploy-FullRelease.ps1
 
-# 当前本机为游戏 beta 1.0.0.14；单版本验证
+# 当前本机为游戏 beta 1.0.0.16；单版本验证
 .\scripts\Test-StaticLayouts.ps1 -GameDir "<游戏目录>" -ManifestPath release/beta/manifest.xml
 .\scripts\Deploy-FullRelease.ps1 -GameDir "<游戏目录>" -ManifestPath release/beta/manifest.xml
 
@@ -44,10 +56,10 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 玩家静态表工具的独立分发流程：运行 `scripts/Publish-StaticLayoutTool.ps1`，取得 `out/static-layout-tool-日期/ProbablyStolenTools-StaticLayoutGenerator-win-x64.zip`。在 GitHub 单独上传附件，不能把工具 exe/Mono.Cecil 放进 Mod 的 Assemblies 或 Mods。玩家完整用法见 `tools/StaticSnapshotLayouts/PLAYER-README.md` 与 README；先退出游戏，执行 `Generate-StaticLayouts.ps1 -GameDir "<游戏目录>"`，默认只生成。`-Install` 只支持默认 `Mods/ProbablyStolenTools` 安装，会把旧 helper 备份到工具 generated 目录，再只替换 helper。该工具不能自动适配任意第三方类型或修复游戏 API 变化，不代表新版本已验收。工具附件已打包测试，但**尚未上传 GitHub Release**，不要声称已可从 Release 下载。推送使用用户临时 token，不写入文件、日志或命令历史。
 
 - 唯一真源：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
-- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.5**。
+- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.6**。
 - 纯文档提交不单独升版；推送前重新构建 → 两组测试 → 部署 → 正常 `push`（不 force）。
 - 推送使用用户临时 token，不写入文件、日志或命令历史。
-- `release/manifest.xml` 只声明稳定游戏 0.46D；`release/beta/manifest.xml` 只声明 beta 1.0.0.14；`release/universal/manifest.xml` 声明两版。三个 ModVersion 必须与 Plugin.Version 一起更新。不能仅改 manifest 宣称新版本兼容。
+- `release/manifest.xml` 只声明稳定游戏 0.46D；`release/beta/manifest.xml` 只声明 beta 1.0.0.16；`release/universal/manifest.xml` 声明两版。三个 ModVersion 必须与 Plugin.Version 一起更新。不能仅改 manifest 宣称新版本兼容。
 - 用干净源码执行 `scripts/Package-FullRelease.ps1 -GameDir "<游戏目录>" -ManifestPath release/beta/manifest.xml` 构建 beta 包。通用包改用 universal manifest 并传 `-AdditionalLayoutPaths "<另一版原始helper>"`；离线合并和逐版本等价验证后，扫描实际合并产物。每包仍仅主 DLL、一个 helper、manifest、preview；正式包和工具包均拒绝 dirty 源码，保留源码提交/哈希/包体记录。`Deploy-FullRelease.ps1 -GameDir ... -PackageDirectory "<包目录>"` 验证当前分支 profile/扫描后部署。不能以 beta 通过代替两版实机验收。
 
 ---

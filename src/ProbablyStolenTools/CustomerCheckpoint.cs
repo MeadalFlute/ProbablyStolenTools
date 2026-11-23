@@ -55,7 +55,8 @@ namespace ProbablyStolenTools
 #endif
         internal static bool Restoring { get; private set; }
         internal static bool PatchesReady;
-        internal static bool Enabled => Plugin.CfgCustomerCheckpoint?.Value == true && PatchesReady;
+        internal static bool MaintenanceEnabled => Plugin.CfgCustomerCheckpoint?.Value == true && PatchesReady;
+        internal static bool Enabled => MaintenanceEnabled && OptionalModCompatibility.MemoryCheckpointsAllowed;
         internal static bool AutoCapture => Enabled && Plugin.CfgAutoCheckpoints?.Value == true;
         internal static string Status { get; private set; } = "Waiting for a new customer";
         internal static IReadOnlyList<Snapshot> Nodes => History.Items;
@@ -191,7 +192,8 @@ namespace ProbablyStolenTools
                 if (_visualProbeEpoch == _epoch && ReferenceEquals(probe, _active))
                     probe.Customer.Log(probe.Id, "next-frame");
             }
-            if (!Enabled) { if (History.Items.Count > 0 || Abandoned.Count > 0 || ClosedNode?.Graph != null) Clear("已禁用"); return; }
+            if (!Enabled && (History.Items.Count > 0 || Abandoned.Count > 0 || ClosedNode?.Graph != null))
+                Clear("已禁用");
             if (!AutoCapture)
             {
                 _armed = false;
@@ -199,7 +201,7 @@ namespace ProbablyStolenTools
                 _captureSince = _settledSince = 0;
                 ReturnGate.CancelPending();
                 SettleLog.Reset();
-                ShutterWatchdog();
+                if (MaintenanceEnabled) ShutterWatchdog();
                 return;
             }
             TryCaptureDayStart();
@@ -566,6 +568,9 @@ namespace ProbablyStolenTools
         /// <summary>玩家手动建立节点（默认 F9）：复用顾客节点的捕获逻辑，不依赖是否有顾客在场。</summary>
         internal static void CaptureManual()
         {
+            OptionalModCompatibility.Refresh();
+            if (!OptionalModCompatibility.MemoryCheckpointsAllowed)
+            { PanelNotice.Show(OptionalModCompatibility.MemoryCheckpointWarning, true); return; }
             if (!Enabled) { PanelNotice.Show("无法建立节点：回溯功能已关闭", true); return; }
             if (Restoring || Rewind.Restoring || Rewind.Busy)
             { PanelNotice.Show("无法建立节点：正在恢复存档或节点", true); return; }
@@ -750,6 +755,8 @@ namespace ProbablyStolenTools
 
         private static void Capture(PlayerStore store, bool closed, bool manual = false, bool dayStart = false, bool returned = false)
         {
+            OptionalModCompatibility.Refresh();
+            if (!OptionalModCompatibility.MemoryCheckpointsAllowed) return;
             if (!manual && !AutoCapture) return;
             Snapshot candidate = null;
             var timing = System.Diagnostics.Stopwatch.StartNew();
@@ -1101,6 +1108,9 @@ namespace ProbablyStolenTools
         internal static void Restore(Snapshot target)
         {
             if (Restoring || Rewind.Restoring) return;
+            OptionalModCompatibility.Refresh();
+            if (!OptionalModCompatibility.MemoryCheckpointsAllowed)
+            { PanelNotice.Show(OptionalModCompatibility.MemoryCheckpointWarning, true); return; }
             Observe();
             if (_faulted)
             {

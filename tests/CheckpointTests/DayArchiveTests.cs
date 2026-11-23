@@ -94,6 +94,49 @@ internal static class DayArchiveTests
             catalog.Refresh(root);
             check(!catalog.Entries.Any());
         }));
+        test("restore reads legacy names without enrolling them in owned cleanup", () => Temp(root =>
+        {
+            string latest = Add(root, 1, 94);
+            string legacy = Path.Combine(root, "old_checkpoint.es3");
+            File.Copy(latest, legacy);
+            var catalog = new CheckpointFileCatalog();
+            catalog.Refresh(root);
+            check(catalog.ReadForRestore(legacy)?.Day == 94 && catalog.Entries.Count() == 1);
+            check(catalog.Deduplicate(root, null) == 0 && File.Exists(legacy));
+            check(catalog.ReadForRestore(Path.Combine(root, "missing.es3")) == null);
+        }));
+        test("previous-day repeated reads reuse metadata and notice file changes and removals", () => Temp(root =>
+        {
+            string latest = Add(root, 2, 94);
+            var catalog = new CheckpointFileCatalog();
+            catalog.Refresh(root);
+            var cached = catalog.ReadForRestore(latest);
+            using (var locked = new FileStream(latest, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                catalog.Refresh(root);
+                check(ReferenceEquals(cached, catalog.ReadForRestore(latest)));
+            }
+            Add(root, 2, 95, cash: 12345);
+            check(catalog.ReadForRestore(latest)?.Cash == 12345);
+            File.Delete(latest);
+            catalog.Refresh(root);
+            check(catalog.ReadForRestore(latest) == null);
+        }));
+        test("restore retains larger UTF-8 saves accepted by the metadata character budget", () => Temp(root =>
+        {
+            string path = Add(root, 1, 94);
+            File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(new
+            {
+                padding = new string('\u4e2d', 6 * 1024 * 1024),
+                playerStore = new { value = new { saveSlotId = 2, runID = "a", playerCash = 100, storeState = 2 } },
+                storeStation = new { value = new { dayCounter = 94 } }
+            }, new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+            check(new FileInfo(path).Length > 16 * 1024 * 1024);
+            var catalog = new CheckpointFileCatalog();
+            catalog.Refresh(root);
+            check(catalog.Entries.Single().Metadata == null);
+            check(catalog.ReadForRestore(path)?.Day == 94);
+        }));
         test("locked duplicate deletion preserves all days and can be retried", () => Temp(root =>
         {
             string old = Add(root, 1, 95), newest = Add(root, 2, 95);

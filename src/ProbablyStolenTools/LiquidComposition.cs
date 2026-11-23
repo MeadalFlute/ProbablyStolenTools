@@ -50,6 +50,7 @@ namespace ProbablyStolenTools
             try
             {
                 if (item == null) return true;
+                if (OptionalModCompatibility.BrewingOwns(item)) return true;
                 if (item.IsTag("LIQUID_CONTAINER_DROPPER_TAG")) return true;
                 if (item.IsTag("GRADUATED_CONTAINER_TAG") && item.identifier != "water_pitcher"
                     && item.identifier != "water_tank") return true;
@@ -73,6 +74,7 @@ namespace ProbablyStolenTools
             try
             {
                 if (item == null || !item.IsTag("LIQUID_CONTAINER_TAG")) return null;
+                if (OptionalModCompatibility.BrewingOwns(item)) return null;
                 int capacity = ChemistryData.Capacity(item) / 1000;
                 if (ExtendedContainers ? capacity < 150 : capacity <= 0 || capacity > MaxVolumeMl) return null;
 

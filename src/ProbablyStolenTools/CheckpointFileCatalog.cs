@@ -49,6 +49,25 @@ namespace ProbablyStolenTools
                 .OrderByDescending(e => e.Ticks).FirstOrDefault();
         }
 
+        internal SaveMetadata ReadForRestore(string path)
+        {
+            try
+            {
+                var file = new FileInfo(path);
+                if (!file.Exists || (file.Attributes & FileAttributes.ReparsePoint) != 0) return null;
+                if (_entries.TryGetValue(file.FullName, out var entry) && entry.Metadata != null
+                    && entry.Length == file.Length && entry.Ticks == file.LastWriteTimeUtc.Ticks)
+                    return entry.Metadata;
+                // Legacy names and larger UTF-8 saves were accepted by rewind.
+                // Preserve that read path without enrolling them in owned-file cleanup.
+                return SaveMetadata.Read(File.ReadAllText(path).TrimStart('\uFEFF'));
+            }
+            catch (IOException) { return null; }
+            catch (UnauthorizedAccessException) { return null; }
+            catch (FormatException) { return null; }
+            catch (OverflowException) { return null; }
+        }
+
         internal int Deduplicate(string root, IEnumerable<string> protectedPaths)
         {
             Refresh(root);

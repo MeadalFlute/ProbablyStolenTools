@@ -111,6 +111,7 @@ public static partial class OfflineMonoFixture
         var game = Assembly.Load("Assembly-CSharp");
         var unity = Assembly.Load("UnityEngine.CoreModule");
         CheckAutomaticCheckpointGates(mod);
+        CheckBrewingCompatibility(mod, game);
         CheckManagedIdentities(mod);
         CheckVectorReaders(mod);
         CheckScalarComparisons(mod);

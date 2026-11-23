@@ -70,7 +70,9 @@ namespace ProbablyStolenTools
             object current = CustomerCheckpoint.Nodes.FirstOrDefault(node => node.Id == CustomerCheckpoint.ActiveId);
             if (!Selection.Begin(entries.Select(entry => entry.Node), current, direction))
             {
-                PanelNotice.Show(InspectionLocale.Text("暂无可用节点", "No checkpoints available"), true);
+                PanelNotice.Show(OptionalModCompatibility.MemoryCheckpointsAllowed
+                    ? InspectionLocale.Text("暂无可用节点", "No checkpoints available")
+                    : OptionalModCompatibility.MemoryCheckpointWarning, true);
                 return;
             }
             _historyRevision = CustomerCheckpoint.Revision;

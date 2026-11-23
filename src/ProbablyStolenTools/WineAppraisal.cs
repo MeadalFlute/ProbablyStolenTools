@@ -23,7 +23,8 @@ namespace ProbablyStolenTools
 
         /// <summary>未开始发酵（可以预打分）的酒瓶。</summary>
         internal static bool IsUnfermentedBottle(GameItem item)
-            => IsWineBottle(item) && TagInt(item, "WINE_CONTAINER_STATE") == 0;
+            => IsWineBottle(item) && TagInt(item, "WINE_CONTAINER_STATE") == 0
+                && !OptionalModCompatibility.BrewingOwns(item);
 
         /// <summary>返回要追加到鉴定摘要里的行；不相关时返回 null。</summary>
         internal static List<string> Lines(GameItem item)
