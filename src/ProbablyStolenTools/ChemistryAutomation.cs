@@ -219,6 +219,22 @@ namespace ProbablyStolenTools
         }
     }
 
+    // Native EndDrag tries Target after inserting into a container. VBE recipe
+    // ingredients must remain solid instead of immediately dissolving in that vessel.
+    [HarmonyPatch(typeof(GameItem), nameof(GameItem.CanTarget))]
+    internal static class BrewingIngredientTargetPatch
+    {
+        [HarmonyPostfix] private static void Postfix(GameItem __instance, GameItem targetItem, ref bool __result)
+        { if (__result && OptionalModCompatibility.BrewingRecipeTarget(__instance, targetItem)) __result = false; }
+    }
+
+    [HarmonyPatch(typeof(ChemicalHelper), nameof(ChemicalHelper.DissolveInto))]
+    internal static class BrewingIngredientDissolvePatch
+    {
+        [HarmonyPrefix] private static bool Prefix(GameItem chemicalItem, GameItem liquidContainer)
+            => !OptionalModCompatibility.BrewingRecipeTarget(chemicalItem, liquidContainer);
+    }
+
     [HarmonyPatch(typeof(GameGridInventory), nameof(GameGridInventory.MayHaveValidInventorySlot))]
     internal static class ChemistryBlendAdmissionPatch
     {

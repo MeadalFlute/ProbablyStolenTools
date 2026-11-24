@@ -17,6 +17,33 @@ namespace ProbablyStolenTools
             }
             catch { return false; }
         }
+
+        internal static bool MayInsert(GameGridInventory inventory, GameItem item)
+        {
+            if (item == null || !Allows(inventory) || GraphUtils.FindParentEquals(inventory, item)
+                || !GeneralHelper.MayOwnershipAcceptItem(item, inventory)) return false;
+            var shape = item.modifiedShape;
+            var space = inventory.inventoryShape;
+            if (shape == null || space == null
+                || (shape.width > space.width || shape.height > space.height)
+                    && (shape.width > space.height || shape.height > space.width)) return false;
+            // Keep native admission filters. Only the working-bay lock is omitted;
+            // precise placement/collision checks still run in the native slot finder.
+            return (item.mayInventoryAddItemFunc == null
+                    || item.mayInventoryAddItemFunc.InvokeAllReduce(item, inventory, InvokeFuncExtensions.BoolReduceOR))
+                && (inventory.mayInventoryAddItemFunc == null
+                    || inventory.mayInventoryAddItemFunc.InvokeAllReduce(item, inventory, InvokeFuncExtensions.BoolReduceOR));
+        }
+    }
+
+    [HarmonyPatch(typeof(GameGridInventory), nameof(GameGridInventory.MayHaveValidInventorySlot))]
+    internal static class MachineModuleAdmissionUnlockPatch
+    {
+        // A simple IsInsertLocked call can be inlined by Mono. Cover the actual
+        // admission boundary too, without temporarily changing native lock fields.
+        [HarmonyPostfix, HarmonyPriority(Priority.First)]
+        private static void Postfix(GameGridInventory __instance, GameItem item, ref bool __result)
+        { if (!__result && MachineModuleUnlock.Allows(__instance)) __result = MachineModuleUnlock.MayInsert(__instance, item); }
     }
 
     // Query-only override: existing locked bays work immediately and disabling

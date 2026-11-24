@@ -4,7 +4,7 @@ Previously Probably Stolen Tools. Only the display name changes: mod ID, DLLs, i
 
 English | [中文](README.md)
 
-A helper mod for **Probably Stolen**, currently **0.9.7**. The game uses Unity 2021.3.45f2 / Mono / x64 and its own **IMod / Harmony** loader; MelonLoader and BepInEx are not required. One package contains compatibility data for both **stable 0.46D** and **beta 1.0.0.16** and selects automatically at startup.
+A helper mod for **Probably Stolen**, currently **0.9.8**. The game uses Unity 2021.3.45f2 / Mono / x64 and its own **IMod / Harmony** loader; MelonLoader and BepInEx are not required. One package contains compatibility data for both **stable 0.46D** and **beta 1.0.0.16** and selects automatically at startup.
 
 ## Game Beta Branch
 
@@ -16,6 +16,7 @@ Maintainers use `release/universal/manifest.xml`; the single-branch entries rema
 
 - Neither expansion is required or bundled. Missing or disabled expansions leave vanilla behavior unchanged.
 - **Vanilla Brewing Expansion 1.4.4**: preserve expansion names and native tooltips for marked products and expansion recipes (nutrifruit/dream-cap bottles and brewing buckets). Do not apply vanilla berry-wine predictions, liquid renaming or accelerated chemistry to them. Ordinary berry wine remains unchanged. Unfermented expansion bottles receive no additional prediction from this mod. Existing graph capture retains expansion tags; live fermentation/overnight rewind still needs acceptance.
+- With the expansion enabled, nutrifruit/dream-cap drops into water jugs and brewing vessels no longer trigger the native drag handler's follow-up dissolution, including the first ingredient before `VBE_STATE` exists. Vanilla dissolution remains unchanged without the expansion.
 - **Claims & Uprisings**: **safe file-reload coexistence only, not full memory-rewind support** (originally audited at 1.1.18). First detection enables **Disable memory checkpoints** once and persists the handled mod ID. You may switch it off to force-enable unsupported memory rewind; that override survives restarts, but resulting bugs are unsupported. Removing the mod does not reset the switch. Independent room, resource and soldier state is not fully captured. While Claims is active, file reloads always use the full native lifecycle without extra customer/shutter repair; no save is requested.
 - Offline tests do not replace live combination testing. Details: `research/2026-11-23-optional-mod-compatibility.md`.
 
@@ -86,14 +87,15 @@ in Mods.
 - **Water quality labels**: tags water quality in real time and highlights mismatches in red.
 - **Chemistry assist**: independently select current percentage, predicted purity and grade; only current percentage is enabled by default. Empty containers show size/name, hydroponic seeds show the matching item name, and labels start at 150 mL with no maximum capacity cap.
 - **Composition details**: hold the rebindable item-details key (either Shift by default) over the shop tap to append water quality and every nonzero constituent's percentage while preserving its connection description; release restores native behavior. Over liquid containers it replaces the entire tooltip with Name / Amount / Share columns. Constituents sort by descending share. The primary component is orange and the rest white, with columns aligned using measured text widths. Amounts select uL/mL/L automatically; percentages use two decimal places, or `<0.01%` for smaller nonzero traces. Both switches default to on and work independently of the chemistry master switch.
+- Details also support droppers, measuring vessels and other containers below 150 mL. The minimum applies only to ordinary summary annotations, not held details; dropper/measuring-vessel auto-rename exclusions remain unchanged.
 - **Compact reagents**: acid, base, lipobond agent and reducing agent show only the main substance, chemical contaminants and heavy metals, including zero impurities. Tooltip auto naming prefixes a star when heavy metals are strictly below 0.10%; the item itself is not renamed.
 - **Unlock working machine modules** (default off): bypass only the working machine's module-bay locks, not batteries, ingredients, outputs or individually locked items. Turning it off immediately restores native lock queries without permanently changing lock fields.
 - **Auto-blend**: dropping blendable items into a blender follows the game's own blend rules and sound; different products stay separate and insufficient capacity is rejected early.
 - **Rapid extraction** (off by default): adding liquid to a container with a positive amount of alcohol converts the three mushroom-mash types into extracts using the original ratios, rounding and conditions.
 - **Rapid reactions** (off by default): a separate switch for the nine explicit non-thermal reactions, at most 512 extra steps per run, stopping when nothing changes. Existing saved choices are preserved.
 - **Rapid boiling** (default off): hotplates only. Fully remove each matching substance when its native condition is met: lipobond agent >55°C, alcohol >78.37°C, water >100°C, microbes >=70°C. Requires the chemistry master switch; other heat reactions and expansion brewing containers are untouched.
-- **Facility projections**: hold the details key over water purifiers, evaporators, hydroponics and fish tanks/RAS to see expected overnight output/removal and missing water/container/power warnings. No projection is added without the key.
-- **Wine labels**: hold the details key to see glowberry condition, expected unfermented-bottle quality, low-water/failure warnings and native-style contraband labels. Release restores native tooltips; wine information in the inspection summary also follows this key.
+- **Facility projections**: hold the details key over water purifiers, evaporators, hydroponics and fish tanks/RAS to see expected overnight output/removal. Missing water/container/power alerts also appear in ordinary tooltips. Purifiers report completion when the actual forecast removes nothing.
+- **Wine labels**: show glowberry condition, expected unfermented-bottle quality, low-water/failure warnings and native-style contraband labels directly, without holding a key. Inspection summaries also show wine information directly; the wine-annotation switch still controls both.
 - **Dialogue fast-forward**: advances ordinary customer small talk and stops at choices, SEC encounters and important dialogue.
 
 ### Logs
@@ -104,9 +106,18 @@ in Mods.
 ### Update Notes
 
 Once per version, after entering a save and closing the day/night report, a compact
-top-centered notice appears for three seconds. Click anywhere on it for scrollable
+top-centered notice appears for five seconds. Click anywhere on it for scrollable
 details. Displaying it persists acknowledgement even without a click. Other compact
 top windows are avoided on a best-effort basis, not a cross-mod layout guarantee.
+An independent 6px blue bar fills from empty to full over a static full-width gray track below the details link during the five-second display. Details also explain the Vanilla Brewing Expansion nutrifruit/water-jug compatibility guard.
+
+### Window Gestures
+
+- **Shift-drag window snapping**: hold either physical Shift while dragging a native movable window near another to snap adjacent edges into alignment. Separate switch, on by default.
+- **Shift-middle-click window pinning**: hold either physical Shift and middle-click a native movable window's title or empty background to pin it above peers. Most recently pinned stays highest; ordinary focus does not change pin order. Repeat to unpin. Closing clears its pin; disabling the setting clears all pins. Separate switch, on by default. Item/control clicks, drags and window opening do not pin; native menu/modal layers are not overridden.
+- Titles use a brown `[置顶]` marker in Chinese and `[PIN]` otherwise, without loading system fonts. These gestures remain physical Shift regardless of the item-details binding, and pin state is not written to saves or checkpoints.
+- **Pinned item details**: Shift-middle-click an item to pin or dismiss its detail view, including tap quality, liquid composition and machine projections; each feature's switch still applies. The tooltip follows the item and its owning window layer, not global always-on-top; closing an outer container or loading/restoring clears it. Pinning is disabled while holding the left button or dragging an item, group or window, preserving native middle-button flipping. Shift-left-click remains entirely native and never pins.
+- Announcement acknowledgement includes the version and content revision. This replacement includes machine module unlocking, real section separators and no blank paragraph lines.
 
 ---
 
@@ -119,10 +130,11 @@ top windows are avoided on a best-effort basis, not a cross-mod layout guarantee
 | `F7` | Return to before opening today |
 | `F8` | Show / hide the checkpoint panel |
 | `F9` | Create a manual checkpoint immediately |
-| `Shift` | Hold for item details, composition, wine labels and machine projections |
+| `Shift` | Hold for item details, composition and machine projections |
+| `Shift + middle-click` | Toggle item-detail pinning, or window pinning over its title (fixed gesture) |
 | Unbound | Quick reload save / reroll random (assignable in Settings) |
 
-All keys are rebindable: `F8` → Settings → Hotkeys. Click a row and press the new key; `Esc` cancels, `Backspace` restores that row's default, `Delete` disables the hotkey, and "Reset hotkeys" restores everything. A conflicting key is swapped automatically.
+Single-key actions and the details key are rebindable: `F8` → Settings → Hotkeys. Click a row and press the new key; `Esc` cancels, `Backspace` restores that row's default, `Delete` disables the hotkey, and "Reset hotkeys" restores everything. A conflicting key is swapped automatically. Snapping and pinning gestures still use physical Shift regardless of the details-key binding.
 
 > If a `dev.txt` file exists in the game folder (developer console), `F8` / `F9` clash with the game's own tools; the startup log warns about it. Regular players do not enable it.
 
@@ -251,7 +263,7 @@ For the current beta installation, use the beta manifest. Build the universal pa
 .\scripts\Deploy-FullRelease.ps1 -GameDir "<game folder>" -PackageDirectory "<output>\ProbablyStolenTools"
 ```
 
-Current development candidate: 0 warnings / 0 errors; **454** reference tests and **20** optional-mod tests pass in this round. The installed beta passes **92** Harmony targets, **76** fields, 16 protected-owner checks and the official scanner. Earlier passing records cover 13 save-action tests, 14 native history/settings IO fixtures and 11 player-tool assertions. New UI/heating needs live acceptance; original stable assemblies were not retested. The single-pass entity backend ships with 0.9.0.
+Current development candidate: 0 warnings / 0 errors; **469** reference tests and **22** optional-mod tests pass in this round. The installed beta passes **102** Harmony targets, **76** fields, 16 protected-owner checks and the official scanner. Vanilla and real-VBE game-Mono offline fixtures pass. Earlier passing records cover 13 save-action tests, 14 native history/settings IO fixtures and 11 player-tool assertions. Shift-middle-click timing and pinned full details need live acceptance; original stable assemblies were not retested. The single-pass entity backend ships with 0.9.0.
 
 `Snapshot.SemanticDevelopmentChecks` gates duplicate development snapshots and defaults to false for release. Enabling it adds time and memory to the primary and extra manual sample. Disabling it preserves complete preflight, verification, repair and necessary diagnostics. `Snapshot.SemanticEntityBlocks` controls the new backend. Restart the game after changing these settings.
 

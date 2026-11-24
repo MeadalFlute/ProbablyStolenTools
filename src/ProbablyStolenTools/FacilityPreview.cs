@@ -8,6 +8,12 @@ namespace ProbablyStolenTools
 {
     internal static class FacilityPreview
     {
+        private sealed class Preview
+        {
+            internal readonly RichTextBuilder Builder;
+            internal readonly bool WarningsOnly;
+            internal Preview(RichTextBuilder builder, bool warningsOnly) { Builder = builder; WarningsOnly = warningsOnly; }
+        }
         private static readonly HashSet<string> Reported = new();
         private static string T(string zh, string en) => InspectionLocale.Text(zh, en);
         private static GameItem Slot(GameItem machine, int index) =>
@@ -15,20 +21,21 @@ namespace ProbablyStolenTools
         private static int Performance(GameItem machine) => ChemistryData.Int(machine, "TOTAL_PERCENTAGE_PERFORMANCE_BONUS_INT");
         private static int Quality(GameItem machine) => ChemistryData.Int(machine, "TOTAL_PERCENTAGE_QUALITY_BONUS_INT");
 
-        internal static void AddTooltip(RichTextBuilder builder, GameItem item)
+        internal static void AddTooltip(RichTextBuilder builder, GameItem item, bool warningsOnly = false)
         {
-            if (Plugin.CfgChemistry?.Value != true || Plugin.CfgFacilityPreview?.Value != true
+            if (item == null || builder == null || Plugin.CfgChemistry?.Value != true || Plugin.CfgFacilityPreview?.Value != true
                 || !InspectionLocale.AnnotationsReady || CustomerCheckpoint.Restoring || Rewind.Restoring
                 || Plugin.Store() == null || item.IsTag("BROKEN_MACHINE_TAG")) return;
             try
             {
+                var preview = new Preview(builder, warningsOnly);
                 switch (item.identifier)
                 {
-                    case "water_purifier": Purifier(builder, item); break;
-                    case "evaporator": Evaporator(builder, item); break;
-                    case "hydroponic": Hydroponic(builder, item); break;
+                    case "water_purifier": Purifier(preview, item); break;
+                    case "evaporator": Evaporator(preview, item); break;
+                    case "hydroponic": Hydroponic(preview, item); break;
                     default:
-                        if (item.IsTag("RAS_TAG")) Fish(builder, item);
+                        if (item.IsTag("RAS_TAG") && !warningsOnly) Fish(preview, item);
                         break;
                 }
             }
@@ -39,26 +46,34 @@ namespace ProbablyStolenTools
             }
         }
 
-        private static void Header(RichTextBuilder b) => b.AddLine(
-            T("预期今夜产出：", "Expected tonight: "), true, RenderHandler.ColorPalette.DarkOrange);
-        private static void Values(RichTextBuilder b, string heading, IEnumerable<string> values,
+        private static void Header(Preview b)
+        {
+            if (!b.WarningsOnly) b.Builder.AddLine(
+                T("预期今夜产出：", "Expected tonight: "), true, RenderHandler.ColorPalette.DarkOrange);
+        }
+        private static void Values(Preview b, string heading, IEnumerable<string> values,
             RenderHandler.ColorPalette color = RenderHandler.ColorPalette.LightGreen)
         {
-            b.Add(heading, RenderHandler.ColorPalette.LightBlue);
+            if (b.WarningsOnly) return;
+            b.Builder.Add(heading, RenderHandler.ColorPalette.LightBlue);
             bool first = true;
             foreach (string value in values)
             {
-                if (!first) b.Add(T("、", ", "), RenderHandler.ColorPalette.LightBlue);
-                b.Add(value, color);
+                if (!first) b.Builder.Add(T("、", ", "), RenderHandler.ColorPalette.LightBlue);
+                b.Builder.Add(value, color);
                 first = false;
             }
-            if (first) b.Add(T("无", "None"), color);
-            b.NextLine();
+            if (first) b.Builder.Add(T("无", "None"), color);
+            b.Builder.NextLine();
         }
-        private static void Output(RichTextBuilder b, string text) => Outputs(b, new[] { text });
-        private static void Outputs(RichTextBuilder b, IEnumerable<string> values) => Values(b, T("产物：", "Output: "), values);
-        private static void Warning(RichTextBuilder b, string text) => Values(b,
-            T("产物：", "Output: "), new[] { text }, RenderHandler.ColorPalette.Red);
+        private static void Output(Preview b, string text) => Outputs(b, new[] { text });
+        private static void Outputs(Preview b, IEnumerable<string> values) => Values(b, T("产物：", "Output: "), values);
+        private static void Warning(Preview b, string text)
+        {
+            if (!b.WarningsOnly) b.Builder.Add(T("产物：", "Output: "), RenderHandler.ColorPalette.LightBlue);
+            b.Builder.Add(text, RenderHandler.ColorPalette.Red);
+            b.Builder.NextLine();
+        }
         private static string Amount(long ul) => (ul / 1000d).ToString("0.###", CultureInfo.InvariantCulture) + "mL";
         private static string WithAmount(string name, string amount) => name + T("（", " (") + amount + T("）", ")");
         private static string LiquidName(int i) => InspectionLocale.Label(
@@ -68,7 +83,7 @@ namespace ProbablyStolenTools
             if (string.IsNullOrEmpty(id)) return T("未知产物", "Unknown product");
             return InspectionLocale.Label(AnnotationLabels.FacilityItem(id));
         }
-        private static void Removed(RichTextBuilder b, int[] amounts)
+        private static void Removed(Preview b, int[] amounts)
         {
             var values = new List<string>();
             for (int i = 0; i < amounts.Length; i++)
@@ -100,7 +115,7 @@ namespace ProbablyStolenTools
                 return ChemistryData.Int(battery, "HYPERTECH_BATTERY_OUTPUT_INT") >= usage;
             return battery.IsTag("power_source_item") && ChemistryData.Int(battery, "power_source_item_energy") >= usage;
         }
-        private static bool CheckPower(RichTextBuilder b, GameItem machine)
+        private static bool CheckPower(Preview b, GameItem machine)
         {
             if (Powered(machine)) return true;
             Warning(b, T("电力不足／夜间供电服务未开启", "Insufficient power / overnight service disabled"));
@@ -114,19 +129,14 @@ namespace ProbablyStolenTools
             return count;
         }
 
-        private static void Purifier(RichTextBuilder b, GameItem machine)
+        private static void Purifier(Preview b, GameItem machine)
         {
             var bottle = Slot(machine, 2);
             if (bottle == null) return;
             Header(b);
-            if (!CheckPower(b, machine)) return;
             var parts = ChemistryData.Parts(bottle);
             long total = FacilityProjection.Total(parts);
             int water = Index("water");
-            if (total <= 0 || water < 0) { Output(b, T("无", "None")); return; }
-            int purity = (int)(parts[water] * 10000L / total);
-            double multiplier = Math.Max(0, MachinePurifier.GetDirtBonus(purity) + Performance(machine) / 100d) * 1.25;
-            long budget = (long)((Math.Min(total, 10000000) * 3 / 1000 + 25000) * multiplier);
             var priorities = new int[parts.Length];
             for (int i = 0; i < parts.Length; i++)
             {
@@ -135,19 +145,29 @@ namespace ProbablyStolenTools
                     : (liquid.identifier == "mineral" || liquid.identifier == "chemical_contaminant"
                         || liquid.identifier == "heavy_metal" ? 1000000 : 0) - liquid.particleSize;
             }
-            var result = FacilityProjection.Purify(parts, water, MachinePurifier.GetMaxPurityCap(Quality(machine)), budget, priorities);
+            int cap = MachinePurifier.GetMaxPurityCap(Quality(machine));
+            int purity = total > 0 && water >= 0 ? (int)(parts[water] * 10000L / total) : 0;
+            double multiplier = Math.Max(0, MachinePurifier.GetDirtBonus(purity) + Performance(machine) / 100d) * 1.25;
+            long budget = (long)((Math.Min(total, 10000000) * 3 / 1000 + 25000) * multiplier);
+            var result = FacilityProjection.Purify(parts, water, cap, budget, priorities);
+            if (!FacilityProjection.HasRemoval(parts, result))
+            {
+                Warning(b, T("净水完成，需换水", "Purification complete; replace water"));
+                return;
+            }
+            if (!CheckPower(b, machine) || b.WarningsOnly) return;
             Removed(b, Difference(parts, result));
             Output(b, WithAmount(LiquidName(water), (result[water] * 100d / total).ToString("0.##", CultureInfo.InvariantCulture) + "%"));
         }
 
-        private static void Evaporator(RichTextBuilder b, GameItem machine)
+        private static void Evaporator(Preview b, GameItem machine)
         {
             var input = Slot(machine, 2);
             if (input == null) return;
             Header(b);
             var receiver = Slot(machine, 3);
             if (receiver == null) Warning(b, T("缺少回收液容器（蒸发液将丢失）", "Missing recovery container (distillate lost)"));
-            if (!CheckPower(b, machine)) return;
+            if (!CheckPower(b, machine) || b.WarningsOnly) return;
             var flags = new bool[Liquid.Liquids.Count];
             for (int i = 0; i < flags.Length; i++) flags[i] = Liquid.Liquids[i].isEvaporative;
             int budget = checked((int)Math.Round(300000f * Math.Max(0f, 1f + Performance(machine) / 100f)));
@@ -168,7 +188,7 @@ namespace ProbablyStolenTools
             Outputs(b, values.Count == 0 ? new[] { T("无回收液", "No distillate") } : (IEnumerable<string>)values);
         }
 
-        private static void Fish(RichTextBuilder b, GameItem machine)
+        private static void Fish(Preview b, GameItem machine)
         {
             var grid = MachineRAS.GetTankGrid(machine);
             var bottle = MachineRAS.GetWaterSlot(machine)?.childItem;
@@ -201,15 +221,15 @@ namespace ProbablyStolenTools
             }
             if (water >= 0) result[water] = checked(result[water] + converted);
             Removed(b, Difference(parts, result));
-            b.AddLine(T("按当前鱼重估算；不含生长、死亡及滤芯效果", "Current fish weights; excludes growth, mortality and filters"),
+            b.Builder.AddLine(T("按当前鱼重估算；不含生长、死亡及滤芯效果", "Current fish weights; excludes growth, mortality and filters"),
                 true, RenderHandler.ColorPalette.Gray);
         }
 
-        private static void Hydroponic(RichTextBuilder b, GameItem machine)
+        private static void Hydroponic(Preview b, GameItem machine)
         {
             var seed = Slot(machine, 3);
             if (seed == null) return;
-            HydroponicWorkWatch.Shown(machine);
+            if (!b.WarningsOnly) HydroponicWorkWatch.Shown(machine);
             Header(b);
             var bottle = Slot(machine, 2);
             int use = HydroponicHelper.GetWaterUsePerCycle(seed);
@@ -220,7 +240,7 @@ namespace ProbablyStolenTools
                     Amount(FacilityProjection.Total(initial)) + "/" + (use * 1L).ToString(CultureInfo.InvariantCulture) + "mL"));
                 return;
             }
-            if (!CheckPower(b, machine)) return;
+            if (!CheckPower(b, machine) || b.WarningsOnly) return;
             string state = ChemistryData.String(machine, "MACHINE_STATE_TAG");
             if (state != "STATE_READY" && state != "STATE_WORKING") { Output(b, T("当前未工作", "Not processing")); return; }
             bool growing = state == "STATE_WORKING";
@@ -282,7 +302,7 @@ namespace ProbablyStolenTools
             => i < 0 || parts[i] <= 0 ? 0 : water < 0 || parts[water] <= 0 ? 1000000
                 : (int)Math.Min(1000000L, parts[i] * 10000L / parts[water]);
 
-        private static void Harvest(RichTextBuilder b, GameItem machine, GameItem seed, int health)
+        private static void Harvest(Preview b, GameItem machine, GameItem seed, int health)
         {
             string plant = ChemistryData.String(seed, "PLANT_ID_STRING");
             int ratio = ChemistryData.Int(machine, "MACHINE_QUALITY_RATIO_INT");

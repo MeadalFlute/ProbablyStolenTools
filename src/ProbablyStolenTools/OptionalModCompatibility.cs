@@ -118,6 +118,12 @@ namespace ProbablyStolenTools
             return false;
         }
 
+        internal static bool BrewingRecipeTarget(GameItem ingredient, GameItem container)
+            => ingredient != null && container != null
+                && (ingredient.identifier == "nutrifruit" || ingredient.identifier == "dream_cap")
+                && (container.identifier == "water_jug" || container.IsTag("WINE_CONTAINER_TAG"))
+                && (container.IsTag("VBE_STATE") || IsRunning(BrewingId));
+
         private static int _lastState = -1;
         private static float _noticeRetryAt;
 

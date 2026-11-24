@@ -10,6 +10,7 @@ void Check(bool condition) { if (!condition) throw new Exception("Assertion fail
 ManagedSnapshotTests.Run(Test, Check);
 RapidBoilingTests.Run(Test, Check);
 UpdateNoticeTests.Run(Test, Check);
+WindowSnapTests.Run(Test, Check);
 CompositionDetailsTests.Run(Test, Check);
 ChemistryRulesTests.Run(Test, (condition, message) => { if (!condition) throw new Exception(message); });
 CheckpointDayTests.Run(Test, Check);

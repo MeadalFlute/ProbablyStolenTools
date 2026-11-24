@@ -7,7 +7,7 @@ using MelonLoader;
 using UnityEngine;
 
 #if !MONO
-[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "QuickSL", "0.9.7", "Probably Stolen Tools contributors")]
+[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "QuickSL", "0.9.8", "Probably Stolen Tools contributors")]
 [assembly: MelonLoader.HarmonyDontPatchAll]
 #endif
 
@@ -21,7 +21,7 @@ namespace ProbablyStolenTools
 #endif
     {
         public const string Guid = "dsh.probablystolen.tools";
-        public const string Version = "0.9.7";
+        public const string Version = "0.9.8";
 
         internal static ModLogger LogSource;
         internal static Plugin Instance;
@@ -42,6 +42,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgChemistryLabels, CfgContainerAutoRename;
         internal static ConfigEntry<bool> CfgCompositionCurrent, CfgCompositionExpected, CfgCompositionGrade;
         internal static ConfigEntry<bool> CfgPipeComposition, CfgShiftComposition, CfgUnlockMachineModules;
+        internal static ConfigEntry<bool> CfgWindowSnap, CfgWindowPin;
         internal static ConfigEntry<bool> CfgChemistryExtendedContainers, CfgEmptyContainerNames;
         internal static ConfigEntry<bool> CfgAutoBlend, CfgAutoExtraction, CfgRapidReactions, CfgFacilityPreview, CfgRapidBoiling;
         internal static ConfigEntry<bool> CfgWineAppraisal;
@@ -226,6 +227,8 @@ namespace ProbablyStolenTools
             ChemistryAutomation.Reset();
             TooltipHooks.Disable();
             UpdateNotice.Disable();
+            NativeWindowGestures.Disable();
+            PinnedCompositionTooltip.Disable();
             OverlayBootstrap.Release();
         }
         private void Initialize()
@@ -276,6 +279,10 @@ namespace ProbablyStolenTools
                 "Hold the item-details key over a liquid container to replace its tooltip with read-only composition details.");
             CfgUnlockMachineModules = Config.Bind("Machines", "UnlockWorkingModules", false,
                 "Bypass running-machine module-bay locks only. Does not change lock fields, work tags or ingredient/battery locks.");
+            CfgWindowSnap = Config.Bind("Windows", "ShiftSnap", true,
+                "Hold either physical Shift key while dragging native movable windows to align adjacent edges.");
+            CfgWindowPin = Config.Bind("Windows", "ShiftPin", true,
+                "Shift-middle-click a native movable window title/background to toggle pinning. Disabled while holding the left button or dragging; most recently pinned stays highest.");
             CfgChemistry = Config.Bind("Chemistry", "Enabled", true,
                 "Master switch for chemistry annotations, tooltip naming, automatic blending, rapid extraction, rapid chemical reactions and facility previews.");
             CfgChemistry.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
@@ -386,7 +393,7 @@ namespace ProbablyStolenTools
             CfgKeyPanel = Config.Bind("Rewind", "KeyTogglePanel", KeyCode.F8,
                 "Show / hide the checkpoint panel.");
             CfgKeyDetails = Config.Bind("Inspection", "KeyItemDetails", KeyCode.LeftShift,
-                "Hold to show item details, wine annotations and machine projections. Either Shift works when bound to Shift; None disables details.");
+                "Hold to show item composition and machine projections. Wine annotations are always visible when enabled. Either Shift works when bound to Shift; None disables details.");
             CfgUpdateSeen = Config.Bind("Updates", "LastShownVersion", "",
                 "QuickSL version whose update banner has already been displayed, independent of whether it was clicked.");
 

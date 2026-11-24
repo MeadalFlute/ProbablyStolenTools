@@ -1,11 +1,27 @@
 # Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.9.7**（2026-11-24）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
+> 适用源码：正式版 **0.9.8**（2026-11-25）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
 > 旧版本文档（0.2.1–0.6.0、Demo、早期性能优化过程）归档在 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
 > 2026-11-23 兼容候选：本机 beta 已更新至 **1.0.0.16 / VERSION 100-Rev16**，游戏 MVID `d927a6e4-ae7a-4e65-a5e2-9f9624c131f3`；beta/universal manifest 已随之更新。下文 11-16 的 1.0.0.14、已部署哈希与规模是历史记录，不是本轮验收。当前新版单表 2915 类型/8235 字段/670208 bytes。可选 Mod 检测使用两版均有的公开 `ModLoader.Mods` 只读表，不调用旧正式版不存在的 `ModHelper.IsModRunning`，不引用第三方 DLL，也不新增权限/前置依赖。酿酒扩展 1.4.4 避免标注/改名/快速反应干预；领地与革命 1.1.18 暂时仅文件读档安全共存，启用时明确禁止内存建点/恢复并强制完整原生菜单载入，不能宣称完成完整实体回溯。维护范围/后续接入要求见 `research/2026-11-23-optional-mod-compatibility.md`。
 
 本文只写当前仍成立的事实。实现细节以源码为准，阶段记录与实验数据看 `research/`。
+
+2026-11-25 06:22 固定详情物品栏定位修复（覆盖下段部署）：不再把 Owner 的直接父 RectTransform 当作屏幕边界，改取所属 rootCanvas；物品与提示框实际尺寸统一换算到该 Canvas，再以位移修正左上角，保留 Transform 仍属于原窗口及原有关闭清理，不改 Shift 中键输入。469 参考、22 可选兼容、原版/真实 VBE Mono 离线及最终兼容扫描通过，Unity 实际物品栏/容器位置仍待复测。部署 `out/full-release-deploy-20261125-062239/deployment.json`，主 DLL `015C2016E86BA0CD32524B6DFB368874142B5DDFC401C308B33D2CE4FB182FAB`，双表 helper `6129A2D3A826044E7BDEBB0E3C04CDC7C3BEC70ADB80C4A96FE36A05D9892B23`；91 个存档目录文件校验不变，未导入设置、未重置公告、未启动游戏/提交/升版/推送。本增量不属于此前 DS 已审范围。
+
+2026-11-25 06:11 Shift中键固定修复（覆盖此前左键手势/部署）：实机复现原版ItemQuickTransferAltHandler在释放左键时独立执行快速搬运，UI点击postfix不能阻止；玩家同意把固定统一改为物理Shift＋中键，窗口置顶和完整物品详情均适用。新增TreeNodeRender.OnPointerDown前缀记录中键是否允许，点击完成时重新检查并消费；左键按住/按下、单件/批量/UI拖拽以及恢复/输入门控会拒绝或取消，无原生输入替换/业务回调注入，保留原版中键翻转和Shift左键搬运。DetailedCompositionTooltip.BuildDetails复用临时/固定两条路径，固定扩展至水龙头、化学成分及机器预览，原开关、跟随位置/层级/外层关闭/恢复清理保留。公告r4重播一次，中英文与设置同步。构建0警告/错误，468参考、22可选兼容、原版/真实VBE Mono及102挂点/76字段/官方仅files扫描通过；真实输入时序和机器固定视图待实机，不声称原DS已审此增量。部署`out/full-release-deploy-20261125-061141/deployment.json`，主DLL `FFCAD220DF7D8FF1CBAFFB197C1ADFC08562C1ECAC664DDCFDE7263F07F731BE`，helper `6129A2D3A826044E7BDEBB0E3C04CDC7C3BEC70ADB80C4A96FE36A05D9892B23`/808448 bytes，91个存档目录文件/设置/其他Mod/游戏程序集未变，未启动游戏/提交/升版/推送。增量交接`research/2026-11-25-middle-pin-followup.md`。
+
+2026-11-25 QoL DS审查处理：`2026-11-25-qol-final-review-ds.md`结论无发布阻断代码问题。本轮只统一最终交接为r3/七节/6px灰底/5秒及05:29部署，逐项处理见`research/2026-11-25-qol-final-review-receipt.md`；不改运行时代码、不重复部署、不重置公告、不提交/升版/推送。已复核安装主/helper哈希仍2A8F30EA…/6129A2D3…，并用安装产物隔离副本+Workshop真实VBE DLL额外跑Mono夹具通过（非业务拖放实测）。原生普通/机器Validate均会重算标题宽度；VBE独立原料仓入仓在后续CanTarget之前，暂不据假设移除守卫。净水报警顺序遵守玩家既定判据，不按审查UX建议擅改；固定提示窄屏/布局风险和profile覆盖部署校验建议保留后续专项。实机优先VBE首次入桶及Shift固定详情与置顶并发。
+
+2026-11-25 05:29 简报微调（覆盖下段当前候选）：用户已验收独立进度条可见。本次改从空到满、左向右填充，下层全宽灰色静态底轨，仍6px/5秒；详情末尾新增中英VBE营养果溶解入桶说明，保留真实分隔线且无空白自然段。修订号`:20261125-qol-r3`使其重播一次。构建0警告/错误、467参考、原版Mono离线回归及最终双表扫描通过，101挂点/76字段/仅files。最终部署`out/full-release-deploy-20261125-052936/deployment.json`，主DLL `2A8F30EA4FA6E0208A666451A7E4C52FACAAEFFC256A8B2207AD71BE0533CDDD`，helper `6129A2D3A826044E7BDEBB0E3C04CDC7C3BEC70ADB80C4A96FE36A05D9892B23`；先前05:28部署误带单beta helper，已立即用核对后的808448 bytes双profile表重新扫描/部署修正，不使用该中间部署。91个存档目录文件、设置、其他Mod及游戏程序集未变，未启动游戏/提交/升版/推送。
+
+2026-11-25 05:21 简报微调（覆盖下段部署及3秒/3px说明）：改为独立6px蓝色Image填充+深色底轨，位于“点此查看详情”下方，替代分隔线预制件子节点，布局明确预留高度并强制重建；展示5秒。普通tooltip警报移除“警报：/Warning:”前缀，保留红字。公告修订号推进至`:20261125-qol-r2`，使前一修订已读玩家下次正常进档后重播一次，不手改玩家XML。467参考、原版Mono离线回归和最终101挂点/76字段/仅files扫描通过；22可选兼容和真实VBE沿用05:13同批结果，未宣称本轮重跑。部署`out/full-release-deploy-20261125-052130/deployment.json`，主DLL `D1956D3A2C6D99868D76B5202593FF0AD55A6F37850B2029EF05DAF8A64A8A35`，helper不变；91个存档目录文件、设置、其他Mod及游戏程序集不变，未启动游戏。实际进度条可见性待实机确认。
+
+2026-11-25 05:13 QoL 最终候选（覆盖下方04:42/04:32交互及部署说明，正式版仍0.9.7）：物理Shift左键单击窗口标题/背景切换置顶，重复点击取消；按置顶顺序排列，中文棕色`[置顶]`、其他语言棕色`[PIN]`，已移除系统字体尝试。Shift单击液体物品固定成分明细，重复取消，纯Mod UI引用和Transform父子关系，不写入原生窗口业务图；跟随物品和所属窗口层级，外层容器关闭及加载/回溯时清除。机器警报也显示在普通tooltip中，完整预测仍需详情键；净水完成仅依据同一次Purify预测无实际去除量判断（含零预算），不另设污染物存在判定。新公告六节包含机器模组槽解锁，移除空白段行并保留真实分隔线；按`版本:20261125-qol`记账，不手动重置玩家设置。467参考、22可选兼容、原版/真实VBE游戏Mono离线回归及101挂点/76字段/官方仅files扫描通过，HardFlags/Error空；固定明细实际渲染/层级/输入及新警报仍待实机验收，不能把离线通过当Unity验收。部署`out/full-release-deploy-20261125-051339/deployment.json`，主DLL `5CB360AD211F75169B1966C4F8057C626CD4C834EB5305BBCC70C929EE0AD630`，helper `6129A2D3A826044E7BDEBB0E3C04CDC7C3BEC70ADB80C4A96FE36A05D9892B23` / 808448 bytes；91个存档目录文件、设置、其他Mod、游戏程序集校验未变，未启动游戏/提交/升版/推送。当前审查入口`research/2026-11-25-qol-final-review-handoff.md`，原始0.46D程序集仍未重验。
+
+2026-11-25 04:42 置顶交互回报修复（覆盖下段部署）：改为物理Shift+左键单击原生窗口标题/空白背景，不再在打开窗口时置顶；不处理物品、按钮、拖动及第二次双击事件。多个置顶严格按后置顶在上，普通聚焦不重排；Shift再点已置顶窗口将其升至最上。原生Shift+双击物品转移不改。Player.log确认TMP加载三种系统Font均失败，仍保留系统字体尝试及可靠`[PIN]`兜底，无新字体文件/权限/依赖；兜底原因每会话仅记一次。461参考、原版/真实VBE Mono、101挂点/76字段及仅files扫描通过，HardFlags/Error空。部署`out/full-release-deploy-20261125-044254/deployment.json`，主DLL `62202F25D4A0DF19B6DC7B9F0E1FEB67411EB9F4CC7F90A4CA8C1E2FD6C14D33`，双表helper不变，91个存档目录文件/原设置/其他Mod/游戏程序集不变，未启动游戏/提交/升版/推送；新交互待实机验收。
+
+2026-11-25 04:32 QoL/窗口手势候选（覆盖下方旧候选部署；正式版仍 0.9.7）：部署 `out/full-release-deploy-20261125-043230/deployment.json`，主 DLL `780EA25AD7CEB89700D935FE2C3BD780C103E4A4EC938432A46AFE292E4EE001`，双 profile helper 仍为 `6129A2D3A826044E7BDEBB0E3C04CDC7C3BEC70ADB80C4A96FE36A05D9892B23` / 808448 bytes。VBE 配方原料入桶拦截原生拖放后续 Target/Dissolve，包含第一个原料尚无扩展标签的情况；工作机器模组仓补准入入口，保留尺寸/过滤/所有权；荧光莓/酿酒恢复直接标注；按键成分明细支持量筒/滴管及不足150mL容器。新增 `Windows.ShiftSnap=true` / `Windows.ShiftPin=true` 独立中英设置，使用物理左右 Shift，只处理原生可移动 PixelWindow、同父层吸附/置顶，不跨原生模态层，不把图钉写入 titleString 或快照；关闭取消，字体回退最终 `[PIN]`。公告底部3px倒计时条，不重置已读版本。460参考、22可选兼容、原版/真实VBE游戏Mono离线回归通过；100挂点/76字段、官方能力仅files、HardFlags/Error空。91个存档目录文件/原配置/其他Mod/游戏程序集不变；未启动游戏、未提交/升版/推送。新交互和字体仍待实机验收；稳定版原始程序集未重验。交接 `research/2026-11-25-qol-window-gestures-handoff.md`。
 
 2026-11-24 13:13 DS 审查建议回执（当前部署，覆盖下方记录）：审查无必修项；采纳 P1 已展示更新时在 Ready 前短路（保存重试及存活简报关闭仍继续），P3 设置入口相同异常去重、成功后复位。其余建议/待实机项不据猜测改动。部署 `out/full-release-deploy-20261124-131337/deployment.json`，主 DLL `9F6EFACDBFE3AFBEB6CE7E4FF6C38CD00C64EC54CD5FAF761CCD96FC3F697E39`，双 profile helper 不变。454 固定参考、20 可选兼容、游戏 Mono 回归及最终双表 92 挂点/76 字段扫描通过，仅 files、HardFlags/Error 空。90 个存档目录文件与设置未变，不再重置简介、不启动游戏、不提交/升版/推送；版本仍 0.9.6。见 `research/2026-11-24-quicksl-features-review-receipt.md`；DS 本文所审 03:00 候选不包含后续简介排版、大存档节点修复及本次两项小修，不能称这些后续补丁已获独立审查。
 
@@ -78,7 +94,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 玩家静态表工具的独立分发流程：运行 `scripts/Publish-StaticLayoutTool.ps1`，取得 `out/static-layout-tool-日期/ProbablyStolenTools-StaticLayoutGenerator-win-x64.zip`。在 GitHub 单独上传附件，不能把工具 exe/Mono.Cecil 放进 Mod 的 Assemblies 或 Mods。玩家完整用法见 `tools/StaticSnapshotLayouts/PLAYER-README.md` 与 README；先退出游戏，执行 `Generate-StaticLayouts.ps1 -GameDir "<游戏目录>"`，默认只生成。`-Install` 只支持默认 `Mods/ProbablyStolenTools` 安装，会把旧 helper 备份到工具 generated 目录，再只替换 helper。该工具不能自动适配任意第三方类型或修复游戏 API 变化，不代表新版本已验收。工具附件已打包测试，但**尚未上传 GitHub Release**，不要声称已可从 Release 下载。推送使用用户临时 token，不写入文件、日志或命令历史。
 
 - 唯一真源：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
-- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.7**。
+- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.8**。
 - 纯文档提交不单独升版；推送前重新构建 → 两组测试 → 部署 → 正常 `push`（不 force）。
 - 推送使用用户临时 token，不写入文件、日志或命令历史。
 - `release/manifest.xml` 只声明稳定游戏 0.46D；`release/beta/manifest.xml` 只声明 beta 1.0.0.16；`release/universal/manifest.xml` 声明两版。三个 ModVersion 必须与 Plugin.Version 一起更新。不能仅改 manifest 宣称新版本兼容。

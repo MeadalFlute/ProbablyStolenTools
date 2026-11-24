@@ -109,6 +109,33 @@ Test("a mixed invalid recipe does not receive a misleading vanilla prediction", 
         new GameItem { identifier = "nutrifruit" } });
     Check(WineAppraisal.Describe(bottle) == null);
 });
+Test("brewing recipe targeting is protected before the first ingredient is inserted", () =>
+{
+    Add(OptionalModCompatibility.BrewingId);
+    foreach (string ingredientId in new[] { "nutrifruit", "dream_cap" })
+    foreach (var vessel in new[] { Bottle(), new GameItem { identifier = "water_jug" } })
+    {
+        var ingredient = new GameItem { identifier = ingredientId };
+        Check(vessel.Contents.Count == 0 && OptionalModCompatibility.BrewingRecipeTarget(ingredient, vessel));
+        vessel.Contents.Add(ingredient);
+        Check(OptionalModCompatibility.BrewingRecipeTarget(ingredient, vessel));
+        Check(vessel.Contents.Count == 1 && vessel.Contents[0] == ingredient && vessel.Tags.Count <= 1);
+    }
+    Check(!OptionalModCompatibility.BrewingRecipeTarget(new() { identifier = "bloomberry" }, Bottle()));
+    Check(!OptionalModCompatibility.BrewingRecipeTarget(new() { identifier = "nutrifruit" }, new() { identifier = "water_pitcher" }));
+    Check(!OptionalModCompatibility.BrewingRecipeTarget(null, Bottle()));
+    Check(!OptionalModCompatibility.BrewingRecipeTarget(new() { identifier = "nutrifruit" }, null));
+});
+Test("vanilla dissolution remains available without enabled expansion except marked legacy vessels", () =>
+{
+    Add(OptionalModCompatibility.BrewingId, false);
+    var ingredient = new GameItem { identifier = "nutrifruit" };
+    var vessel = new GameItem { identifier = "water_jug" };
+    Check(!OptionalModCompatibility.BrewingRecipeTarget(ingredient, vessel));
+    Check(!OptionalModCompatibility.BrewingRecipeTarget(ingredient, Bottle()));
+    vessel.Tags["VBE_STATE"] = 0;
+    Check(OptionalModCompatibility.BrewingRecipeTarget(ingredient, vessel));
+});
 Test("first conflict disables memory once and manual override survives refresh and re-enable", () =>
 {
     var claims = Add(OptionalModCompatibility.ClaimsId);

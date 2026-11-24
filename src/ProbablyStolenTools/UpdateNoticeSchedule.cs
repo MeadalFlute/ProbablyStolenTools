@@ -2,6 +2,10 @@ namespace ProbablyStolenTools
 {
     internal static class UpdateNoticeContent
     {
+        internal static float Progress(float now, float until, float duration) =>
+            float.IsNaN(now) || float.IsNaN(until) || duration <= 0 || float.IsNaN(duration)
+                ? 0 : 1 - System.Math.Max(0, System.Math.Min(1, (until - now) / duration));
+
         internal static string[] Sections(string text)
         {
             var sections = new System.Collections.Generic.List<string>();

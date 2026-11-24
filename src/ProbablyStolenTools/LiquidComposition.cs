@@ -70,13 +70,24 @@ namespace ProbablyStolenTools
         }
 
         internal static Analysis Analyze(GameItem item)
+            => AnalyzeCore(item, false);
+
+        internal static Analysis AnalyzeDetails(GameItem item)
+            => AnalyzeCore(item, true);
+
+        internal static bool SupportsDetails(GameItem item)
+            => item != null && item.IsTag("LIQUID_CONTAINER_TAG") && ChemistryData.Capacity(item) > 0
+                && !OptionalModCompatibility.BrewingOwns(item);
+
+        private static Analysis AnalyzeCore(GameItem item, bool details)
         {
             try
             {
                 if (item == null || !item.IsTag("LIQUID_CONTAINER_TAG")) return null;
                 if (OptionalModCompatibility.BrewingOwns(item)) return null;
                 int capacity = ChemistryData.Capacity(item) / 1000;
-                if (ExtendedContainers ? capacity < 150 : capacity <= 0 || capacity > MaxVolumeMl) return null;
+                if (details ? !SupportsDetails(item)
+                    : ExtendedContainers ? capacity < 150 : capacity <= 0 || capacity > MaxVolumeMl) return null;
 
                 var result = new Analysis { SizeName = SizeFor(capacity) };
                 var liquids = Liquid.Liquids;

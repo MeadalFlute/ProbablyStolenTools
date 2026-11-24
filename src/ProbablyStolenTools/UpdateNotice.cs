@@ -10,23 +10,29 @@ namespace ProbablyStolenTools
     {
         private static readonly UpdateNoticeSchedule Schedule = new();
         private static CustomUIWindow _banner, _details;
+        private static RectTransform _countdown;
+        private const float Duration = 5f;
+        private const float CountdownHeight = 6f;
         private static float _until, _retryAt;
         private static bool _savePending;
         private static long _saveRetry;
         private static string _error, _saveError;
         private static string T(string zh, string en) => InspectionLocale.Text(zh, en);
-        private static string Title => T("QuickSL更新说明", "QuickSL update notes");
+        private static string Title => T("QuickSL更新简报", "QuickSL update brief");
+        private static string NoticeId => Plugin.Version + ":20261125-qol-r4";
 
         internal static void Tick()
         {
             try
             {
                 SavePending();
+                if (_countdown != null)
+                    _countdown.anchorMax = new Vector2(UpdateNoticeContent.Progress(Time.unscaledTime, _until, Duration), 1);
                 if (_banner != null && _banner.IsAlive && (Time.unscaledTime >= _until || !InShop()))
                     CloseBanner();
                 if (Plugin.CfgUpdateSeen == null || Time.unscaledTime < _retryAt) return;
-                if (Schedule.Acknowledged(Plugin.Version, Plugin.CfgUpdateSeen.Value)) return;
-                if (!Schedule.Due(Plugin.Version, Plugin.CfgUpdateSeen.Value, Ready(), Time.unscaledTime)) return;
+                if (Schedule.Acknowledged(NoticeId, Plugin.CfgUpdateSeen.Value)) return;
+                if (!Schedule.Due(NoticeId, Plugin.CfgUpdateSeen.Value, Ready(), Time.unscaledTime)) return;
                 _retryAt = Time.unscaledTime + 1f;
                 ShowBanner();
             }
@@ -55,13 +61,32 @@ namespace ProbablyStolenTools
             var builder = CustomUIManager.Window("ProbablyStolenTools.update-banner", Title, CustomUIManager.LAYER_OVERLAY);
             if (builder == null) return;
             builder.SetSize(380f, 100f).SetDraggable(false).SetCloseOnEscape(false);
-            builder.AddLabel(T("新增Shift显示物品详情、化学辅助改为默认关闭、放大镜优化",
-                "New hold-key item details, optional chemistry automation now off by default, improved magnifier."), "summary");
+            builder.AddLabel(T("磁吸窗口、窗口置顶、酿酒回调、机器模组槽解锁",
+                "Window snapping and pinning, wine labels restored, working-machine module access."), "summary");
             var summary = builder.Last;
             builder.AddLabel(T("点此查看详情", "Click to view details"), "view-details");
             var footer = builder.Last;
             if (footer?.text != null)
                 footer.text.color = RenderHandler.GetColorFromPalette(RenderHandler.ColorPalette.LightBlue);
+            // A standalone layout row avoids separator-prefab masks and nested sizing.
+            var track = new GameObject("countdown-track", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            track.transform.SetParent(builder.CurrentContainer, false);
+            var trackLayout = track.GetComponent<LayoutElement>();
+            trackLayout.minHeight = trackLayout.preferredHeight = CountdownHeight;
+            trackLayout.flexibleHeight = 0;
+            trackLayout.flexibleWidth = 1;
+            var trackImage = track.GetComponent<Image>();
+            trackImage.color = new Color32(128, 128, 128, 255);
+            trackImage.raycastTarget = false;
+            var fill = new GameObject("countdown-fill", typeof(RectTransform), typeof(Image));
+            _countdown = (RectTransform)fill.transform;
+            _countdown.SetParent(track.transform, false);
+            _countdown.anchorMin = Vector2.zero;
+            _countdown.anchorMax = new Vector2(0, 1);
+            _countdown.offsetMin = _countdown.offsetMax = Vector2.zero;
+            var fillImage = fill.GetComponent<Image>();
+            fillImage.color = RenderHandler.GetColorFromPalette(RenderHandler.ColorPalette.LightBlue);
+            fillImage.raycastTarget = false;
             _banner = builder.Show();
             if (_banner == null || !_banner.IsAlive) return;
             float width = _banner.Rect.parent is RectTransform parent
@@ -77,21 +102,22 @@ namespace ProbablyStolenTools
             float chrome = Math.Max(28f, _banner.Rect.rect.height - _banner.ContentRoot.rect.height);
             float contentWidth = Math.Max(100f, _banner.ContentRoot.rect.width - (group?.padding.horizontal ?? 16));
             float contentHeight = FitLabel(summary, contentWidth, 14f) + FitLabel(footer, contentWidth, 12f)
-                + (group?.padding.vertical ?? 12) + 3f;
+                + (group?.padding.vertical ?? 12) + CountdownHeight + 2f * (group?.spacing ?? 3f);
             NativeUi.FixedSize(_banner, width, chrome + contentHeight);
+            CustomUIBuilder.RebuildLayout(_banner.ContentRoot);
             if (_banner.frame?.closeButton != null) _banner.frame.closeButton.gameObject.SetActive(false);
             var click = _banner.root.AddComponent<Button>();
             click.targetGraphic = _banner.root.GetComponent<Graphic>();
             click.navigation = new Navigation { mode = Navigation.Mode.None };
             click.onClick.AddListener(OpenDetails);
             PlaceBanner();
-            _until = Time.unscaledTime + 3f;
+            _until = Time.unscaledTime + Duration;
             // Display, not click, consumes this version's one-time notice.
-            Schedule.Shown(Plugin.Version);
+            Schedule.Shown(NoticeId);
             var config = Plugin.Instance.Config;
             bool autoSave = config.SaveOnConfigSet;
             config.SaveOnConfigSet = false;
-            try { Plugin.CfgUpdateSeen.Value = Plugin.Version; }
+            try { Plugin.CfgUpdateSeen.Value = NoticeId; }
             finally { config.SaveOnConfigSet = autoSave; }
             _savePending = true;
             _saveRetry = 0;
@@ -151,25 +177,31 @@ namespace ProbablyStolenTools
 
         private static string DetailsText()
         {
-            var binding = Plugin.CfgKeyDetails.Value;
-            string key = binding == KeyCode.LeftShift || binding == KeyCode.RightShift ? "Shift" : Plugin.KeyName(binding);
             return T(
-                "Shift详情：\n\n按住" + key + "，将鼠标指向物品，会替换Tooltips以展示物品详情，松开恢复。\n\n"
-                + "此前的酿酒辅助、机器产物预览均已经并入Shift详情。另外追加查看水质详情的功能（包括水龙头）\n\n"
-                + "---\n\n化学辅助调整：\n\n化学辅助现在默认关闭“一键萃取”和“反应加速”功能，有需要可以在设置中打开。\n\n"
-                + "追加子功能“快速烧开水”：容器在加热板中温度达到阈值时，立即移除全部的脂合剂/酒精/水/微生物\n\n"
-                + "---\n\n双击放大镜优化：\n\n在鉴定页打开时，双击可鉴定物品，会关闭当前鉴定页，然后打开新的。\n\n"
-                + "---\n\nMod兼容：\n\n现在Mod遇到暂时不兼容的第三方Mod后，会禁用内存节点功能，并弹出警告。\n\n"
-                + "会触发警告的mod列表由玩家反馈组成，虽然不兼容，但部分通用部分是可以正常工作的。\n\n"
-                + "如果你愿意接受丢物品的风险，可以在设置中重新启用内存节点。",
-                "Hold-key details:\n\nHold " + key + " while pointing at an item to replace its tooltip with details. Release to restore it.\n\n"
-                + "Wine annotations and machine projections now appear in hold-key details, along with liquid composition (including the shop tap).\n\n"
-                + "---\n\nChemistry assistance:\n\nRapid extraction and rapid reactions default to off. Enable them in settings if needed.\n\n"
-                + "New optional rapid boiling: hotplate containers lose all lipobond agent/alcohol/water/microbes once their native temperature conditions are met.\n\n"
-                + "---\n\nDouble-click magnifier:\n\nDouble-click another inspectable item with the inspection page open to close that page and inspect the new item.\n\n"
-                + "---\n\nMod compatibility:\n\nTemporarily incompatible third-party mods disable memory checkpoints and trigger a warning.\n\n"
-                + "The warning list comes from player reports. Some common functionality may still work.\n\n"
-                + "You may re-enable memory checkpoints in settings if you accept the risk of losing items.");
+                "磁吸窗口：\n按住Shift拖动窗口时，会尝试将窗口对齐。\n---\n"
+                + "窗口置顶：\n按住Shift并用鼠标中键点击窗口标题将其置顶，再次点击取消置顶。\n---\n"
+                + "酿酒回调：\n荧光莓标注和酿酒品质预测不再要求按住Shift。\n---\n"
+                + "机器模组槽解锁：\n解锁运行中的机器（比如水培系统）的模组槽，允许你拆卸模组。\n"
+                + "默认关闭，需要在设置中开启。\n---\n"
+                + "化学辅助：\n水质详情现在支持小容器，比如量筒和滴管。\n"
+                + "按住Shift并用鼠标中键点击物品，可以固定或取消固定详情，包括水质、化学成分和机器产物预测。\n"
+                + "按住鼠标左键或拖拽期间不会触发固定，原版中键翻转不受影响。\n"
+                + "机器产物预测中的警报信息现在会在常规tooltips中显示。\n---\n"
+                + "更新公告：\n更新公告现在会显示进度条。\n---\n"
+                + "Vanilla Brewing Expansion适配：\n安装有原版酿酒拓展 | Vanilla Brewing Expansion模组时，QuickSL会阻止营养果溶解进桶装水的操作。\n"
+                + "但在此提一嘴，这是原版机制，不是我们的BUG…",
+                "Window snapping:\nHold Shift while dragging a window to align it with nearby windows.\n---\n"
+                + "Window pinning:\nShift-middle-click a window title to pin it; repeat to unpin.\n---\n"
+                + "Wine labels restored:\nGlowberry labels and wine quality predictions no longer require Shift.\n---\n"
+                + "Machine module slots:\nUnlock module slots on running machines (such as hydroponic systems) so you can remove modules.\n"
+                + "Disabled by default; enable it in settings.\n---\n"
+                + "Chemistry assistance:\nLiquid details now support small vessels such as measuring cylinders and droppers.\n"
+                + "Shift-middle-click an item to pin or unpin its details, including water quality, composition and machine projections.\n"
+                + "Pinning is disabled while holding the left button or dragging; native middle-button flipping is preserved.\n"
+                + "Machine projection warnings now appear in ordinary tooltips.\n---\n"
+                + "Update notices:\nUpdate notices now include a countdown progress bar.\n---\n"
+                + "Vanilla Brewing Expansion compatibility:\nWhen Vanilla Brewing Expansion is installed, QuickSL prevents nutrifruit from dissolving into water jugs.\n"
+                + "A quick note: this is a vanilla game mechanic, not a QuickSL bug...");
         }
 
         private static void OpenDetails()
@@ -208,7 +240,7 @@ namespace ProbablyStolenTools
             }
         }
 
-        private static void CloseBanner() { _banner?.Close(); _banner = null; }
+        private static void CloseBanner() { _banner?.Close(); _banner = null; _countdown = null; }
         internal static void Disable()
         {
             SavePending();

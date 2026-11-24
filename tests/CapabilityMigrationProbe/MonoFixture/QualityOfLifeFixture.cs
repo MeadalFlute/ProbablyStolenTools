@@ -79,6 +79,7 @@ public static partial class OfflineMonoFixture
             object[] result = { machine };
             mod.GetType("ProbablyStolenTools.MachineModuleDragUnlockPatch", true).GetMethod("Postfix", All).Invoke(null, result);
             if (result[0] != null) throw new Exception("Explicit native module drag blocker was not bypassed.");
+            CheckModuleAdmission(mod, game, bay);
             tagType.GetField("valueEnabled", All).SetValue(tag, false);
             if (Allowed(bay)) throw new Exception("Non-working lock was bypassed.");
             tagType.GetField("valueEnabled", All).SetValue(tag, true);
@@ -93,11 +94,172 @@ public static partial class OfflineMonoFixture
             CheckRapidBoiling(mod, game);
             CheckItemDetailsInput(mod, game);
             CheckMagnifierBoundary(mod, game);
+            CheckSmallContainerDetails(mod, game);
+            CheckMiddlePinRejections(mod);
+            CheckPinnedCompositionLifecycle(mod, game);
         }
         finally
         {
             for (int i = 0; i < fields.Length; i++) plugin.GetField(fields[i], All).SetValue(null, old[i]);
         }
+    }
+
+    private static void CheckMiddlePinRejections(Assembly mod)
+    {
+        var gestures = mod.GetType("ProbablyStolenTools.NativeWindowGestures", true);
+        var pressed = gestures.GetMethod("PointerPressed", All);
+        var clicked = gestures.GetMethod("ConsumePinClick", All);
+        var armed = gestures.GetField("_pinPressAllowed", All);
+        var pointerId = gestures.GetField("_pinPointerId", All);
+        object oldArmed = armed.GetValue(null), oldPointer = pointerId.GetValue(null);
+        var pointerType = pressed.GetParameters()[0].ParameterType;
+        var button = pointerType.GetProperty("button", All);
+        var pointer = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(pointerType);
+        void Button(string name) => button.SetValue(pointer, Enum.Parse(button.PropertyType, name));
+        try
+        {
+            armed.SetValue(null, false);
+            if ((bool)clicked.Invoke(null, new object[] { null })) throw new Exception("Null pin click accepted.");
+            Button("Left");
+            if ((bool)clicked.Invoke(null, new[] { pointer })) throw new Exception("Left click still triggered pinning.");
+            Button("Right");
+            if ((bool)clicked.Invoke(null, new[] { pointer })) throw new Exception("Right click triggered pinning.");
+            Button("Middle");
+            if ((bool)clicked.Invoke(null, new[] { pointer })) throw new Exception("Unarmed middle click triggered pinning.");
+            armed.SetValue(null, true);
+            pointerId.SetValue(null, 10);
+            pointerType.GetProperty("pointerId", All).SetValue(pointer, 11);
+            if ((bool)clicked.Invoke(null, new[] { pointer }) || (bool)armed.GetValue(null))
+                throw new Exception("Mismatched pointer was accepted or retained its pin gesture.");
+            armed.SetValue(null, true);
+            Button("Left");
+            pressed.Invoke(null, new[] { pointer });
+            if ((bool)armed.GetValue(null)) throw new Exception("Left-button press did not cancel pending pinning.");
+            Console.WriteLine("PASS actual game Mono middle-pin rejection: left/right/null/unarmed/mismatched pointer excluded, pending gesture consumed and left press cancels; live modifier/drag sampling requires Unity.");
+        }
+        finally { armed.SetValue(null, oldArmed); pointerId.SetValue(null, oldPointer); }
+    }
+
+    private static void CheckPinnedCompositionLifecycle(Assembly mod, Assembly game)
+    {
+        var pinned = mod.GetType("ProbablyStolenTools.PinnedCompositionTooltip", true);
+        var entries = (IList)pinned.GetField("Entries", All).GetValue(null);
+        if (entries.Count != 0) throw new Exception("Pinned-composition fixture requires initially empty UI state.");
+        var type = pinned.GetNestedType("Entry", All);
+        object Window() => System.Runtime.Serialization.FormatterServices.GetUninitializedObject(game.GetType("PixelWindow", true));
+        var owner = Window();
+        var outer = Window();
+        var unrelated = Window();
+        void Add(params object[] windows)
+        {
+            var entry = Activator.CreateInstance(type, true);
+            var dependencies = (IList)type.GetField("Containers", All).GetValue(entry);
+            foreach (var window in windows) dependencies.Add(window);
+            entries.Add(entry);
+        }
+        try
+        {
+            Add(owner, outer);
+            Add(unrelated);
+            pinned.GetMethod("Closed", All).Invoke(null, new[] { outer });
+            if (entries.Count != 1) throw new Exception("Outer container close did not remove only its pinned details.");
+            pinned.GetMethod("Closed", All).Invoke(null, new[] { owner });
+            if (entries.Count != 1) throw new Exception("Unrelated pinned details were removed.");
+            pinned.GetMethod("Disable", All).Invoke(null, null);
+            if (entries.Count != 0) throw new Exception("Pinned UI reset retained references.");
+        }
+        finally { entries.Clear(); }
+        Console.WriteLine("PASS actual game Mono pinned-composition ownership: outer close, unrelated-window isolation and reset release; live placement/raycast/rendering require Unity.");
+    }
+
+    private static bool RejectModule(object item, object inventory) => false;
+    private static bool AcceptModule(object item, object inventory) => true;
+
+    private static void CheckModuleAdmission(Assembly mod, Assembly game, object bay)
+    {
+        object Data(string name) => System.Runtime.Serialization.FormatterServices.GetUninitializedObject(game.GetType(name, true));
+        object Shape(int w, int h)
+        {
+            var shape = Data("GridShapeBuilder");
+            shape.GetType().GetProperty("width", All).SetValue(shape, w);
+            shape.GetType().GetProperty("height", All).SetValue(shape, h);
+            return shape;
+        }
+        var item = Data("GameItemElement");
+        var tags = Data("TagSystem");
+        var tagType = game.GetType("TagState", true);
+        tags.GetType().GetField("<dict>k__BackingField", All).SetValue(tags,
+            Activator.CreateInstance(typeof(Dictionary<,>).MakeGenericType(typeof(string), tagType)));
+        var itemType = game.GetType("GameItem", true);
+        itemType.GetProperty("modifiedState", All).SetValue(item, tags);
+        itemType.GetProperty("modifiedShape", All).SetValue(item, Shape(2, 1));
+        bay.GetType().GetProperty("inventoryShape", All).SetValue(bay, Shape(1, 2));
+        var gridFilter = game.GetType("GameInventoryFunc", true).GetProperty("mayInventoryAddItemFunc", All);
+        var itemFilter = game.GetType("GameItemFunc", true).GetProperty("mayInventoryAddItemFunc", All);
+        Delegate Filter(Type type, string name) => Delegate.CreateDelegate(type,
+            typeof(OfflineMonoFixture).GetMethod(name, All));
+        var patch = mod.GetType("ProbablyStolenTools.MachineModuleAdmissionUnlockPatch", true).GetMethod("Postfix", All);
+        bool Apply(object inventory, object candidate)
+        {
+            object[] args = { inventory, candidate, false };
+            patch.Invoke(null, args);
+            return (bool)args[2];
+        }
+        if (!Apply(bay, item) || Apply(bay, null)) throw new Exception("Working bay admission did not allow a rotated fit or rejected null incorrectly.");
+        gridFilter.SetValue(bay, Filter(gridFilter.PropertyType, "RejectModule"));
+        if (Apply(bay, item)) throw new Exception("Working bay bypassed module-type filter.");
+        gridFilter.SetValue(bay, Filter(gridFilter.PropertyType, "AcceptModule"));
+        itemFilter.SetValue(item, Filter(itemFilter.PropertyType, "RejectModule"));
+        if (Apply(bay, item)) throw new Exception("Working bay bypassed item filter.");
+        itemFilter.SetValue(item, null);
+        if (!Apply(bay, item)) throw new Exception("Working bay rejected an allowed module.");
+        itemType.GetProperty("modifiedShape", All).SetValue(item, Shape(3, 3));
+        if (Apply(bay, item)) throw new Exception("Working bay bypassed size admission.");
+        if (Apply(null, item)) throw new Exception("Working bay admission escaped inventory identity.");
+        gridFilter.SetValue(bay, null);
+        Console.WriteLine("PASS actual game Mono module admission: rotated fit, module/item filters, oversized/null rejection; native lock fields unchanged.");
+    }
+
+    private static void CheckSmallContainerDetails(Assembly mod, Assembly game)
+    {
+        object Data(string name) => System.Runtime.Serialization.FormatterServices.GetUninitializedObject(game.GetType(name, true));
+        var item = Data("GameItemElement");
+        var itemType = game.GetType("GameItem", true);
+        var tagType = game.GetType("TagState", true);
+        var tags = Data("TagSystem");
+        var dict = (IDictionary)Activator.CreateInstance(typeof(Dictionary<,>).MakeGenericType(typeof(string), tagType));
+        void Tag(string key, int value)
+        {
+            var tag = Data("TagState");
+            tagType.GetField("valueEnabled", All).SetValue(tag, true);
+            tagType.GetField("valueInt", All).SetValue(tag, value);
+            dict[key] = tag;
+        }
+        tags.GetType().GetField("<dict>k__BackingField", All).SetValue(tags, dict);
+        itemType.GetProperty("modifiedState", All).SetValue(item, tags);
+        Tag("LIQUID_CONTAINER_TAG", 1);
+        var supports = mod.GetType("ProbablyStolenTools.LiquidComposition", true).GetMethod("SupportsDetails", All);
+        var noRename = mod.GetType("ProbablyStolenTools.LiquidComposition", true).GetMethod("NoRename", All);
+        foreach (string marker in new[] { "LIQUID_CONTAINER_DROPPER_TAG", "GRADUATED_CONTAINER_TAG" })
+        {
+            Tag(marker, 1);
+            foreach (int capacity in new[] { 1, 1000, 10000, 100000, 149999 })
+            {
+                Tag("LIQUID_CONTAINER_CAPACITY", capacity);
+                if (!(bool)supports.Invoke(null, new[] { item }) || !(bool)noRename.Invoke(null, new[] { item }))
+                    throw new Exception("Small vessel details inherited rename limits.");
+            }
+            dict.Remove(marker);
+        }
+        Tag("LIQUID_CONTAINER_CAPACITY", 0);
+        if ((bool)supports.Invoke(null, new[] { item })) throw new Exception("Invalid-capacity vessel admitted.");
+        Tag("LIQUID_CONTAINER_CAPACITY", 1000);
+        Tag("VBE_STATE", 1);
+        if ((bool)supports.Invoke(null, new[] { item })) throw new Exception("VBE details exclusion lost.");
+        dict.Remove("VBE_STATE");
+        dict.Remove("LIQUID_CONTAINER_TAG");
+        if ((bool)supports.Invoke(null, new[] { item })) throw new Exception("Non-liquid vessel admitted.");
+        Console.WriteLine("PASS actual game Mono small vessel details: dropper/graduated 1uL-149999uL, no renaming, invalid capacity/non-liquid/VBE exclusion; live localized rows require Unity.");
     }
 
     private static void CheckItemDetailsInput(Assembly mod, Assembly game)

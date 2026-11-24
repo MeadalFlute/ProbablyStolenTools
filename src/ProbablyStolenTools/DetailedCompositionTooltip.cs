@@ -20,7 +20,7 @@ namespace ProbablyStolenTools
         internal static List<CompositionDetails.Row> ContainerRows(GameItem item)
         {
             if (item == null || item.identifier == "faucet" || !item.IsTag("LIQUID_CONTAINER_TAG")) return null;
-            var analysis = LiquidComposition.Analyze(item);
+            var analysis = LiquidComposition.AnalyzeDetails(item);
             if (analysis == null) return null;
             return CompositionDetails.Rows(ChemistryData.Ids(), ChemistryData.Parts(item), analysis?.TopIdentifier);
         }
@@ -32,7 +32,8 @@ namespace ProbablyStolenTools
             return true;
         }
 
-        internal static void AddRows(RichTextBuilder builder, List<CompositionDetails.Row> rows, bool pipe)
+        internal static void AddRows(RichTextBuilder builder, List<CompositionDetails.Row> rows, bool pipe,
+            TextMeshProUGUI renderer = null)
         {
             if (rows == null || rows.Count == 0)
             {
@@ -55,7 +56,7 @@ namespace ProbablyStolenTools
             }
             // TMP tab stops depend on each glyph's width. Absolute column stops
             // measured with the actual tooltip font align both CJK and Latin names.
-            var renderer = OverlayHandler.current?.GetTooltipWindow()?.handler?.GetComponentInChildren<TextMeshProUGUI>();
+            renderer ??= OverlayHandler.current?.GetTooltipWindow()?.handler?.GetComponentInChildren<TextMeshProUGUI>();
             double Measure(string value) => renderer != null ? renderer.GetPreferredValues(value).x : value.Length * 16.0;
             double gap = renderer != null ? Math.Max(8, renderer.fontSize * 0.75) : 16;
             string[] lines;
@@ -129,15 +130,13 @@ namespace ProbablyStolenTools
             {
                 if (item?.identifier == "faucet")
                 {
-                    if (PipeDetailsEnabled(ShiftHeld) && InspectionLocale.AnnotationsReady && TryPipePurity(item, out int purity))
+                    if (PipeDetailsEnabled(ShiftHeld) && InspectionLocale.AnnotationsReady)
                     {
                         if (ReferenceEquals(result, _lastFaucetResult)) return;
-                        var builder = new RichTextBuilder(100);
-                        builder.AddLine(InspectionLocale.Label(AnnotationLabels.WaterHeading) + ": "
-                            + InspectionLocale.Label(AnnotationLabels.Water(purity)), color: RenderHandler.ColorPalette.Green);
-                        AddRows(builder, PipeRows(purity), true);
+                        var details = BuildDetails(item);
+                        if (details == null) return;
                         // Preserve every native layer, including the connection description.
-                        result = Append(result, builder.Build());
+                        result = Append(result, details);
                         _lastFaucetResult = result;
                     }
                     return;
@@ -153,15 +152,35 @@ namespace ProbablyStolenTools
                 || !ShiftHeld) return;
             try
             {
-                var rows = ShiftEnabled ? ContainerRows(item) : null;
-                var builder = new RichTextBuilder(72);
-                if (rows != null) AddRows(builder, rows, false);
-                WineAppraisal.AddTooltip(builder, item);
-                FacilityPreview.AddTooltip(builder, item);
-                var details = builder.Build();
-                if (!string.IsNullOrWhiteSpace(details.nakedText)) result = details;
+                var details = BuildDetails(item);
+                if (details != null) result = details;
             }
             catch (Exception e) { Warn(e); }
+        }
+
+        internal static RichText BuildDetails(GameItem item, TextMeshProUGUI renderer = null)
+        {
+            if (item == null || !InspectionLocale.AnnotationsReady) return null;
+            var builder = new RichTextBuilder(item.identifier == "faucet" ? 100 : 72);
+            if (item.identifier == "faucet")
+            {
+                if (Plugin.CfgPipeComposition?.Value != true || !TryPipePurity(item, out int purity)) return null;
+                builder.AddLine(InspectionLocale.Label(AnnotationLabels.WaterHeading) + ": "
+                    + InspectionLocale.Label(AnnotationLabels.Water(purity)), color: RenderHandler.ColorPalette.Green);
+                AddRows(builder, PipeRows(purity), true, renderer);
+            }
+            else
+            {
+                var rows = ShiftEnabled ? ContainerRows(item) : null;
+                if (rows != null)
+                {
+                    AddRows(builder, rows, false, renderer);
+                    WineAppraisal.AddTooltip(builder, item);
+                }
+                FacilityPreview.AddTooltip(builder, item);
+            }
+            var details = builder.Build();
+            return string.IsNullOrWhiteSpace(details.nakedText) ? null : details;
         }
 #endif
 

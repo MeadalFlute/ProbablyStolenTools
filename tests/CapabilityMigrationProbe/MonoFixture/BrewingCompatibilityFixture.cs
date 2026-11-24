@@ -49,6 +49,22 @@ public static partial class OfflineMonoFixture
         if ((bool)mod.GetType("ProbablyStolenTools.ChemistryAutomation", true).GetMethod("Compatible", All)
             .Invoke(null, new object[] { items[0], items[1], Array.Empty<string>() }))
             throw new Exception("Automatic blending must leave marked brewing outputs alone.");
+        var guard = mod.GetType("ProbablyStolenTools.BrewingIngredientDissolvePatch", true).GetMethod("Prefix", All);
+        var targetGuard = mod.GetType("ProbablyStolenTools.BrewingIngredientTargetPatch", true).GetMethod("Postfix", All);
+        itemType.GetProperty("identifier", All).SetValue(items[1], "water_jug");
+        foreach (string ingredient in new[] { "nutrifruit", "dream_cap" })
+        {
+            itemType.GetProperty("identifier", All).SetValue(items[0], ingredient);
+            if ((bool)guard.Invoke(null, new object[] { items[0], items[1] }))
+                throw new Exception("Expansion ingredient dissolution was not blocked.");
+            object[] targetArgs = { items[0], items[1], true };
+            targetGuard.Invoke(null, targetArgs);
+            if ((bool)targetArgs[2]) throw new Exception("Expansion ingredient target was not blocked.");
+        }
+        itemType.GetProperty("identifier", All).SetValue(items[0], "bloomberry");
+        if (!(bool)guard.Invoke(null, new object[] { items[0], items[1] }))
+            throw new Exception("Unrelated native dissolution was blocked.");
+        Console.WriteLine("PASS actual game Mono VBE recipe guards: nutrifruit/dream-cap target and dissolution skipped, unrelated ingredient unchanged; no callbacks invoked.");
         object[] callbacks = { loadedField.GetValue(items[0]), loadedField.GetValue(items[1]) };
         var accessType = mod.GetType("ProbablyStolenTools.ManagedStateAccess", true);
         var graphType = mod.GetType("ProbablyStolenTools.StateGraph", true);

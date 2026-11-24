@@ -892,6 +892,8 @@ namespace ProbablyStolenTools
                 OptionalModCompatibility.Tick();
 #if MONO
                 UpdateNotice.Tick();
+                NativeWindowGestures.Tick();
+                PinnedCompositionTooltip.Tick();
 #endif
                 RunSelfTest();
                 MenuReloadStep();

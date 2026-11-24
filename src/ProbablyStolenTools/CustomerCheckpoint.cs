@@ -1259,6 +1259,9 @@ namespace ProbablyStolenTools
             bool developmentChecks = Plugin.CfgSemanticDevelopmentChecks?.Value == true;
             try
             {
+#if MONO
+                PinnedCompositionTooltip.Disable();
+#endif
                 // Preflight before any mutation, including current objects created since the checkpoint.
                 foreach (var view in target.Visuals) view.Validate();
                 target.Customer.Validate();

@@ -352,6 +352,8 @@ namespace ProbablyStolenTools
             _chemistryEnd = _settings.Count;
             _chemistryBottom = Raw("chemistry-divider-bottom", _settingsContent, new Color(0.42f, 0.62f, 0.72f, 0.6f)).rectTransform;
             NewSetting(InspectionLocale.Text("解锁运行中机器模组槽", "Unlock working machine modules"), Plugin.CfgUnlockMachineModules);
+            NewSetting(InspectionLocale.Text("Shift拖动窗口磁吸", "Shift-drag window snapping"), Plugin.CfgWindowSnap);
+            NewSetting(InspectionLocale.Text("Shift＋中键窗口置顶", "Shift + middle-click window pinning"), Plugin.CfgWindowPin);
             NewSetting(InspectionLocale.Text("禁用内存节点", "Disable memory checkpoints"), Plugin.CfgDisableMemoryCheckpoints);
             NewSetting(InspectionLocale.Text("自动建立节点", "Automatic checkpoints"), Plugin.CfgAutoCheckpoints);
             NewSetting(InspectionLocale.Text("保留上一天节点", "Keep previous day checkpoints"), Plugin.CfgKeepPreviousDay);

@@ -4,6 +4,19 @@ internal static class ChemistryRulesTests
 {
     internal static void Run(Action<string, Action> test, Action<bool, string> check)
     {
+        test("purifier completion follows actual forecast removal including zero budget", () =>
+        {
+            var priorities = new[] { int.MaxValue, 0, int.MaxValue };
+            bool Removes(int[] parts, int cap = 9999, long budget = 10000) =>
+                FacilityProjection.HasRemoval(parts, FacilityProjection.Purify(parts, 0, cap, budget, priorities));
+            check(!Removes(new[] { 100000, 0, 0 }), "pure water");
+            check(!Removes(new[] { 90000, 0, 10000 }), "ineligible contaminant");
+            check(!Removes(new[] { 99000, 1000, 0 }, 9900), "native cap reached");
+            check(Removes(new[] { 98000, 2000, 0 }, 9900), "still removable");
+            check(!Removes(new[] { 98000, 2000, 0 }, budget: 0), "eligible but forecast empty");
+            check(!Removes(new[] { 0, 0, 0 }), "empty vessel");
+            check(!Removes(new[] { 0, 100, 0 }), "no water");
+        });
         var ids = new[] { "water", "alcohol", "plant_matter", "dream_cap_mush", "dream_cap_extract",
             "nightmare_cap_mush", "nightmare_extract", "coffee_mush", "caffeine", "mineral" };
         test("facility harvest resolves bloomberry's actual item key and seeds keep their native name key", () =>

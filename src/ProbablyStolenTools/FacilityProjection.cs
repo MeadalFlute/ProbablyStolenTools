@@ -13,6 +13,13 @@ namespace ProbablyStolenTools
             return total;
         }
 
+        internal static bool HasRemoval(int[] before, int[] after)
+        {
+            for (int i = 0; i < before.Length; i++)
+                if (before[i] > after[i]) return true;
+            return false;
+        }
+
         internal static int Remove(int[] parts, int index, int water, int budget, int floor)
         {
             if (index < 0 || water < 0 || parts[water] <= 0 || budget <= 0) return 0;

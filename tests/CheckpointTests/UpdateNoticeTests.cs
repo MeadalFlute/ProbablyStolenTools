@@ -4,6 +4,26 @@ internal static class UpdateNoticeTests
 {
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
+        test("replacement announcement has an independent acknowledgement and consumes once", () =>
+        {
+            var schedule = new UpdateNoticeSchedule();
+            const string notice = "0.9.7:20261125-qol-r4";
+            const string previous = "0.9.7:20261125-qol-r3";
+            check(!schedule.Due(notice, previous, true, 1));
+            check(schedule.Due(notice, previous, true, 1.5f));
+            schedule.Shown(notice);
+            check(!schedule.Due(notice, "0.9.7", true, 9));
+            check(new UpdateNoticeSchedule().Acknowledged(notice, notice));
+        });
+        test("notice progress fills and clamps outside its five-second lifetime", () =>
+        {
+            check(UpdateNoticeContent.Progress(5, 10, 5) == 0);
+            check(UpdateNoticeContent.Progress(7.5f, 10, 5) == 0.5f);
+            check(UpdateNoticeContent.Progress(11, 10, 5) == 1);
+            check(UpdateNoticeContent.Progress(0, 10, 5) == 0);
+            check(UpdateNoticeContent.Progress(float.NaN, 10, 5) == 0);
+            check(UpdateNoticeContent.Progress(0, 8, 0) == 0);
+        });
         test("acknowledged notices skip readiness evaluation without losing session-only consumption", () =>
         {
             var schedule = new UpdateNoticeSchedule();
