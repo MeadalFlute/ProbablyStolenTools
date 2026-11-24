@@ -112,6 +112,7 @@ public static partial class OfflineMonoFixture
         var unity = Assembly.Load("UnityEngine.CoreModule");
         CheckAutomaticCheckpointGates(mod);
         CheckBrewingCompatibility(mod, game);
+        CheckQualityOfLife(mod, game);
         CheckManagedIdentities(mod);
         CheckVectorReaders(mod);
         CheckScalarComparisons(mod);

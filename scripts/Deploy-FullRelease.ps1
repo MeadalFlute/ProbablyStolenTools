@@ -113,7 +113,7 @@ if ($layoutHash -ne $deployedLayoutHash) { throw 'Deployed static layouts do not
 $record = [ordered]@{
     Version = ([xml](Get-Content -LiteralPath $manifest -Raw)).Mod.ModVersion
     ManifestPath = $manifest
-    DeclaredGameVersions = @(([xml](Get-Content -LiteralPath $manifest -Raw)).Mod.GameVersions.GameVersion)
+    DeclaredGameVersions = @(([xml](Get-Content -LiteralPath $manifest -Raw)).Mod.GameVersions.Version)
     Timestamp = (Get-Date).ToString('o')
     GameDirectory = $GameDir
     Runtime = 'Mono'

@@ -125,15 +125,16 @@ internal static class CheckpointDayTests
         test("chemistry dividers preserve row separation and hotkey scroll reachability", () =>
         {
             foreach (float width in new[] { 380f, 480f, 900f })
-            foreach (int toggleCount in new[] { 18, 19, 20, 21 })
+            foreach (int toggleCount in new[] { 21, 27 })
+            foreach (var group in new[] { (Start: 8, End: 15), (Start: 9, End: 20) })
             foreach (int keyCount in new[] { 5, 10, 12 })
             foreach (int actionCount in new[] { 0, 2 })
             {
-                var layout = new PanelSettingsLayout(width, toggleCount, keyCount, 8, 15, actionCount);
-                check(layout.Toggle(8).Y - layout.Toggle(7).Y == PanelSettingsLayout.RowHeight + 16);
-                check(layout.Toggle(15).Y - layout.Toggle(14).Y == PanelSettingsLayout.RowHeight + 16);
-                check(layout.DividerY(8) > layout.Toggle(7).Y + layout.Toggle(7).Height);
-                check(layout.DividerY(15) > layout.Toggle(14).Y + layout.Toggle(14).Height);
+                var layout = new PanelSettingsLayout(width, toggleCount, keyCount, group.Start, group.End, actionCount);
+                check(layout.Toggle(group.Start).Y - layout.Toggle(group.Start - 1).Y == PanelSettingsLayout.RowHeight + 16);
+                check(layout.Toggle(group.End).Y - layout.Toggle(group.End - 1).Y == PanelSettingsLayout.RowHeight + 16);
+                check(layout.DividerY(group.Start) > layout.Toggle(group.Start - 1).Y + layout.Toggle(group.Start - 1).Height);
+                check(layout.DividerY(group.End) > layout.Toggle(group.End - 1).Y + layout.Toggle(group.End - 1).Height);
                 check(layout.HotkeySectionY > layout.Toggle(toggleCount - 1).Y + layout.Toggle(toggleCount - 1).Height);
                 for (int i = 0; i < actionCount; i++)
                 {

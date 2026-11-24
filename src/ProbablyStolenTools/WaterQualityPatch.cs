@@ -41,7 +41,7 @@ namespace ProbablyStolenTools
             if (!chemistry) return null;
             if (analysis.AlcoholTop)
                 return " -" + LiquidComposition.AlcoholLabel(analysis)
-                    + "（" + InspectionText.Number(analysis.AlcoholShare) + "%）";
+                    + ((Plugin.CfgCompositionCurrent?.Value ?? true) ? "（" + InspectionText.Number(analysis.AlcoholShare) + "%）" : "");
             if (analysis.TopName == null) return null;
             return " -" + InspectionText.Component(analysis.TopName, analysis.TopPercent,
                 analysis.Purity, analysis.Grade, analysis.GradeColor);
@@ -97,20 +97,17 @@ namespace ProbablyStolenTools
                     if (!chemistry) return;
                     builder.Add(InspectionLocale.Label(AnnotationLabels.WaterHeading) + ": ");
                     builder.Add(LiquidComposition.AlcoholLabel(analysis)
-                        + "（" + InspectionText.Number(analysis.AlcoholShare) + "%）", RenderHandler.ColorPalette.LightBlue);
+                        + ((Plugin.CfgCompositionCurrent?.Value ?? true) ? "（" + InspectionText.Number(analysis.AlcoholShare) + "%）" : ""), RenderHandler.ColorPalette.LightBlue);
                     builder.NextLine();
                     return;
                 }
                 if (!analysis.WaterTop)
                 {
                     if (!chemistry || analysis.TopName == null) return;
+                    if (DetailedCompositionTooltip.AddReagent(builder, item, analysis.TopIdentifier)) return;
                     builder.Add(InspectionLocale.Label(AnnotationLabels.WaterHeading) + ": ");
-                    builder.Add(InspectionText.Plain(analysis.TopName), RenderHandler.ColorPalette.Orange);
-                    builder.Add(" (" + InspectionText.Number(analysis.TopPercent) + "% | "
-                        + InspectionLocale.Label(AnnotationLabels.PurityHeading) + " " + InspectionText.Number(analysis.Purity) + "% | ", RenderHandler.ColorPalette.White);
-                    builder.Add("<color=" + analysis.GradeColor + ">" + InspectionText.Plain(analysis.Grade) + "</color>",
-                        RenderHandler.ColorPalette.None);
-                    builder.Add(")", RenderHandler.ColorPalette.White);
+                    builder.Add(InspectionText.Component(analysis.TopName, analysis.TopPercent,
+                        analysis.Purity, analysis.Grade, analysis.GradeColor), RenderHandler.ColorPalette.White);
                     builder.NextLine();
                     return;
                 }

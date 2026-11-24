@@ -6,6 +6,7 @@ namespace ProbablyStolenTools
 {
     internal sealed record SaveMetadata(int Day, int Cash, int State, int Slot, string RunId = null)
     {
+        internal const int MaxTextLength = 256 * 1024 * 1024;
         internal static SaveMetadata Read(string text)
         {
             var reader = new Reader(text);
@@ -29,7 +30,7 @@ namespace ProbablyStolenTools
             internal readonly Dictionary<string, int> Values = new();
             internal Reader(string text)
             {
-                if (text == null || text.Length > 16 * 1024 * 1024) throw new FormatException("Invalid ES3 size.");
+                if (text == null || text.Length > MaxTextLength) throw new FormatException("Invalid ES3 size.");
                 _text = text;
             }
             internal void White() { while (Position < _text.Length && char.IsWhiteSpace(_text[Position])) Position++; }

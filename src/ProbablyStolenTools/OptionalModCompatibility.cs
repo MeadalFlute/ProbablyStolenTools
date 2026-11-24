@@ -119,7 +119,32 @@ namespace ProbablyStolenTools
         }
 
         private static int _lastState = -1;
-        private static bool _claimsNotified;
+        private static float _noticeRetryAt;
+
+        private static bool NoticeRecorded(string id)
+        {
+            foreach (string recorded in (Plugin.CfgNotifiedMemoryConflicts?.Value ?? "").Split(','))
+                if (recorded.Trim() == id) return true;
+            return false;
+        }
+
+        private static void RecordNotice(string id)
+        {
+            if (Plugin.CfgNotifiedMemoryConflicts == null || NoticeRecorded(id)) return;
+            var config = Plugin.Instance?.Config;
+            bool autoSave = config?.SaveOnConfigSet == true;
+            if (config != null) config.SaveOnConfigSet = false;
+            try
+            {
+                string ids = Plugin.CfgNotifiedMemoryConflicts.Value ?? "";
+                Plugin.CfgNotifiedMemoryConflicts.Value = ids.Length == 0 ? id : ids + "," + id;
+            }
+            finally { if (config != null) config.SaveOnConfigSet = autoSave; }
+            // Reuse the throttled save retry; retain the in-memory acknowledgement on IO failure.
+            if (_pendingConfig == null) _retryAfterUtcTicks = 0;
+            _pendingConfig = config;
+            SavePendingDefault();
+        }
 
         internal static void Tick()
         {
@@ -140,11 +165,11 @@ namespace ProbablyStolenTools
                     + " claims=" + claims + " memoryCheckpoints=" + memory
                     + " fileRestore=" + (claims ? "native-menu" : "configured"));
             }
-            if (!claims) _claimsNotified = false;
-            else if (!memory && !_claimsNotified && Plugin.Store() != null)
+            if (!claims) _noticeRetryAt = 0;
+            else if (!memory && !NoticeRecorded(ClaimsId) && Plugin.Store() != null && now >= _noticeRetryAt)
             {
-                _claimsNotified = true;
-                PanelNotice.Show(MemoryCheckpointWarning, true);
+                _noticeRetryAt = now + 1f;
+                if (CompatibilityNotice.Show(MemoryCheckpointWarning)) RecordNotice(ClaimsId);
             }
         }
     }

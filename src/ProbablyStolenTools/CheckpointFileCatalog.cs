@@ -16,7 +16,7 @@ namespace ProbablyStolenTools
             try
             {
                 var file = new FileInfo(path);
-                if (!file.Exists || file.Length > 16 * 1024 * 1024
+                if (!file.Exists || file.Length > SaveMetadata.MaxTextLength
                     || (file.Attributes & FileAttributes.ReparsePoint) != 0) return null;
                 return SaveMetadata.Read(File.ReadAllText(path).TrimStart('\uFEFF'));
             }

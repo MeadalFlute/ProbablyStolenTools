@@ -119,7 +119,13 @@ if (!rapidRecipes.SetEquals(new[] { "HandleNomoreReaction", "HandleMicrobeAlcoho
     "HandleAcidBaseMicrobeKill", "HandleStabilizingAgentSedimentation", "HandleProteinPrecipitation",
     "HandleLipobondAgentSedimentation", "HandleAcidBaseNeutralization", "HandleChlorine" }))
     throw new Exception("Rapid reaction boundary changed: thermal dispatcher/degradation must never be accelerated.");
-Console.WriteLine("PASS explicit rapid-reaction allowlist; all thermal dispatch, boiling, heat extraction and degradation hooks excluded");
+Console.WriteLine("PASS explicit nonthermal rapid-reaction allowlist; thermal dispatcher, heat extraction and degradation excluded");
+var hotplatePatch = mod.GetType("ProbablyStolenTools.HotplateRapidBoilingPatch", true)
+    .GetCustomAttributesData().Single(a => a.AttributeType.FullName == "HarmonyLib.HarmonyPatch");
+if ((Type)hotplatePatch.ConstructorArguments[0].Value != game.GetType("MachineHeatingPlate", true)
+    || (string)hotplatePatch.ConstructorArguments[1].Value != "HandleHeating")
+    throw new Exception("Optional rapid boiling escaped the native hotplate boundary.");
+Console.WriteLine("PASS separate opt-in rapid boiling hooks only native hotplate heating");
 var nativeTag = game.GetType("TagState", true);
 var integerTag = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(nativeTag);
 nativeTag.GetField("valueInt").SetValue(integerTag, 13);
@@ -215,6 +221,25 @@ Console.WriteLine("PASS shared snapshot boundary covers all " + protectedOwners.
 var manifest = XDocument.Load(args[2]).Root;
 if ((string)plugin.GetField("Version").GetRawConstantValue() != manifest.Element("ModVersion").Value)
     throw new Exception("Main DLL version does not match the selected branch manifest.");
+var declaredVersions = manifest.Element("GameVersions").Elements("Version").Select(e => e.Value).ToArray();
+if (declaredVersions.Length == 0 || declaredVersions.Any(v => v != "0.46D" && v != "1.0.0.16")
+    || manifest.Element("GameVersions").Elements("GameVersion").Any())
+    throw new Exception("Supported versions must use the native <Version> schema.");
+object[] parserArgs = { Path.GetDirectoryName(Path.GetFullPath(args[2])), null };
+var parsedManifest = game.GetType("ModLoader", true).GetMethod("ParseManifestForTools")
+    .Invoke(null, parserArgs);
+if (parsedManifest == null || parserArgs[1] != null)
+    throw new Exception("Native loader rejected manifest: " + parserArgs[1]);
+var manifestType = parsedManifest.GetType();
+if (!((IEnumerable<string>)manifestType.GetField("GameVersions").GetValue(parsedManifest)).SequenceEqual(declaredVersions)
+    || (string)manifestType.GetField("Name").GetValue(parsedManifest) != "QuickSL"
+    || (string)manifestType.GetField("ID").GetValue(parsedManifest) != "dsh.probablystolen.tools")
+    throw new Exception("Native metadata parsing changed display name, identity or supported versions.");
+string description = (string)manifestType.GetField("Description").GetValue(parsedManifest);
+if (!description.Contains("实时快速SL") || !description.Contains("English") || !description.Contains("chemistry"))
+    throw new Exception("Native description must retain both Chinese and English text.");
+Console.WriteLine("PASS native manifest parser: QuickSL display, stable ID, bilingual description and versions "
+    + string.Join(", ", declaredVersions));
 var shippedDlls = manifest.Element("Assemblies").Elements("Assembly").Select(element =>
 {
     if (Path.GetFileName(element.Value) != element.Value || Path.GetExtension(element.Value) != ".dll")

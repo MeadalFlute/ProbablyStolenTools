@@ -14,12 +14,14 @@ public static partial class OfflineMonoFixture
         var automatic = plugin.GetField("CfgAutoCheckpoints", All);
         var disable = plugin.GetField("CfgDisableMemoryCheckpoints", All);
         var handled = plugin.GetField("CfgHandledMemoryConflicts", All);
+        var notified = plugin.GetField("CfgNotifiedMemoryConflicts", All);
         var wholeDay = plugin.GetField("CfgWholeDayMemory", All);
         var keepPrevious = plugin.GetField("CfgKeepPreviousDay", All);
         var patches = checkpoint.GetField("PatchesReady", All);
         object oldEnabled = enabled.GetValue(null), oldAutomatic = automatic.GetValue(null), oldPatches = patches.GetValue(null);
         object oldDisable = disable.GetValue(null), oldHandled = handled.GetValue(null), oldWholeDay = wholeDay.GetValue(null);
         object oldKeepPrevious = keepPrevious.GetValue(null);
+        object oldNotified = notified.GetValue(null);
         var configType = mod.GetType("ProbablyStolenTools.ModConfig", true);
         string path = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(mod.Location), "pstools-conflicts-" + Guid.NewGuid().ToString("N") + ".xml");
         var owner = Activator.CreateInstance(configType, All, null, new object[] { path }, null);
@@ -31,6 +33,7 @@ public static partial class OfflineMonoFixture
         {
             disable.SetValue(null, Bind(typeof(bool), "CustomerCheckpoint", "DisableMemory", false));
             handled.SetValue(null, Bind(typeof(string), "Compatibility", "HandledMemoryConflicts", ""));
+            notified.SetValue(null, Bind(typeof(string), "Compatibility", "NotifiedMemoryConflicts", ""));
             foreach (bool ready in new[] { false, true })
             foreach (bool on in new[] { false, true })
             foreach (bool auto in new[] { false, true })
@@ -119,10 +122,16 @@ public static partial class OfflineMonoFixture
                 config.GetProperty("Value", All).SetValue(disable.GetValue(null), false);
                 mod.GetType("ProbablyStolenTools.OptionalModCompatibility", true).GetMethod("Refresh", All).Invoke(null, null);
                 if (!Auto()) throw new Exception("Manual conflict override must enable checkpoints.");
+                mod.GetType("ProbablyStolenTools.OptionalModCompatibility", true).GetMethod("RecordNotice", All)
+                    .Invoke(null, new object[] { "yexiaoyang.InteriorExpansion" });
                 configType.GetMethod("Save", All).Invoke(owner, null);
                 owner = Activator.CreateInstance(configType, All, null, new object[] { path }, null);
                 disable.SetValue(null, Bind(typeof(bool), "CustomerCheckpoint", "DisableMemory", true));
                 handled.SetValue(null, Bind(typeof(string), "Compatibility", "HandledMemoryConflicts", ""));
+                notified.SetValue(null, Bind(typeof(string), "Compatibility", "NotifiedMemoryConflicts", ""));
+                if (!(bool)mod.GetType("ProbablyStolenTools.OptionalModCompatibility", true).GetMethod("NoticeRecorded", All)
+                    .Invoke(null, new object[] { "yexiaoyang.InteriorExpansion" }))
+                    throw new Exception("Displayed conflict notice acknowledgement was lost after XML reload.");
                 mod.GetType("ProbablyStolenTools.OptionalModCompatibility", true).GetMethod("Refresh", All).Invoke(null, null);
                 if (!Auto()) throw new Exception("Saved override was lost after config reload.");
                 CheckConflictSaveFailure(mod, plugin, checkpoint, configType, config, disable, handled);
@@ -140,6 +149,7 @@ public static partial class OfflineMonoFixture
             patches.SetValue(null, oldPatches);
             disable.SetValue(null, oldDisable);
             handled.SetValue(null, oldHandled);
+            notified.SetValue(null, oldNotified);
             wholeDay.SetValue(null, oldWholeDay);
             keepPrevious.SetValue(null, oldKeepPrevious);
             if (System.IO.File.Exists(path)) System.IO.File.Delete(path);

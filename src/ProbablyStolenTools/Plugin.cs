@@ -7,7 +7,7 @@ using MelonLoader;
 using UnityEngine;
 
 #if !MONO
-[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "Probably Stolen Tools", "0.9.6", "Probably Stolen Tools contributors")]
+[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "QuickSL", "0.9.7", "Probably Stolen Tools contributors")]
 [assembly: MelonLoader.HarmonyDontPatchAll]
 #endif
 
@@ -21,7 +21,7 @@ namespace ProbablyStolenTools
 #endif
     {
         public const string Guid = "dsh.probablystolen.tools";
-        public const string Version = "0.9.6";
+        public const string Version = "0.9.7";
 
         internal static ModLogger LogSource;
         internal static Plugin Instance;
@@ -40,8 +40,10 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgWaterQuality;
         internal static ConfigEntry<bool> CfgChemistry;
         internal static ConfigEntry<bool> CfgChemistryLabels, CfgContainerAutoRename;
+        internal static ConfigEntry<bool> CfgCompositionCurrent, CfgCompositionExpected, CfgCompositionGrade;
+        internal static ConfigEntry<bool> CfgPipeComposition, CfgShiftComposition, CfgUnlockMachineModules;
         internal static ConfigEntry<bool> CfgChemistryExtendedContainers, CfgEmptyContainerNames;
-        internal static ConfigEntry<bool> CfgAutoBlend, CfgAutoExtraction, CfgRapidReactions, CfgFacilityPreview;
+        internal static ConfigEntry<bool> CfgAutoBlend, CfgAutoExtraction, CfgRapidReactions, CfgFacilityPreview, CfgRapidBoiling;
         internal static ConfigEntry<bool> CfgWineAppraisal;
         internal static ConfigEntry<float> CfgInspectionX, CfgInspectionY;
 
@@ -74,6 +76,8 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<KeyCode> CfgKeyDay;
         internal static ConfigEntry<KeyCode> CfgKeyPrevDay;
         internal static ConfigEntry<KeyCode> CfgKeyQuickReload, CfgKeyReroll;
+        internal static ConfigEntry<KeyCode> CfgKeyDetails;
+        internal static ConfigEntry<string> CfgUpdateSeen;
         internal static ConfigEntry<bool> CfgConfirmWholeDay;
         internal static ConfigEntry<bool> CfgRepairStuckShutter;
         internal static ConfigEntry<KeyCode> CfgKeyPanel;
@@ -136,7 +140,8 @@ namespace ProbablyStolenTools
             foreach (var binding in Hotkeys)
             {
                 if (binding.Config == target) { self = binding; continue; }
-                if (binding.Config.Value == key) clash = binding;
+                if (binding.Config.Value == key || (target == CfgKeyDetails || binding.Config == CfgKeyDetails)
+                    && IsShift(key) && IsShift(binding.Config.Value)) clash = binding;
             }
             if (self == null) return;
 
@@ -185,9 +190,12 @@ namespace ProbablyStolenTools
         {
             if (key == KeyCode.None) return false;
             foreach (var binding in Hotkeys)
-                if (binding.Config != except && binding.Config.Value == key) return true;
+                if (binding.Config != except && (binding.Config.Value == key
+                    || (except == CfgKeyDetails || binding.Config == CfgKeyDetails) && IsShift(key) && IsShift(binding.Config.Value))) return true;
             return false;
         }
+
+        private static bool IsShift(KeyCode key) => key == KeyCode.LeftShift || key == KeyCode.RightShift;
 
 
         // ---- diagnostics ----
@@ -198,7 +206,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgHistory;
         internal static ConfigEntry<bool> CfgCustomerCheckpoint;
         internal static ConfigEntry<bool> CfgDisableMemoryCheckpoints, CfgWholeDayMemory;
-        internal static ConfigEntry<string> CfgHandledMemoryConflicts;
+        internal static ConfigEntry<string> CfgHandledMemoryConflicts, CfgNotifiedMemoryConflicts;
         internal static ConfigEntry<bool> CfgAutoCheckpoints;
         internal static ConfigEntry<bool> CfgKeepPreviousDay;
         internal static ConfigEntry<float> CfgPanelX, CfgPanelY, CfgPanelWidth, CfgPanelHeight;
@@ -217,6 +225,7 @@ namespace ProbablyStolenTools
             NativeSnapshotSettings.Disable();
             ChemistryAutomation.Reset();
             TooltipHooks.Disable();
+            UpdateNotice.Disable();
             OverlayBootstrap.Release();
         }
         private void Initialize()
@@ -232,7 +241,7 @@ namespace ProbablyStolenTools
             {
                 try { ModLogger.Log = new ModLog(Manifest); } catch { }
             }
-            LogSource.LogInfo("Probably Stolen Tools " + Version + " loaded on game " + Application.version);
+            LogSource.LogInfo("QuickSL " + Version + " loaded on game " + Application.version);
             if (DevToolsPresent())
             {
                 LogSource.LogWarning("dev.txt found: the game's F8 console and F9 dev menu share our default keys. " +
@@ -261,12 +270,27 @@ namespace ProbablyStolenTools
             CfgWaterQuality = Config.Bind("WaterQuality", "Enabled", true,
                 "Show water-quality names and mismatch highlights on liquid containers.");
             CfgWaterQuality.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
+            CfgPipeComposition = Config.Bind("WaterQuality", "PipeComposition", true,
+                "Hold the item-details key to show all nonzero tap-water constituents using today's native purity and distribution, without drawing random numbers.");
+            CfgShiftComposition = Config.Bind("Chemistry", "ShiftComposition", true,
+                "Hold the item-details key over a liquid container to replace its tooltip with read-only composition details.");
+            CfgUnlockMachineModules = Config.Bind("Machines", "UnlockWorkingModules", false,
+                "Bypass running-machine module-bay locks only. Does not change lock fields, work tags or ingredient/battery locks.");
             CfgChemistry = Config.Bind("Chemistry", "Enabled", true,
                 "Master switch for chemistry annotations, tooltip naming, automatic blending, rapid extraction, rapid chemical reactions and facility previews.");
             CfgChemistry.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
             CfgChemistryLabels = Config.Bind("Chemistry", "CompositionLabels", true,
                 "Show chemical composition, share, purity and grade annotations.");
             CfgChemistryLabels.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
+            CfgCompositionCurrent = Config.Bind("Chemistry", "ShowCurrentShare", true,
+                "Include current percentage in chemistry composition labels.");
+            CfgCompositionExpected = Config.Bind("Chemistry", "ShowExpectedPurity", false,
+                "Include predicted purified percentage in chemistry composition labels.");
+            CfgCompositionGrade = Config.Bind("Chemistry", "ShowGrade", false,
+                "Include predicted grade in chemistry composition labels.");
+            CfgCompositionCurrent.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
+            CfgCompositionExpected.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
+            CfgCompositionGrade.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
             CfgContainerAutoRename = Config.Bind("Chemistry", "ContainerAutoRename", true,
                 "Rename liquid containers and seeded hydroponic machines in tooltips only.");
             CfgChemistryExtendedContainers = Config.Bind("Chemistry", "ExtendedContainers", true,
@@ -280,6 +304,8 @@ namespace ProbablyStolenTools
                 "Complete alcohol extraction of mushroom and coffee mush. Volume may exceed capacity; independent of RapidReactions.");
             CfgRapidReactions = Config.Bind("Chemistry", "RapidReactions", false,
                 "Complete the nine supported non-thermal reagent reactions. Independent of AutoExtraction; preserve native conditions, bounded progress and thermal rates.");
+            CfgRapidBoiling = Config.Bind("Chemistry", "RapidBoiling", false,
+                "On a hotplate only, fully remove lipobond agent, alcohol, water and microbes once their native temperature conditions are met. Other thermal reactions are unchanged.");
             CfgFacilityPreview = Config.Bind("Chemistry", "FacilityPreview", true,
                 "Show read-only next-cycle projections for aquaculture, purifiers, hydroponics and evaporators.");
             CfgWineAppraisal = Config.Bind("Wine", "Enabled", true,
@@ -359,6 +385,10 @@ namespace ProbablyStolenTools
                 "If the shutter stays locked for 10s with no dialog, movement or shootout in progress, clear the lock so the shop can be closed again.");
             CfgKeyPanel = Config.Bind("Rewind", "KeyTogglePanel", KeyCode.F8,
                 "Show / hide the checkpoint panel.");
+            CfgKeyDetails = Config.Bind("Inspection", "KeyItemDetails", KeyCode.LeftShift,
+                "Hold to show item details, wine annotations and machine projections. Either Shift works when bound to Shift; None disables details.");
+            CfgUpdateSeen = Config.Bind("Updates", "LastShownVersion", "",
+                "QuickSL version whose update banner has already been displayed, independent of whether it was clicked.");
 
             Hotkeys = new List<HotkeyBinding>
             {
@@ -369,6 +399,7 @@ namespace ProbablyStolenTools
                 new HotkeyBinding("reload", "快速重载存档", CfgKeyQuickReload, KeyCode.None),
                 new HotkeyBinding("reroll", "重掷随机数", CfgKeyReroll, KeyCode.None),
                 new HotkeyBinding("panel", "显示 / 隐藏面板", CfgKeyPanel, KeyCode.F8),
+                new HotkeyBinding("details", "展示物品详细信息", CfgKeyDetails, KeyCode.LeftShift),
                 new HotkeyBinding("newer", "选择较新节点", CfgKeyNewer, KeyCode.UpArrow),
                 new HotkeyBinding("newerAlt", "选择较新节点（备用）", CfgKeyNewerAlt, KeyCode.W),
                 new HotkeyBinding("older", "选择较旧节点", CfgKeyOlder, KeyCode.DownArrow),
@@ -403,6 +434,8 @@ namespace ProbablyStolenTools
                 "Disable all memory checkpoint capture and restore. A newly detected blacklisted mod turns this on once; turning it off manually accepts unsupported conflict risks.");
             CfgHandledMemoryConflicts = Config.Bind("Compatibility", "HandledMemoryConflicts", "",
                 "Mod IDs whose one-time memory-disable default has already been applied. Preserve this value to retain a manual override across restarts.");
+            CfgNotifiedMemoryConflicts = Config.Bind("Compatibility", "NotifiedMemoryConflicts", "",
+                "Mod IDs whose conflict notice has already been displayed. Each conflicting mod is shown only once across restarts.");
             CfgWholeDayMemory = Config.Bind("Rewind", "WholeDayUseMemory", true,
                 "Prefer memory morning anchors for whole-day rewind when automatic capture is enabled. Off uses disk saves; individual memory nodes remain available.");
             CfgAutoCheckpoints = Config.Bind("CustomerCheckpoint", "AutoCapture", true,
@@ -421,7 +454,7 @@ namespace ProbablyStolenTools
             try { NativeSnapshotSettings.Register(); }
             catch (Exception e) { EventLog.Write("[Settings] native snapshot settings unavailable; XML retained: " + e); }
 #endif
-            LogSource.LogInfo($"Probably Stolen Tools {Version} loading...");
+            LogSource.LogInfo($"QuickSL {Version} loading...");
             LogSource.LogInfo($"persistentDataPath = {Application.persistentDataPath}");
 
             try

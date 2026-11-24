@@ -58,6 +58,9 @@ namespace ProbablyStolenTools
         }
         private static IntPtr _captureStore;
         private static int _captureDay = -1;
+        private static IntPtr _indexedStore;
+        private static int _indexedDay = -1;
+        private static bool _needsFileAnchor;
         private static float _nextCapture;
         private static float _nextStorageCheck;
         private static string _lastStorageError;
@@ -76,6 +79,7 @@ namespace ProbablyStolenTools
         {
             Busy = false;
             MemoryRestored();
+            _needsFileAnchor = !OptionalModCompatibility.MemoryCheckpointsAllowed;
         }
 
         internal static void MemoryRestored()
@@ -101,6 +105,16 @@ namespace ProbablyStolenTools
                 MaintainStorage();
             }
             int day = StoreStation.GetDayCounter();
+            if (!OptionalModCompatibility.MemoryCheckpointsAllowed && (_indexedStore != Id(store) || _indexedDay != day))
+                IndexDayStartPoints(store, day, Root);
+            if (_needsFileAnchor && !Settling)
+            {
+                // One attempt only: a historical archive reload may leave the
+                // active slot on a later day. Never reparse that file every tick.
+                _needsFileAnchor = false;
+                if (!Points.Exists(point => point.IsDayStart && point.State == 2 && point.Day == day
+                    && point.SlotId == store.saveSlotId && point.RunId == store.runID)) Capture("开业前", true);
+            }
             if (_captureStore == Id(store) && _captureDay == day) return;
             if (Capture("开业前", true))
             {
@@ -110,6 +124,37 @@ namespace ProbablyStolenTools
         }
 
         internal static string Root => Path.Combine(Application.persistentDataPath, "PSTools_Checkpoints");
+
+        private static void IndexDayStartPoints(PlayerStore store, int day, string root)
+        {
+            try
+            {
+                Catalog.Refresh(root);
+                bool changed = false;
+                foreach (var entry in Catalog.Entries)
+                {
+                    var meta = entry.Metadata;
+                    if (meta == null || meta.State != 2 || meta.Slot != store.saveSlotId || meta.RunId != store.runID
+                        || meta.Day != day && !(Plugin.CfgKeepPreviousDay?.Value == true && meta.Day == day - 1)) continue;
+                    if (Points.Exists(point => string.Equals(point.Path, entry.Path, StringComparison.OrdinalIgnoreCase))) continue;
+                    Points.Add(new Point { Path = entry.Path, Label = "开业前", IsDayStart = true,
+                        Day = meta.Day, State = meta.State, SlotId = meta.Slot, RunId = meta.RunId,
+                        Cash = meta.Cash, At = new DateTime(entry.Ticks, DateTimeKind.Utc).ToLocalTime() });
+                    changed = true;
+                }
+                if (changed) PointRevision++;
+                _indexedStore = Id(store);
+                _indexedDay = day;
+            }
+            catch (Exception e)
+            {
+                // The normal storage pass reports recurring directory errors; do
+                // not retry this same context every two seconds or write a save.
+                _indexedStore = Id(store);
+                _indexedDay = day;
+                EventLog.Write("[Rewind] day-start file index failed: " + e.GetType().Name + ": " + e.Message);
+            }
+        }
 
         private static void MaintainStorage(string newest = null)
         {
@@ -845,6 +890,9 @@ namespace ProbablyStolenTools
             try
             {
                 OptionalModCompatibility.Tick();
+#if MONO
+                UpdateNotice.Tick();
+#endif
                 RunSelfTest();
                 MenuReloadStep();
                 PostLoadResume();

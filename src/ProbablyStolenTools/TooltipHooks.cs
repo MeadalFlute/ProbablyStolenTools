@@ -42,11 +42,8 @@ namespace ProbablyStolenTools
         private static void OnTooltip(RichTextBuilder builder, GameItem item)
         {
             if (builder == null || item == null) return;
-            try { WineAppraisal.AddTooltip(builder, item); }
-            catch (Exception e) { Warn("wine", e); }
             try { WaterQualityPatch.AddTooltip(builder, item); }
             catch (Exception e) { Warn("water", e); }
-            FacilityPreview.AddTooltip(builder, item);
         }
 #endif
 

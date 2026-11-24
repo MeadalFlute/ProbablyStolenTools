@@ -29,7 +29,14 @@ namespace ProbablyStolenTools
 
         /// <summary>水质行里的成分摘要：占比 | 纯度 | 评级。</summary>
         internal static string Component(string name, double percent, double purity, string grade, string gradeColor)
-            => $"<color={ComponentColor}>{Plain(name)}</color> ({Number(percent)}% | {InspectionLocale.Label(AnnotationLabels.PurityHeading)} {Number(purity)}% | <color={gradeColor}>{Plain(grade)}</color>)";
+        {
+            var parts = new System.Collections.Generic.List<string>(3);
+            if (Plugin.CfgCompositionCurrent?.Value ?? true) parts.Add(Number(percent) + "%");
+            if (Plugin.CfgCompositionExpected?.Value == true)
+                parts.Add(InspectionLocale.Label(AnnotationLabels.PurityHeading) + " " + Number(purity) + "%");
+            if (Plugin.CfgCompositionGrade?.Value == true) parts.Add($"<color={gradeColor}>{Plain(grade)}</color>");
+            return $"<color={ComponentColor}>{Plain(name)}</color>" + (parts.Count == 0 ? "" : " (" + string.Join(" | ", parts) + ")");
+        }
 
         /// <summary>最多两位小数、去掉末尾 0：99.63 / 100 / 0.17。</summary>
         internal static string Number(double value)

@@ -1,12 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Mod>
   <ID>dsh.probablystolen.tools</ID>
-  <Name>Probably Stolen Tools</Name>
+  <Name>QuickSL</Name>
   <Author>米德</Author>
-  <ModVersion>0.9.6</ModVersion>
-  <Description>Beta candidate for game 1.0.0.16. Includes beta-specific static snapshot layouts.</Description>
+  <ModVersion>0.9.7</ModVersion>
+  <Description><![CDATA[实时快速SL，将当铺状态切换至任意快照节点。
+
+附带功能：快速鉴定、水质标注、双击调用放大镜、快进顾客对话、酿酒标注、化学辅助。
+
+功能设置请在mod自带的面板中进行设置。
+
+--- English ---
+
+Quick save/load in real time: restore the pawnshop to any snapshot checkpoint.
+
+Extras: quick appraisal, water-quality labels, double-click magnifying glass, faster customer dialogue, brewing annotations and chemistry assistance.
+
+Configure features in the mod's own panel.]]></Description>
   <GameVersions>
-    <GameVersion>1.0.0.16</GameVersion>
+    <Version>1.0.0.16</Version>
   </GameVersions>
   <Assemblies>
     <Assembly>ProbablyStolenTools.dll</Assembly>

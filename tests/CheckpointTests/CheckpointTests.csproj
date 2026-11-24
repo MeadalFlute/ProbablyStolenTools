@@ -8,6 +8,9 @@
     <MelonDir>$(MSBuildThisFileDirectory)..\..\out\melonloader-0.7.3\package\MelonLoader\net6</MelonDir>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/ProbablyStolenTools/RapidBoiling.cs" Link="RapidBoiling.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/UpdateNoticeSchedule.cs" Link="UpdateNoticeSchedule.cs" />
+    <Compile Include="../../src/ProbablyStolenTools/CompositionDetails.cs" Link="CompositionDetails.cs" />
     <Compile Include="../../src/ProbablyStolenTools/ChemistryRules.cs" Link="ChemistryRules.cs" />
     <Compile Include="../../src/ProbablyStolenTools/ReactionCompletion.cs" Link="ReactionCompletion.cs" />
     <Compile Include="../../src/ProbablyStolenTools/BlendBatchPlan.cs" Link="BlendBatchPlan.cs" />

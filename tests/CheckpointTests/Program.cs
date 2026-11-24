@@ -8,6 +8,9 @@ void Test(string name, Action action)
 void Check(bool condition) { if (!condition) throw new Exception("Assertion failed"); }
 
 ManagedSnapshotTests.Run(Test, Check);
+RapidBoilingTests.Run(Test, Check);
+UpdateNoticeTests.Run(Test, Check);
+CompositionDetailsTests.Run(Test, Check);
 ChemistryRulesTests.Run(Test, (condition, message) => { if (!condition) throw new Exception(message); });
 CheckpointDayTests.Run(Test, Check);
 DayArchiveTests.Run(Test, Check);

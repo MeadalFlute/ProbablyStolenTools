@@ -59,7 +59,6 @@ namespace ProbablyStolenTools
                 if (entry == null) why.Append("noEntry ");
                 if (ui == null) why.Append("noUI ");
                 else if (ui.panel == null) why.Append("noPanel ");
-                else if (ui.panel.activeInHierarchy) why.Append("panelOpen ");
                 if (store != null)
                 {
                     if (store.lockAllFlag > 0) why.Append("lockAll ");
@@ -84,6 +83,7 @@ namespace ProbablyStolenTools
                 // Use the real tool so native targeting, sounds and item hooks
                 // follow the same path as manually applying the magnifier.
                 consumed = true;
+                if (ui.panel.activeInHierarchy) ui.CloseUI();
                 magnifier.Target(item);
                 return Finish(why, true);
             }
@@ -173,7 +173,7 @@ namespace ProbablyStolenTools
             for (int i = 0; i < items.Count; i++)
             {
                 var tool = items[i];
-                if (tool == null || Id(tool) == Id(target) || !tool.IsTag("MAGNIFYING_GLASS")
+                if (tool == null || tool.identifier != "magnifier" || Id(tool) == Id(target) || !tool.IsTag("MAGNIFYING_GLASS")
                     || !GeneralHelper.IsItemOwned(tool) || tool.forceDisableUse) continue;
                 if (tool.MayTarget(target) && tool.CanTarget(target)) return tool;
             }

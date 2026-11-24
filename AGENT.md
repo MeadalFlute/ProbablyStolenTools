@@ -1,11 +1,31 @@
 # Probably Stolen Tools — 交接文档
 
-> 适用源码：正式版 **0.9.6**（2026-11-23）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
+> 适用源码：正式版 **0.9.7**（2026-11-24）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
 > 旧版本文档（0.2.1–0.6.0、Demo、早期性能优化过程）归档在 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
 > 2026-11-23 兼容候选：本机 beta 已更新至 **1.0.0.16 / VERSION 100-Rev16**，游戏 MVID `d927a6e4-ae7a-4e65-a5e2-9f9624c131f3`；beta/universal manifest 已随之更新。下文 11-16 的 1.0.0.14、已部署哈希与规模是历史记录，不是本轮验收。当前新版单表 2915 类型/8235 字段/670208 bytes。可选 Mod 检测使用两版均有的公开 `ModLoader.Mods` 只读表，不调用旧正式版不存在的 `ModHelper.IsModRunning`，不引用第三方 DLL，也不新增权限/前置依赖。酿酒扩展 1.4.4 避免标注/改名/快速反应干预；领地与革命 1.1.18 暂时仅文件读档安全共存，启用时明确禁止内存建点/恢复并强制完整原生菜单载入，不能宣称完成完整实体回溯。维护范围/后续接入要求见 `research/2026-11-23-optional-mod-compatibility.md`。
 
 本文只写当前仍成立的事实。实现细节以源码为准，阶段记录与实验数据看 `research/`。
+
+2026-11-24 13:13 DS 审查建议回执（当前部署，覆盖下方记录）：审查无必修项；采纳 P1 已展示更新时在 Ready 前短路（保存重试及存活简报关闭仍继续），P3 设置入口相同异常去重、成功后复位。其余建议/待实机项不据猜测改动。部署 `out/full-release-deploy-20261124-131337/deployment.json`，主 DLL `9F6EFACDBFE3AFBEB6CE7E4FF6C38CD00C64EC54CD5FAF761CCD96FC3F697E39`，双 profile helper 不变。454 固定参考、20 可选兼容、游戏 Mono 回归及最终双表 92 挂点/76 字段扫描通过，仅 files、HardFlags/Error 空。90 个存档目录文件与设置未变，不再重置简介、不启动游戏、不提交/升版/推送；版本仍 0.9.6。见 `research/2026-11-24-quicksl-features-review-receipt.md`；DS 本文所审 03:00 候选不包含后续简介排版、大存档节点修复及本次两项小修，不能称这些后续补丁已获独立审查。
+
+2026-11-24 13:01 文件初始节点修复（覆盖下方旧部署）：`out/full-release-deploy-20261124-130102/deployment.json`，主 DLL `59F077C1D12FAA07922A7E7B2DAE80EF0A1778801906CC9D8AEA6687974E1C86`，双 profile helper 不变。玩家第 96 天活动档 21607544 bytes / 21409522 字符，旧 16 MiB 字节索引和字符解析上限均会拒绝，导致内存禁用时晨间文件节点缺失；现在分别放宽至 256 MiB 字节 / 256 Mi 字符，保留阶段/日期/槽位/周目/所有权/链接边界。面板同步 PointRevision，避免同数量节点覆盖后不刷新。453 固定参考测试及 1 项实际第 96 天存档只读解析（合计 454）、真实游戏 Mono 大文件晨间索引和现有回归、最终双表兼容/官方能力扫描通过。部署确认 90 个存档目录文件不变；随后按用户要求独立备份配置到 `out/update-notice-settings-backup-20261124-130137.xml`，只清空 `Updates.LastShownVersion`，其他配置经 XML 比对不变。未启动游戏/提交/推送/升版；初始节点与新简介尺寸仍待本次实机复验。
+
+2026-11-24 12:50 简报排版修复（覆盖下方旧部署）：部署 `out/full-release-deploy-20261124-125041/deployment.json`，主 DLL `25A9ABCC6EDB131FDA6F82B849F0E6705D29447A93F9A489C479F17A6B0357BA`，双表 helper 不变。简介宽上限 380、按正文和底部“点此查看详情”实测高度收紧，关闭纵向拉伸；详情独立 `---` 行转原生分割线，移除空白段行。452 参考测试及最终 92 挂点/76 字段/官方仅 files 扫描通过。90 个存档目录文件及配置未改，不重置一次提示版本；新排版待实机复验，完整 Mono/VBE 沿用上批。交接文档顶部有本次补充。
+
+2026-11-24 QuickSL 本轮最终部署：`out/full-release-deploy-20261124-030020/deployment.json`，主 DLL `573D2C33BEB59E346275894C56A6FA5465800508FBE40738C30D6662195B8918`，双 profile helper `6129A2D3A826044E7BDEBB0E3C04CDC7C3BEC70ADB80C4A96FE36A05D9892B23` / 808448 bytes；450 参考、20 可选兼容、beta 原生解析/Mono/VBE 回归通过，92 挂点/76 字段，扫描仅 files，HardFlags/Error 空。90 个存档目录文件、其他 Mod、游戏程序集未变；未启动游戏、未导入设置、未提交/推送/升版。上批用户验收不代表本批 UI/加热已验收；交接入口 `research/2026-11-24-quicksl-features-review-handoff.md`。下文旧主 DLL/90 挂点等为历史记录。
+
+2026-11-24 QuickSL 功能候选（覆盖下文旧交互说明，版本仍 0.9.6）：显示名改 QuickSL，技术 ID/DLL/目录/XML 不变。三份 manifest 修正原生版本列表元素为 `<Version>`，通用包声明 0.46D + 1.0.0.16，描述以单个原生 Description 同列中英（加载器无独立语言字段）。原生 ModConfigWindow 仅为本 Mod 追加打开功能面板按钮，未进存档也可设置。`Inspection.KeyItemDetails=LeftShift` 统一按住显示成分/水龙头/机器预测/酿酒，绑定 Shift 时左右等价，改键后不再隐式接受 Shift，None 停用；未按键不追加机器/酿酒信息。`Chemistry.RapidBoiling=false` 独立于非热快速反应，仍受化学总开关/恢复/载入/夜间门控；仅加热板精确容器槽、沿用原生蒸发元数据，微生物 >=70°C 全清，不处理其他热反应或 VBE 容器。双击鉴定仅真实原版 magnifier，合法性检查完成后才关闭旧页并调用真实 Target，不接管不可鉴定物品。`Updates.LastShownVersion` 记录每版首次简报，正常商店且结算窗口关闭后稳定 0.5 秒展示，3 秒关闭/任意处点击展开；按展示记账，不等点击，写盘失败同会话不重复并限频重试。新文本中英/其余英文回退。UI 与实际热处理仍需实机验收，最终测试/部署记录见本轮交接，不得用旧验收冒充本批验收。
+
+2026-11-24 QoL 最终审查候选（覆盖下段部署）：用户已验收四项微调；多语言检查补齐来源标识，中文“快速SL”、其他语言“Quick SL”。原生成分/水质名称跟随游戏语言，Mod 自有 UI 仍中文/英文两套、其他语言英文回退。最终部署 `out/full-release-deploy-20261124-015204/deployment.json`，主 DLL `B764A72A5E4A21CD04071F62DE6C8077339447BD7132B29618C708C37EA0E13B`，helper 仍为 `6129A2D3…`，443 参考、20 可选兼容、真实游戏 Mono/VBE 回归通过，90 挂点/76 字段、扫描仅 files。该英文来源标识补丁尚未单独实机复测，未提交/推送/升版。当前审查入口 `research/2026-11-24-qol-final-review-handoff.md`，旧 QoL 文档仅作过程记录。
+
+2026-11-24 QoL 微调（当前候选，覆盖下方旧行为描述）：用户已实机验收上轮修复。新部署 `out/full-release-deploy-20261124-014319/deployment.json`，主 DLL `913916DC14D43935A1C693E09B9B4911195A96DD0128D2F0CEC801BE2D29D289`，双 profile helper 仍为 `6129A2D3…`（808448 bytes）。冲突窗口追加左下角小号 LightBlue 斜体「快速SL」来源；`Compatibility.NotifiedMemoryConflicts` 单独持久记录已成功显示弹窗的 Mod ID，不复用首次禁用默认值的 HandledMemoryConflicts，UI 未就绪不标记，IO 失败保留本轮记录并限频重试。水龙头明细及隐藏查询覆盖均要求按住任一 Shift，松开保持原版行为；明细保留连接说明。容器/试剂/水龙头明细统一按原始占比稳定降序，相同占比保留注册顺序，主成分颜色独立于排序。441 参考、20 可选兼容、真实游戏 Mono/XML 重载及真实 VBE 回归通过，最终合并扫描仍仅 files、HardFlags/Error 空。90 个存档目录文件、其他 Mod、游戏程序集未变，未启动游戏/导入配置/提交/推送/升版。新增交互与来源标识排版待实机验收，见 QoL 交接文档顶部。
+
+2026-11-24 QoL 实测回报修复（当前候选，取代下段首轮候选）：已部署 `out/full-release-deploy-20261124-012906/deployment.json`，主 DLL `88941921B5D9ECF97442DF9368B4BCA0E78755F518176BB9E3E7BD3F08BF0C63`，helper 仍为 `6129A2D3…`。440 参考、17 可选兼容及真实游戏 Mono 回归通过，90 挂点/76 字段，最终合并表扫描仍仅 `files`、HardFlags/Error 空；未提交/推送/升版。水龙头载入只更新 shortDescription、未清除原生 IS_TOOLTIP_DISABLED_TAG 的路径已核对：仅启用明细且已解锁水源时覆盖 HasTooltip 查询，不改标签；最终 tooltip 追加明细，保留原五层内容和连接说明，Shift 不清空水龙头。水龙头只列占比；容器按实测文字宽度使用 TMP 固定列位置，显示名称/含量/占比，自动 uL/mL/L、两位小数百分比，非零痕量 `<0.01%`。测宽后 SetText 复原 TMP 处理缓冲，防止未变化 tooltip 被原生缓存复用时错显。冲突通知按文字动态测量尺寸，仅保留标题 X。修复与待验收见原交接文档顶部补充。
+
+2026-11-24 QoL 开发候选（覆盖下方旧部署的“最新”表述）：基于 `8169488` dirty 工作区构建，版本仍为 **0.9.6**，未提交/正式打包/推送。已部署 `out/full-release-deploy-20261124-003203/deployment.json`，主 DLL `24BD0F120C4407676C642FFC2778556514E96720D2CA18C3C185D6C66D8B0C33`，双 profile helper 仍为 `6129A2D3A826044E7BDEBB0E3C04CDC7C3BEC70ADB80C4A96FE36A05D9892B23`（808448 bytes）。438 参考、17 可选兼容、13 存档动作、14 原版历史测试通过；游戏 Mono 夹具验证 8 种摘要组合、模组仓精确身份及无锁字段写入、晨间文件只读索引；真实 VBE 回调身份往返通过。最终合并 DLL 官方扫描为 89 挂点/76 字段、仅 `files`，HardFlags/Error 空。安装哈希一致；90 个存档目录文件、其他本地 Mod 和游戏程序集未变，未启动游戏/导入配置。稳定分支原始程序集仍不可用，不能声称稳定版重新实测。交接及待验收项见 `research/2026-11-24-qol-review-handoff.md`。
+
+本轮新配置：`WaterQuality.PipeComposition=true`、`Chemistry.ShiftComposition=true`（均不依赖化学辅助主开关）；`Chemistry.ShowCurrentShare=true`、`ShowExpectedPurity=false`、`ShowGrade=false`；`Machines.UnlockWorkingModules=false`。试剂精简/星标仅针对酸、碱、脂合剂、**还原剂 `reducing_agent`**，不包含稳定剂（用户已确认）；固定主成分/化学污染物/重金属三行，零杂质也列出，星标严格 `<0.10%`。细目显示不受摘要三开关裁剪。Shift 在两个最终 tooltip postfix 替换完整结果，松键由原版逐帧重建恢复。水管按原版两种升级共用的 grade=1 分布只读计算，不调用加水/RNG；运行中机器只绕过模组仓查询及新版显式拖拽拦截，不改锁字段/工作标签。冲突通知改为原生手动关闭窗口，UI 未就绪时限频重试；内存禁用时只读索引匹配槽位/周目的晨间备份，正常显示文件初始节点，历史读档后补锚点仅尝试一次，不在每轮 Tick 重读不匹配的活动存档。
 
 2026-11-23 设置调整（覆盖上段 Claims 强制门控的旧说明）：`CustomerCheckpoint.DisableMemory=false` 控制全部内存建点/恢复。首次检测 Claims 时置 true，`Compatibility.HandledMemoryConflicts` 持久记录已处理 ID；玩家手动关掉后不再因检测/重启覆盖，移除 Claims 也不自动复位。强制启用不代表完整支持，相关 BUG 不受理；Claims 存在时文件读档仍强制完整原生载入并跳过顾客/门修复。`Rewind.WholeDayUseMemory=true` 仅控制 F5/F7，关闭走文件、个别节点仍可用。`Chemistry.AutoExtraction/RapidReactions` 缺省改为 false，不迁移覆盖旧值。审查入口见 `research/2026-11-23-settings-compatibility-review-handoff.md`。
 
@@ -56,7 +76,7 @@ dotnet run -c Release --project tests\ReleaseCompatibility\ReleaseCompatibility.
 玩家静态表工具的独立分发流程：运行 `scripts/Publish-StaticLayoutTool.ps1`，取得 `out/static-layout-tool-日期/ProbablyStolenTools-StaticLayoutGenerator-win-x64.zip`。在 GitHub 单独上传附件，不能把工具 exe/Mono.Cecil 放进 Mod 的 Assemblies 或 Mods。玩家完整用法见 `tools/StaticSnapshotLayouts/PLAYER-README.md` 与 README；先退出游戏，执行 `Generate-StaticLayouts.ps1 -GameDir "<游戏目录>"`，默认只生成。`-Install` 只支持默认 `Mods/ProbablyStolenTools` 安装，会把旧 helper 备份到工具 generated 目录，再只替换 helper。该工具不能自动适配任意第三方类型或修复游戏 API 变化，不代表新版本已验收。工具附件已打包测试，但**尚未上传 GitHub Release**，不要声称已可从 Release 下载。推送使用用户临时 token，不写入文件、日志或命令历史。
 
 - 唯一真源：`release/manifest.xml` 的 `<ModVersion>`；`Plugin.Version` 必须同时改。
-- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.6**。
+- 规则：**大版本、中间版本手动决定；小版本每次 `git push` 前 +1**。当前 **0.9.7**。
 - 纯文档提交不单独升版；推送前重新构建 → 两组测试 → 部署 → 正常 `push`（不 force）。
 - 推送使用用户临时 token，不写入文件、日志或命令历史。
 - `release/manifest.xml` 只声明稳定游戏 0.46D；`release/beta/manifest.xml` 只声明 beta 1.0.0.16；`release/universal/manifest.xml` 声明两版。三个 ModVersion 必须与 Plugin.Version 一起更新。不能仅改 manifest 宣称新版本兼容。

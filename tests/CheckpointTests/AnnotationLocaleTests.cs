@@ -4,6 +4,26 @@ internal static class AnnotationLocaleTests
 {
     internal static void Run(Action<string, Action> test, Action<bool> check)
     {
+        test("QoL source label follows Chinese variants and English fallback for every other locale", () =>
+        {
+            foreach (string code in new[] { "zh", "zh-CN", "zh-Hans", "zh-TW", "ZH_hant" })
+                check(LocalePolicy.Text(code, "快速SL", "Quick SL") == "快速SL");
+            foreach (string code in new[] { "en", "en-US", "ru", "de", "ja", "fr", "es", "pl", "pt-BR", "ko", "it", "unknown", null, "" })
+                check(LocalePolicy.Text(code, "快速SL", "Quick SL") == "Quick SL");
+        });
+        test("QoL detail components use native locale then English table then English literal", () =>
+        {
+            foreach (string id in new[] { "water", "acid", "base", "lipobond_agent", "reducing_agent",
+                "chemical_contaminant", "physical_contaminant", "heavy_metal", "dream_cap_extract" })
+            {
+                var label = AnnotationLabels.Liquid(id, "stale-language-name");
+                var cache = new AnnotationTextCache();
+                check(cache.Resolve("ja", label, (code, _, _) => new(true, code == "ja" ? "native-" + id : "English-" + id)) == "native-" + id);
+                check(cache.Resolve("de", label, (code, _, _) => new(true, code == "en" ? "English-" + id : null)) == "English-" + id);
+                check(cache.Resolve("fr", label, (_, _, _) => new(true, null)) == label.English);
+                check(label.English != "stale-language-name" && label.English != label.Key);
+            }
+        });
         test("native water keys and matching tiers preserve every original purity boundary", () =>
         {
             var cases = new[] {

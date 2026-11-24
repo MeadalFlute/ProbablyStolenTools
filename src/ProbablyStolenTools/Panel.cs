@@ -74,9 +74,17 @@ namespace ProbablyStolenTools
         private readonly List<TextMeshProUGUI> _columns = new();
         private PanelBounds _bounds;
         private bool _built, _visible = true, _folded, _dragging, _resizing;
+        private static bool _openOptionsRequested;
+        private bool _menuAccess;
+
+        internal static void OpenOptions()
+        {
+            OverlayBootstrap.Ensure();
+            _openOptionsRequested = true;
+        }
         private Vector2 _pointerStart;
         private PanelBounds _gestureStart;
-        private int _revision = -1, _fileCount = -1, _day = -1;
+        private int _revision = -1, _fileCount = -1, _fileRevision = -1, _day = -1;
         private int _pickerRevision = -1;
         private bool _abandonedExpanded;
         private static readonly object AbandonedHeader = new();
@@ -126,6 +134,7 @@ namespace ProbablyStolenTools
             try
             {
                 bool inGame = IsInGame();
+                if (inGame) _menuAccess = false;
                 if (CheckpointPicker.RevealPanel)
                 {
                     CheckpointPicker.RevealPanel = false;
@@ -140,13 +149,24 @@ namespace ProbablyStolenTools
                 bool stale = _built && (_manager == null || _window == null || !_window.IsAlive
                     || Id(CustomUIManager.Instance) != Id(_manager) || _localeCode != InspectionLocale.Code);
                 if (stale) ReleaseWindow();
-                if (!_built && inGame && CustomUIManager.Instance != null && Time.unscaledTime >= _retryAt)
+                if (_openOptionsRequested)
+                {
+                    _openOptionsRequested = false;
+                    _menuAccess = !inGame;
+                    _visible = true;
+                    _settingsOpen = true;
+                    _folded = false;
+                    if (_built) Layout();
+                }
+                bool accessible = inGame || _menuAccess;
+                if (!_built && accessible && CustomUIManager.Instance != null && Time.unscaledTime >= _retryAt)
                     Build();
                 UpdateNotice(inGame);
                 if (!_built) return;
-                bool show = inGame && _visible;
+                bool show = accessible && _visible;
                 if (!show && CapturingKey) EndCapture(null);
                 _panelGo.SetActive(show);
+                if (_window.frame?.closeButton != null) _window.frame.closeButton.gameObject.SetActive(_menuAccess);
                 if (show) HandleGeometry();
                 if (_canvasRect.rect.width != _screenW || _canvasRect.rect.height != _screenH)
                 {
@@ -156,6 +176,7 @@ namespace ProbablyStolenTools
                 if (!show && (_dragging || _resizing)) EndGesture();
                 int day = CurrentDay();
                 if (_revision != CustomerCheckpoint.Revision || _fileCount != Rewind.Points.Count
+                    || _fileRevision != Rewind.PointRevision
                     || _day != day || _activeId != CustomerCheckpoint.ActiveId
                     || _closedId != (CustomerCheckpoint.ClosedNode?.Id ?? 0)
                     || _closedUsable != (CustomerCheckpoint.ClosedNode?.Graph != null)
@@ -182,7 +203,7 @@ namespace ProbablyStolenTools
                         setting.Toggle.interactable = setting.Config != Plugin.CfgAutoSubmit
                             && setting.Config != Plugin.CfgAlwaysOverwrite || Plugin.CfgAutoAppraisal.Value;
                         if (index > _chemistryStart && index < _chemistryEnd)
-                            setting.Toggle.interactable = Plugin.CfgChemistry.Value;
+                            setting.Toggle.interactable = ChemistrySettingEnabled(setting.Config);
                     }
                 }
             }
@@ -223,9 +244,10 @@ namespace ProbablyStolenTools
             _localeCode = InspectionLocale.Code;
             _bounds = new PanelBounds(Plugin.CfgPanelX.Value, Plugin.CfgPanelY.Value,
                 Plugin.CfgPanelWidth.Value, Plugin.CfgPanelHeight.Value);
-            _folded = Plugin.CfgPanelFolded.Value;
+            _folded = !_settingsOpen && Plugin.CfgPanelFolded.Value;
             var builder = NativeUi.Create(WindowId, InspectionLocale.Text("今日回溯", "Rewind"), _bounds.Width, _bounds.Height, true, out _window);
             if (builder == null) return;
+            builder.OnClose(() => { _visible = false; _menuAccess = false; });
             _manager = CustomUIManager.Instance;
             _panelGo = _window.root;
             _panelRect = _window.Rect;
@@ -311,18 +333,25 @@ namespace ProbablyStolenTools
             NewSetting(InspectionLocale.Text("显示快速鉴定摘要", "Show quick inspection summary"), Plugin.CfgQuickInspection);
             NewSetting(InspectionLocale.Text("跳过顾客对话", "Skip customer dialogue"), Plugin.CfgSkipCustomerDialogue);
             NewSetting(InspectionLocale.Text("水质标注", "Water quality labels"), Plugin.CfgWaterQuality);
+            NewSetting(InspectionLocale.Text("水管成分明细", "Tap composition details"), Plugin.CfgPipeComposition);
             NewSetting(InspectionLocale.Text("酿酒标注", "Wine annotations"), Plugin.CfgWineAppraisal);
             _chemistryStart = _settings.Count;
             _chemistryTop = Raw("chemistry-divider-top", _settingsContent, new Color(0.42f, 0.62f, 0.72f, 0.6f)).rectTransform;
             NewSetting(InspectionLocale.Text("化学辅助", "Chemistry assist"), Plugin.CfgChemistry);
             NewSetting(InspectionLocale.Text("化学成分标注", "Composition labels"), Plugin.CfgChemistryLabels);
+            NewSetting(InspectionLocale.Text("显示当前占比", "Show current percentage"), Plugin.CfgCompositionCurrent);
+            NewSetting(InspectionLocale.Text("显示预期纯度", "Show expected purity"), Plugin.CfgCompositionExpected);
+            NewSetting(InspectionLocale.Text("显示评分", "Show grade"), Plugin.CfgCompositionGrade);
+            NewSetting(InspectionLocale.Text("容器成分明细", "Container composition details"), Plugin.CfgShiftComposition);
             NewSetting(InspectionLocale.Text("容器自动改名", "Container auto naming"), Plugin.CfgContainerAutoRename);
             NewSetting(InspectionLocale.Text("自动搅拌", "Auto blend"), Plugin.CfgAutoBlend);
             NewSetting(InspectionLocale.Text("快速萃取", "Rapid extraction"), Plugin.CfgAutoExtraction);
             NewSetting(InspectionLocale.Text("快速化学反应", "Rapid chemical reactions"), Plugin.CfgRapidReactions);
+            NewSetting(InspectionLocale.Text("快速烧开水", "Rapid boiling"), Plugin.CfgRapidBoiling);
             NewSetting(InspectionLocale.Text("机器产物预览", "Machine output preview"), Plugin.CfgFacilityPreview);
             _chemistryEnd = _settings.Count;
             _chemistryBottom = Raw("chemistry-divider-bottom", _settingsContent, new Color(0.42f, 0.62f, 0.72f, 0.6f)).rectTransform;
+            NewSetting(InspectionLocale.Text("解锁运行中机器模组槽", "Unlock working machine modules"), Plugin.CfgUnlockMachineModules);
             NewSetting(InspectionLocale.Text("禁用内存节点", "Disable memory checkpoints"), Plugin.CfgDisableMemoryCheckpoints);
             NewSetting(InspectionLocale.Text("自动建立节点", "Automatic checkpoints"), Plugin.CfgAutoCheckpoints);
             NewSetting(InspectionLocale.Text("保留上一天节点", "Keep previous day checkpoints"), Plugin.CfgKeepPreviousDay);
@@ -439,12 +468,18 @@ namespace ProbablyStolenTools
             _settings.Add((element.Rect, element.toggle, config));
         }
 
+        private static bool ChemistrySettingEnabled(ConfigEntry<bool> config)
+            => config == Plugin.CfgShiftComposition || Plugin.CfgChemistry.Value
+                && ((config != Plugin.CfgCompositionCurrent && config != Plugin.CfgCompositionExpected && config != Plugin.CfgCompositionGrade)
+                    || Plugin.CfgChemistryLabels.Value);
+
         // ---------------- 快捷键改键 ----------------
 
         private string HotkeyText(Plugin.HotkeyBinding binding)
             => _captureTarget == binding ? InspectionLocale.Text("请按键…", "Press a key…")
                 : binding.Config.Value == KeyCode.None ? InspectionLocale.Text("已停用", "Disabled")
-                : Plugin.KeyName(binding.Config.Value);
+                : binding.Id == "details" && (binding.Config.Value == KeyCode.LeftShift || binding.Config.Value == KeyCode.RightShift)
+                    ? "Shift" : Plugin.KeyName(binding.Config.Value);
 
         private static string HotkeyLabel(Plugin.HotkeyBinding binding)
             => InspectionLocale.Text(binding.Label, binding.Id == "prev" ? "Select previous checkpoint"
@@ -453,6 +488,7 @@ namespace ProbablyStolenTools
                 : binding.Id == "newer" ? "Select newer checkpoint" : binding.Id == "newerAlt" ? "Select newer (alternate)"
                 : binding.Id == "older" ? "Select older checkpoint" : binding.Id == "olderAlt" ? "Select older (alternate)"
                 : binding.Id == "confirmNode" ? "Confirm checkpoint rewind"
+                : binding.Id == "details" ? "Show item details (hold)"
                 : binding.Id == "reload" ? "Quick reload save" : binding.Id == "reroll" ? "Reroll random" : binding.Label);
 
 #if !MONO
@@ -487,7 +523,7 @@ namespace ProbablyStolenTools
             try
             {
                 if (_captureTarget == null || !_built || !_settingsOpen || _panelGo == null
-                    || !_panelGo.activeInHierarchy || !IsInGame()) { EndCapture(null); return; }
+                    || !_panelGo.activeInHierarchy || !(IsInGame() || _menuAccess)) { EndCapture(null); return; }
                 if (Time.frameCount <= _captureStartedFrame) return;
                 if (Input.GetKeyDown(KeyCode.Escape)) { EndCapture(null); return; }
                 if (Input.GetKeyDown(KeyCode.Backspace))
@@ -601,6 +637,7 @@ namespace ProbablyStolenTools
             _pickerRevision = CheckpointPicker.Revision;
             _revision = CustomerCheckpoint.Revision;
             _fileCount = Rewind.Points.Count;
+            _fileRevision = Rewind.PointRevision;
             _activeId = CustomerCheckpoint.ActiveId;
             _closedId = CustomerCheckpoint.ClosedNode?.Id ?? 0;
             _closedUsable = CustomerCheckpoint.ClosedNode?.Graph != null;
@@ -735,7 +772,7 @@ namespace ProbablyStolenTools
                 }
                 setting.Toggle.interactable = i != 1 && i != 2 || Plugin.CfgAutoAppraisal.Value;
                 if (i > _chemistryStart && i < _chemistryEnd)
-                    setting.Toggle.interactable = Plugin.CfgChemistry.Value;
+                    setting.Toggle.interactable = ChemistrySettingEnabled(setting.Config);
             }
             Place(_chemistryTop, PanelSettingsLayout.Padding, -settingsLayout.DividerY(_chemistryStart), settingsLayout.RowWidth, 1);
             Place(_chemistryBottom, PanelSettingsLayout.Padding, -settingsLayout.DividerY(_chemistryEnd), settingsLayout.RowWidth, 1);

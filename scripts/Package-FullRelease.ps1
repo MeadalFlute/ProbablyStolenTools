@@ -24,7 +24,7 @@ $built = Join-Path $workspace 'src\ProbablyStolenTools\bin\Release\Mono'
 $helper = Join-Path $built 'ProbablyStolenTools.StaticLayouts.dll'
 $main = Join-Path $built 'ProbablyStolenTools.dll'
 [xml]$definition = Get-Content -LiteralPath $manifest -Raw
-if (@($definition.Mod.GameVersions.GameVersion).Count -ne 1 + $additional.Count) {
+if (@($definition.Mod.GameVersions.Version).Count -ne 1 + $additional.Count) {
     throw 'Declare exactly one game version per supplied static layout profile.'
 }
 $names = @($definition.Mod.Assemblies.Assembly)
@@ -70,7 +70,7 @@ $files = @(Get-ChildItem -LiteralPath $package -File | ForEach-Object {
     BuildCommit = $revision
     BuildDirty = $false
     Version = [string]$definition.Mod.ModVersion
-    GameVersions = @($definition.Mod.GameVersions.GameVersion)
+    GameVersions = @($definition.Mod.GameVersions.Version)
     GameAssemblySHA256 = (Get-FileHash -LiteralPath (Join-Path $GameDir 'Probably Stolen_Data\Managed\Assembly-CSharp.dll')).Hash
     AdditionalLayouts = @($additional | ForEach-Object {
         [ordered]@{ File = [IO.Path]::GetFileName($_); SHA256 = (Get-FileHash -LiteralPath $_).Hash }

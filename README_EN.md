@@ -1,8 +1,10 @@
-# Probably Stolen Tools
+# QuickSL
+
+Previously Probably Stolen Tools. Only the display name changes: mod ID, DLLs, installation folder and configuration filenames stay unchanged, preserving existing settings. The Mods page shows both Chinese and English descriptions; the universal manifest declares 0.46D and 1.0.0.16.
 
 English | [中文](README.md)
 
-A helper mod for **Probably Stolen**, currently **0.9.6**. The game uses Unity 2021.3.45f2 / Mono / x64 and its own **IMod / Harmony** loader; MelonLoader and BepInEx are not required. One package contains compatibility data for both **stable 0.46D** and **beta 1.0.0.16** and selects automatically at startup.
+A helper mod for **Probably Stolen**, currently **0.9.7**. The game uses Unity 2021.3.45f2 / Mono / x64 and its own **IMod / Harmony** loader; MelonLoader and BepInEx are not required. One package contains compatibility data for both **stable 0.46D** and **beta 1.0.0.16** and selects automatically at startup.
 
 ## Game Beta Branch
 
@@ -25,6 +27,8 @@ instructions. Include that screenshot and `PSTools.log` in a bug report.
 Use the mod's gear button in the main-menu Mods screen to change object, slot
 and byte limits. Apply also updates `PSTools.settings.xml`; manual edits to that
 XML while the game is closed remain authoritative on restart.
+The same screen has **Open QuickSL feature panel**, allowing feature switches
+and hotkeys to be adjusted before loading a save.
 
 The default object cap is 200000 (supported: 1000–1000000). Raising it does not
 traverse additional objects or preallocate the entire higher limit for graphs
@@ -78,20 +82,31 @@ in Mods.
 ### Appraisal and information
 
 - **Quick appraisal**: the appraisal screen lists authenticity, issues and a suggested price, with optional auto-submit.
-- **Double-click to inspect**: double-click an inspectable item to use a magnifying glass from your inventory.
+- **Double-click to inspect**: use your magnifying glass on an inspectable item. If an inspection page is already open, close it before inspecting the new item. Labelers and keycards are not used as magnifiers.
 - **Water quality labels**: tags water quality in real time and highlights mismatches in red.
-- **Chemistry assist**: the water-quality row shows the dominant component and `share% | purity% | grade`; empty containers show size/name, hydroponic seeds show the matching item name, and labels start at 150 mL with no maximum capacity cap.
+- **Chemistry assist**: independently select current percentage, predicted purity and grade; only current percentage is enabled by default. Empty containers show size/name, hydroponic seeds show the matching item name, and labels start at 150 mL with no maximum capacity cap.
+- **Composition details**: hold the rebindable item-details key (either Shift by default) over the shop tap to append water quality and every nonzero constituent's percentage while preserving its connection description; release restores native behavior. Over liquid containers it replaces the entire tooltip with Name / Amount / Share columns. Constituents sort by descending share. The primary component is orange and the rest white, with columns aligned using measured text widths. Amounts select uL/mL/L automatically; percentages use two decimal places, or `<0.01%` for smaller nonzero traces. Both switches default to on and work independently of the chemistry master switch.
+- **Compact reagents**: acid, base, lipobond agent and reducing agent show only the main substance, chemical contaminants and heavy metals, including zero impurities. Tooltip auto naming prefixes a star when heavy metals are strictly below 0.10%; the item itself is not renamed.
+- **Unlock working machine modules** (default off): bypass only the working machine's module-bay locks, not batteries, ingredients, outputs or individually locked items. Turning it off immediately restores native lock queries without permanently changing lock fields.
 - **Auto-blend**: dropping blendable items into a blender follows the game's own blend rules and sound; different products stay separate and insufficient capacity is rejected early.
 - **Rapid extraction** (off by default): adding liquid to a container with a positive amount of alcohol converts the three mushroom-mash types into extracts using the original ratios, rounding and conditions.
 - **Rapid reactions** (off by default): a separate switch for the nine explicit non-thermal reactions, at most 512 extra steps per run, stopping when nothing changes. Existing saved choices are preserved.
-- **Facility projections**: tooltips for the water purifier, evaporator, hydroponic tray and fish tank/RAS show expected overnight output or removal, with missing water/container/power warnings.
-- **Wine labels**: shows glowberry condition; unfermented bottles show an expected quality, low water is reported separately, and illegal yeast gets a separate native-style "Contraband" line.
+- **Rapid boiling** (default off): hotplates only. Fully remove each matching substance when its native condition is met: lipobond agent >55°C, alcohol >78.37°C, water >100°C, microbes >=70°C. Requires the chemistry master switch; other heat reactions and expansion brewing containers are untouched.
+- **Facility projections**: hold the details key over water purifiers, evaporators, hydroponics and fish tanks/RAS to see expected overnight output/removal and missing water/container/power warnings. No projection is added without the key.
+- **Wine labels**: hold the details key to see glowberry condition, expected unfermented-bottle quality, low-water/failure warnings and native-style contraband labels. Release restores native tooltips; wine information in the inspection summary also follows this key.
 - **Dialogue fast-forward**: advances ordinary customer small talk and stops at choices, SEC encounters and important dialogue.
 
 ### Logs
 
 - **Settings → View log** opens a scrollable in-game view of the last 400 lines of `PSTools.log` and copies the log path to the clipboard.
 - Log headers are unified as `[QuickSL]` / `[QuickSL/subsystem]` (for example `[QuickSL/Customer]`).
+
+### Update Notes
+
+Once per version, after entering a save and closing the day/night report, a compact
+top-centered notice appears for three seconds. Click anywhere on it for scrollable
+details. Displaying it persists acknowledgement even without a click. Other compact
+top windows are avoided on a best-effort basis, not a cross-mod layout guarantee.
 
 ---
 
@@ -104,6 +119,7 @@ in Mods.
 | `F7` | Return to before opening today |
 | `F8` | Show / hide the checkpoint panel |
 | `F9` | Create a manual checkpoint immediately |
+| `Shift` | Hold for item details, composition, wine labels and machine projections |
 | Unbound | Quick reload save / reroll random (assignable in Settings) |
 
 All keys are rebindable: `F8` → Settings → Hotkeys. Click a row and press the new key; `Esc` cancels, `Backspace` restores that row's default, `Delete` disables the hotkey, and "Reset hotkeys" restores everything. A conflicting key is swapped automatically.
@@ -120,6 +136,7 @@ All keys are rebindable: `F8` → Settings → Hotkeys. Click a row and press th
 - The settings page scrolls and contains feature toggles, hotkeys and "View log".
 - **Automatic checkpoints** are on by default. When disabled, morning/customer/closed-shop/return nodes are no longer created automatically; manual F9, the picker and restoring retained nodes still work, while F5/F7 load a save file.
 - **Disable memory checkpoints** is off by default; enabling it stops memory capture and restore (see the one-time blacklist policy above). **Use memory for whole-day rewind** is on by default; turning it off routes F5/F7 to disk without disabling individual memory nodes. File reloads invalidate all old memory nodes.
+- The memory-conflict notice stays until manually closed and has a small blue source label. Each conflicting mod is shown only once across restarts, recorded in `Compatibility.NotifiedMemoryConflicts`. With memory disabled, existing matching morning files still appear as before-opening/file checkpoints; listing them does not request a game save.
 - The settings page also has **Quick reload save** and **Reroll random** actions; both are unbound by default and can be assigned in the hotkeys section. Quick reload reads the active slot's latest disk save, warns that unsaved progress and all memory checkpoints will be lost, does not save first, and does not overwrite the active save. Reroll only changes future random results, does not rebuild existing customers/items or reload a save, and a new seed does not guarantee a different outcome.
 
 ---
@@ -155,7 +172,7 @@ Click Subscribe on the Workshop page, then enable the mod in the game's Mods men
 Manual installation:
 
 1. Download the `ProbablyStolenTools` folder from the releases and put it into `<game folder>\Mods\`.
-2. Enable **Probably Stolen Tools** in the game's Mods menu and restart when prompted.
+2. Enable **QuickSL** in the game's Mods menu and restart when prompted.
 3. Load a save, enter the shop and press `F8`.
 
 Requires only the `files` capability and no network access; `reflection-external` and `dynamic-code` are no longer required. Keep both `ProbablyStolenTools.dll` and `ProbablyStolenTools.StaticLayouts.dll`; do not replace only the main DLL.
@@ -234,7 +251,7 @@ For the current beta installation, use the beta manifest. Build the universal pa
 .\scripts\Deploy-FullRelease.ps1 -GameDir "<game folder>" -PackageDirectory "<output>\ProbablyStolenTools"
 ```
 
-Current source baseline: 0 warnings / 0 errors; `CheckpointTests` passes **433** tests and optional-mod compatibility passes **17** tests; the release build passes **84** Harmony targets, **76** fields and the official mod scanner, with 16 official guarded owners, 13 save-action tests, 14 native history/settings IO fixtures and 11 player-tool assertions. The single-pass entity backend ships with 0.9.0; offline tests are not a substitute for in-game verification.
+Current development candidate: 0 warnings / 0 errors; **454** reference tests and **20** optional-mod tests pass in this round. The installed beta passes **92** Harmony targets, **76** fields, 16 protected-owner checks and the official scanner. Earlier passing records cover 13 save-action tests, 14 native history/settings IO fixtures and 11 player-tool assertions. New UI/heating needs live acceptance; original stable assemblies were not retested. The single-pass entity backend ships with 0.9.0.
 
 `Snapshot.SemanticDevelopmentChecks` gates duplicate development snapshots and defaults to false for release. Enabling it adds time and memory to the primary and extra manual sample. Disabling it preserves complete preflight, verification, repair and necessary diagnostics. `Snapshot.SemanticEntityBlocks` controls the new backend. Restart the game after changing these settings.
 

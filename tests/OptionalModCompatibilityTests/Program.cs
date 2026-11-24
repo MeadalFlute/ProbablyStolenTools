@@ -9,6 +9,8 @@ void Test(string name, Action body)
     UnityEngine.Time.unscaledTime += 10f;
     Plugin.CfgDisableMemoryCheckpoints.Value = false;
     Plugin.CfgHandledMemoryConflicts.Value = "";
+    Plugin.CfgNotifiedMemoryConflicts.Value = "";
+    CompatibilityNotice.Ready = true;
     OptionalModCompatibility.Refresh();
     Plugin.StoreValue = null;
     Plugin.CfgWineAppraisal.Value = true;
@@ -181,9 +183,51 @@ Test("compatibility logs change only on transitions and notice waits for gamepla
     Plugin.StoreValue = new object();
     for (int i = 0; i < 100; i++) OptionalModCompatibility.Tick();
     Check(EventLog.Lines.Count == 1 && PanelNotice.Lines.Count == 1);
+    Check(Plugin.Instance.Config.SavedNotified == OptionalModCompatibility.ClaimsId);
     claims.IsEnabled = false; OptionalModCompatibility.Tick();
     claims.IsEnabled = true; OptionalModCompatibility.Tick();
-    Check(EventLog.Lines.Count == 3 && PanelNotice.Lines.Count == 2);
+    Check(EventLog.Lines.Count == 3 && PanelNotice.Lines.Count == 1);
+});
+Test("persisted notice IDs suppress a fresh session notice independently of disable defaults", () =>
+{
+    Plugin.CfgNotifiedMemoryConflicts.Value = "other.mod, " + OptionalModCompatibility.ClaimsId + " ";
+    Add(OptionalModCompatibility.ClaimsId);
+    Plugin.StoreValue = new object();
+    PanelNotice.Lines.Clear();
+    OptionalModCompatibility.Tick();
+    Check(PanelNotice.Lines.Count == 0 && !OptionalModCompatibility.MemoryCheckpointsAllowed);
+});
+Test("unavailable notice UI is retried without recording a displayed notice", () =>
+{
+    Add(OptionalModCompatibility.ClaimsId);
+    Plugin.StoreValue = new object();
+    CompatibilityNotice.Ready = false;
+    PanelNotice.Lines.Clear();
+    OptionalModCompatibility.Tick();
+    Check(Plugin.CfgNotifiedMemoryConflicts.Value == "" && PanelNotice.Lines.Count == 0);
+    CompatibilityNotice.Ready = true;
+    UnityEngine.Time.unscaledTime += 2f;
+    OptionalModCompatibility.Tick();
+    Check(PanelNotice.Lines.Count == 1 && Plugin.Instance.Config.SavedNotified == OptionalModCompatibility.ClaimsId);
+});
+Test("notice save failure keeps session acknowledgement and retries with the latest override", () =>
+{
+    Add(OptionalModCompatibility.ClaimsId);
+    var config = Plugin.Instance.Config;
+    config.SaveFailure = new IOException("notice config locked");
+    Plugin.StoreValue = new object();
+    PanelNotice.Lines.Clear();
+    OptionalModCompatibility.Tick();
+    Check(Plugin.CfgNotifiedMemoryConflicts.Value == OptionalModCompatibility.ClaimsId);
+    int saves = config.Saves;
+    for (int i = 0; i < 100; i++) OptionalModCompatibility.Tick();
+    Check(config.Saves == saves && PanelNotice.Lines.Count == 1 && config.SaveOnConfigSet);
+    Plugin.CfgDisableMemoryCheckpoints.Value = false;
+    config.SaveFailure = null;
+    typeof(OptionalModCompatibility).GetField("_retryAfterUtcTicks", System.Reflection.BindingFlags.Static
+        | System.Reflection.BindingFlags.NonPublic).SetValue(null, 0L);
+    OptionalModCompatibility.Refresh();
+    Check(config.SavedNotified == OptionalModCompatibility.ClaimsId && !config.SavedDisable);
 });
 Test("warnings have Chinese and English variants", () =>
 {

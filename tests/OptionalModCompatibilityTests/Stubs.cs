@@ -56,12 +56,14 @@ namespace ProbablyStolenTools
         internal int Saves;
         internal bool SavedDisable;
         internal string SavedHandled;
+        internal string SavedNotified;
         internal void Save()
         {
             Saves++;
             if (SaveFailure != null) throw SaveFailure;
             SavedDisable = Plugin.CfgDisableMemoryCheckpoints.Value;
             SavedHandled = Plugin.CfgHandledMemoryConflicts.Value;
+            SavedNotified = Plugin.CfgNotifiedMemoryConflicts.Value;
         }
     }
     internal sealed class ConfigHost { internal ModConfig Config = new(); }
@@ -71,6 +73,7 @@ namespace ProbablyStolenTools
         internal static BoolConfig CfgWineAppraisal = new();
         internal static BoolConfig CfgDisableMemoryCheckpoints = new() { Value = false };
         internal static StringConfig CfgHandledMemoryConflicts = new();
+        internal static StringConfig CfgNotifiedMemoryConflicts = new();
         internal static Logger LogSource = new();
         internal static object StoreValue;
         internal static object Store() => StoreValue;
@@ -85,6 +88,11 @@ namespace ProbablyStolenTools
     {
         internal static readonly List<string> Lines = new();
         internal static void Show(string text, bool error = false) => Lines.Add(text);
+    }
+    internal static class CompatibilityNotice
+    {
+        internal static bool Ready = true;
+        internal static bool Show(string text) { if (!Ready) return false; PanelNotice.Show(text, true); return true; }
     }
     internal static class InspectionLocale
     {

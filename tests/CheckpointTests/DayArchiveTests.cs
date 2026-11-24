@@ -122,7 +122,7 @@ internal static class DayArchiveTests
             catalog.Refresh(root);
             check(catalog.ReadForRestore(latest) == null);
         }));
-        test("restore retains larger UTF-8 saves accepted by the metadata character budget", () => Temp(root =>
+        test("catalog and restore both accept UTF-8 saves above the former byte limit", () => Temp(root =>
         {
             string path = Add(root, 1, 94);
             File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(new
@@ -134,8 +134,24 @@ internal static class DayArchiveTests
             check(new FileInfo(path).Length > 16 * 1024 * 1024);
             var catalog = new CheckpointFileCatalog();
             catalog.Refresh(root);
-            check(catalog.Entries.Single().Metadata == null);
+            check(catalog.Entries.Single().Metadata?.Day == 94);
             check(catalog.ReadForRestore(path)?.Day == 94);
+        }));
+        test("large ASCII saves can be indexed reused and deduplicated without losing older days", () => Temp(root =>
+        {
+            string previous = Add(root, 1, 94), latest = Add(root, 2, 95);
+            string text = File.ReadAllText(latest);
+            File.WriteAllText(latest, "{\"padding\":\"" + new string('x', 21 * 1024 * 1024) + "\"," + text.Substring(1));
+            File.SetLastWriteTimeUtc(latest, new DateTime(2026, 11, 2, 12, 0, 0, DateTimeKind.Utc));
+            string duplicate = Path.Combine(root, "20261103_120000_0000000_day.es3");
+            File.Copy(latest, duplicate);
+            File.SetLastWriteTimeUtc(duplicate, new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc));
+            var catalog = new CheckpointFileCatalog();
+            catalog.Refresh(root);
+            check(catalog.Find(new SaveMetadata(95, 0, 2, 2, "a"))?.Path == duplicate);
+            check(catalog.ReadForRestore(latest)?.Day == 95);
+            check(catalog.Deduplicate(root, null) == 1);
+            check(File.Exists(previous) && File.Exists(duplicate) && !File.Exists(latest));
         }));
         test("locked duplicate deletion preserves all days and can be retried", () => Temp(root =>
         {

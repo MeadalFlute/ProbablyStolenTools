@@ -91,7 +91,9 @@ namespace ProbablyStolenTools
                 if (analysis.AlcoholTop) { __result = LiquidComposition.AlcoholLabel(analysis); return; }
                 // 水最高时保留原物品名；其它成分最高时用成分名替换。
                 if (!analysis.WaterTop && !string.IsNullOrEmpty(analysis.TopName))
-                    __result = analysis.TopName;
+                    __result = (CompositionDetails.IsReagent(analysis.TopIdentifier)
+                        && CompositionDetails.Star(analysis.TopIdentifier, ChemistryData.Ids(), ChemistryData.Parts(__instance))
+                        ? "\u2B50" : "") + analysis.TopName;
             }
             catch { }
         }
