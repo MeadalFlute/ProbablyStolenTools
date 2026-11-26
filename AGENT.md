@@ -14,11 +14,14 @@
 > Unity 实机验收，beta 1.0.0.16 复用已发布静态 profile，不能写成本轮双版本实机通过。
 > 构建和打包需使用同一干净提交；通用包必须含两 profile，禁止只发本机单版本 helper。
 
-> 2026-11-27 00:36 **0.9.10 已发布**：`main` 由 `5726538` 快进到 `5566873`，标签 `v0.9.10`，
-> GitHub Release `releases/tag/v0.9.10`，资产 `ProbablyStolenTools.zip` 606118 bytes /
-> `B4924707…`（GitHub 回读 digest 一致）。工坊**尚未上传 0.9.10**：本地订阅副本仍是 0.9.8
-> （`2AD3445D…`），23:56 提交的 `C100CAC3…`（只含校验修复、版本仍 0.9.9）仍待审核，
-> 需要用 0.9.10 包重新提交。实机日志证据：`PSTools.log` 00:28（0.46D）与 00:30（1.0.0.16）
+> 2026-11-27 00:43 **0.9.10 已发布并提交工坊**：`main` 由 `5726538` 快进到 `5566873`
+> （文档提交到 `287da57`），标签 `v0.9.10`，GitHub Release `releases/tag/v0.9.10`，资产
+> `ProbablyStolenTools.zip` 606118 bytes / `B4924707…`（GitHub 回读 digest 一致）。工坊提交
+> 00:39 完成，上传器状态 manifest `DB46086F…`/1075 bytes、版本字符串 **`0.99-h2`**，DLL
+> `CF7751B4…` 与 helper `051D390E…` 与 GitHub 包完全一致（仅版本字符串不同）；本地订阅副本
+> 仍是 0.9.8（`2AD3445D…`），等待审核。安装说明已修正：`steamapps\common\Probably Stolen\Mods`
+> 是本地模组开发区，工坊订阅副本位于 `steamapps\workshop\content\4348910\3829188627`，两者是
+> 同一 Mod ID 的两份副本，用本地开发区需先取消订阅。实机日志证据：`PSTools.log` 00:28（0.46D）与 00:30（1.0.0.16）
 > 均出现 `CAPTURE … client=手动` 与 `RESTORE OK … diff=0`；`PSTools_errors.log` 自 23:49
 > 起无新增。该日志来自本机玩家实测，不得表述为完整 Unity 验收或工坊线上可见性证明。
 

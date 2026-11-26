@@ -45,11 +45,18 @@ Published on 2026-11-27 00:36 (Asia/Hong_Kong) through the local proxy `127.0.0.
   (`Steam\steamapps\common\Probably Stolen\Mods\ProbablyStolenTools\`) and Workshop item `3829188627`
   (appid 4348910), because the Workshop submission is still under review.
 
-Workshop: not uploaded in this run. The local subscribed copy under
-`steamapps\workshop\content\4348910\3829188627` is still 0.9.8 (`2AD3445D...`), and the uploader
-state records the earlier 0.9.9-only submission (`C100CAC3...`, LastUploadedUtc 2026-11-26T15:56:38Z)
-as the pending edit. A 0.9.10 upload from `out/quicksl-0.9.10-universal/ProbablyStolenTools/` is
-still required before claiming the Workshop carries this build.
+Workshop: the player submitted it at 00:39 (uploader state `LastUploadedUtc
+2026-11-26T16:39:06Z`): manifest 1075 bytes `DB46086F...` carrying version string `0.99-h2`,
+DLL `CF7751B4...` and helper `051D390E...` byte-identical to this GitHub package (only the version
+string differs; the GitHub archive keeps `0.9.10`). The local subscribed copy under
+`steamapps\workshop\content\4348910\3829188627` is still 0.9.8 (`2AD3445D...`), so the submission
+remains under review at the time of writing.
+
+Install instructions were corrected after player feedback: `steamapps\common\Probably Stolen\Mods` is
+the local mod development folder, while a Workshop subscriber's copy lives in
+`steamapps\workshop\content\4348910\3829188627`. Both are separate copies of the same mod ID, so the
+local folder must only be used after unsubscribing. The GitHub release body was patched accordingly at
+00:43 and re-read from the API (3221 characters).
 
 Runtime evidence collected after deployment (0.9.10, `PSTools.log`): `CAPTURE ... client=手动` and
 `RESTORE OK ... diff=0` at 00:28 on game 0.46D and at 00:30 on game 1.0.0.16; `PSTools_errors.log`
