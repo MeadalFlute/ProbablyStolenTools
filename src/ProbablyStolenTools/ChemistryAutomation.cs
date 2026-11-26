@@ -46,6 +46,38 @@ namespace ProbablyStolenTools
         }
         private static GameItem Bottle(GameItem machine) =>
             (MachineHelper.GetBodyStorage(machine, 2) as GameSlotInventory)?.childItem;
+        internal static bool BlendBottleAvailable(GameItem bottle) => bottle != null && !OptionalModCompatibility.BrewingOwns(bottle);
+
+        internal static bool IsExtrusionSlot(GameItem machine, GameSlotInventory slot)
+            // Unlike the blender, the manual finisher has no battery panel: module=0, container=1, output=2.
+            => machine?.identifier == "chem_finisher" && slot != null
+                && ReferenceEquals(MachineHelper.GetBodyStorage(machine, 1), slot);
+
+        internal static void ExtrusionAdded(GameSlotInventory slot, GameItem item, bool accepted)
+        {
+            if (!accepted || !Available || Plugin.CfgSmartExtrusion?.Value != true || item == null) return;
+            try
+            {
+                var machine = slot?.GetParentItem();
+                if (!IsExtrusionSlot(machine, slot)
+                    || !ReferenceEquals(slot.childItem, item) || !ReferenceEquals(item.parentInventory, slot)
+                    || !item.IsTag("LIQUID_CONTAINER_TAG") || !GeneralHelper.IsItemOwned(machine)
+                    || !GeneralHelper.IsItemOwned(item) || OptionalModCompatibility.BrewingOwns(item)) return;
+                string ingredient = ChemistryRules.ExtrusionIngredient(ChemistryData.Ids(), ChemistryData.Parts(item));
+                if (ingredient == null) return;
+                string product = null;
+                foreach (var recipe in ChemFinisherRecipe.chemFinisherRecipes)
+                {
+                    if (recipe == null || recipe.activeIngredientId != ingredient || string.IsNullOrEmpty(recipe.identifier)) continue;
+                    if (product != null) return; // Ambiguous extension recipes remain a manual choice.
+                    product = recipe.identifier;
+                }
+                if (product == null || ChemistryData.Tag(machine, "SELECTED_CHEM_ID_TAG")?.GetString() == product) return;
+                machine.ModifyTag("SELECTED_CHEM_ID_TAG", state => state.Enable().SetString(product));
+                EventLog.Debug("[Chemistry] SMART EXTRUSION machine=" + machine.uniqueId + " product=" + product);
+            }
+            catch (Exception e) { Warn("extrusion", e); }
+        }
 
         internal static bool SequentialGroup(GameGridInventory grid)
         {
@@ -59,47 +91,44 @@ namespace ProbablyStolenTools
             catch (Exception e) { Warn("blend-group", e); return false; }
         }
 
-        private static bool Compatible(GameItem bottle, GameItem ingredient, string[] ids)
-        {
-            if (bottle == null || ingredient == null || !ingredient.IsTag("BLENDABLE_TAG")) return false;
-            if (OptionalModCompatibility.BrewingOwns(bottle)) return false;
-            string input = ChemistryRules.Signature(ids, ChemistryData.Parts(ingredient));
-            var parts = ChemistryData.Parts(bottle);
-            return ChemistryData.Total(parts) == 0
-                || input.Length > 0 && input == ChemistryRules.Signature(ids, parts);
-        }
-
         internal static bool Allow(GameGridInventory grid, GameItem ingredient)
         {
-            if (!AutoBlend || !PlayerMoving || _running) return true;
+            if (ingredient == null || !AutoBlend || !PlayerMoving || _running) return true;
             try
             {
                 var machine = Blender(grid);
                 if (machine == null) return true;
                 var bottle = Bottle(machine);
                 if (bottle == null) return true;
-                if (OptionalModCompatibility.BrewingOwns(bottle)) return true;
+                if (!BlendBottleAvailable(bottle)) return true;
                 var ids = ChemistryData.Ids();
-                bool compatible = Compatible(bottle, ingredient, ids);
+                var contents = ChemistryData.Parts(bottle);
+                var input = ChemistryData.Parts(ingredient);
+                long total = ChemistryData.Total(contents);
+                string signature = ChemistryRules.Signature(ids, input);
+                bool compatible = ingredient != null && ingredient.IsTag("BLENDABLE_TAG")
+                    && (total == 0 || signature.Length > 0 && signature == ChemistryRules.Signature(ids, contents));
                 // A single incompatible placement remains available for manual recipes.
                 if (!compatible) return _groups == 0 && ItemMultiSelectHandler.current?.IsGroupDragging != true;
-                string signature = ChemistryRules.Signature(ids, ChemistryData.Parts(ingredient));
+                int loss = MachineBlender.GetLoss(machine);
                 long reserved = 0;
-                foreach (var item in grid.childItems)
+                var residents = grid.childItems;
+                foreach (var item in residents)
                 {
                     if (ReferenceEquals(item, ingredient) || !item.IsTag("BLENDABLE_TAG")) continue;
-                    if (ChemistryRules.Signature(ids, ChemistryData.Parts(item)) != signature)
+                    var parts = ChemistryData.Parts(item);
+                    if (ChemistryRules.Signature(ids, parts) != signature)
                     {
-                        if (ChemistryData.Total(ChemistryData.Parts(bottle)) == 0) return false;
+                        if (total == 0) return false;
                         continue;
                     }
-                    reserved += ChemistryRules.BlendVolume(ChemistryData.Parts(item), MachineBlender.GetLoss(machine));
+                    reserved += ChemistryRules.BlendVolume(parts, loss);
                 }
-                long output = ChemistryRules.BlendVolume(ChemistryData.Parts(ingredient), MachineBlender.GetLoss(machine));
+                long output = ChemistryRules.BlendVolume(input, loss);
                 if (_groups > 0)
                     return GroupPlan.Reserve(machine, ingredient, signature, output, ChemistryData.Capacity(bottle),
-                        ChemistryData.Total(ChemistryData.Parts(bottle)), reserved, item => grid.childItems.Contains(item));
-                return output > 0 && output + reserved + ChemistryData.Total(ChemistryData.Parts(bottle))
+                        total, reserved, item => residents.Contains(item));
+                return output > 0 && output + reserved + total
                     <= ChemistryData.Capacity(bottle);
             }
             catch (Exception e) { Warn("blend-plan", e); return false; }
@@ -126,6 +155,8 @@ namespace ProbablyStolenTools
             Pending.Clear();
             if (!AutoBlend) return;
             _running = true;
+            var timing = System.Diagnostics.Stopwatch.StartNew();
+            int blended = 0, combined = 0;
             try
             {
                 var ids = ChemistryData.Ids();
@@ -134,27 +165,59 @@ namespace ProbablyStolenTools
                     var grid = MachineHelper.GetBodyStorage(machine, 1) as GameGridInventory;
                     var bottle = Bottle(machine);
                     if (grid == null || bottle == null || !GeneralHelper.IsItemOwned(machine)
-                        || !GeneralHelper.IsItemOwned(bottle)) continue;
+                        || !GeneralHelper.IsItemOwned(bottle) || !BlendBottleAvailable(bottle)) continue;
                     string signature = ChemistryRules.Signature(ids, ChemistryData.Parts(bottle));
                     bool played = false;
-                    foreach (var item in new List<GameItem>(grid.childItems))
+                    int loss = MachineBlender.GetLoss(machine);
+                    foreach (var item in grid.childItems)
                     {
                         if (!ReferenceEquals(item.parentInventory, grid) || !GeneralHelper.IsItemOwned(item)
-                            || !Compatible(bottle, item, ids)) continue;
-                        string product = ChemistryRules.Signature(ids, ChemistryData.Parts(item));
+                            || !item.IsTag("BLENDABLE_TAG")) continue;
+                        var input = ChemistryData.Parts(item);
+                        var contents = ChemistryData.Parts(bottle);
+                        string product = ChemistryRules.Signature(ids, input);
+                        long total = ChemistryData.Total(contents);
+                        if (total > 0 && (product.Length == 0 || product != ChemistryRules.Signature(ids, contents))) continue;
                         if (signature.Length > 0 && signature != product) continue;
-                        long output = ChemistryRules.BlendVolume(ChemistryData.Parts(item), MachineBlender.GetLoss(machine));
-                        if (output <= 0 || output + ChemistryData.Total(ChemistryData.Parts(bottle))
+                        long output = ChemistryRules.BlendVolume(input, loss);
+                        if (output <= 0 || output + total
                             > ChemistryData.Capacity(bottle)) continue;
                         signature = product;
                         if (!played) { AudioManager.Instance?.Play2("blender"); played = true; }
-                        ChemicalHelper.BlendInto(item, bottle, MachineBlender.GetLoss(machine));
+                        if (Blend(item, bottle, ids, input, contents, loss)) combined++;
+                        blended++;
                         EventLog.Debug("[Chemistry] AUTO BLEND machine=" + machine.uniqueId + " product=" + product + " ul=" + output);
                     }
                 }
             }
             catch (Exception e) { Warn("blend", e); }
-            finally { _running = false; }
+            finally
+            {
+                _running = false;
+                if (timing.ElapsedMilliseconds >= 100)
+                    EventLog.Write("[Chemistry] AUTO BLEND batch items=" + blended + " combined=" + combined
+                        + " ms=" + timing.ElapsedMilliseconds);
+            }
+        }
+
+        private static bool Blend(GameItem item, GameItem bottle, string[] ids, int[] input, int[] contents, int loss)
+        {
+            if (!ChemistryRules.CanCombineColdCoffee(ids, contents, input,
+                ChemistryData.Tag(bottle, "CONTAINER_TEMP_TAG")?.GetDouble() ?? 0, bottle.IsTag("HEATING_TAG")))
+            {
+                ChemicalHelper.BlendInto(item, bottle, loss);
+                return false;
+            }
+            double multiplier = 1.0 - Math.Max(0, Math.Min(100, loss)) / 100.0;
+            // Keep native temperature, validation, feature/sprite, overflow and destruction callbacks.
+            for (int i = 0; i < input.Length; i++)
+            {
+                int amount = (int)Math.Round(input[i] * multiplier, MidpointRounding.AwayFromZero);
+                if (amount > 0) WaterHelper.AddLiquid(bottle, ids[i], amount);
+            }
+            WaterHelper.RemoveExcessLiquid(bottle);
+            item.Destroy();
+            return true;
         }
 
         internal static void AlcoholAdded(GameItem container, int before)
@@ -240,6 +303,12 @@ namespace ProbablyStolenTools
     {
         [HarmonyPostfix] private static void Postfix(GameGridInventory __instance, GameItem item, ref bool __result)
         { if (__result) __result = ChemistryAutomation.Allow(__instance, item); }
+    }
+    [HarmonyPatch(typeof(GameSlotInventory), nameof(GameSlotInventory.UncheckedAccept))]
+    internal static class ChemistryExtrusionAddedPatch
+    {
+        [HarmonyPostfix] private static void Postfix(GameSlotInventory __instance, GameItem item, bool __result)
+            => ChemistryAutomation.ExtrusionAdded(__instance, item, __result);
     }
     [HarmonyPatch(typeof(GameGridInventory), nameof(GameGridInventory.UncheckedAccept))]
     internal static class ChemistryBlendAddedPatch

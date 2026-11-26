@@ -885,12 +885,17 @@ namespace ProbablyStolenTools
         public RewindOverlay(IntPtr ptr) : base(ptr) { }
 #endif
 
+#if MONO
+        private void LateUpdate() => ForcedItemTooltip.Tick();
+#endif
+
         private void Update()
         {
             try
             {
                 OptionalModCompatibility.Tick();
 #if MONO
+                SignboardCompatibility.Tick();
                 UpdateNotice.Tick();
                 NativeWindowGestures.Tick();
                 PinnedCompositionTooltip.Tick();

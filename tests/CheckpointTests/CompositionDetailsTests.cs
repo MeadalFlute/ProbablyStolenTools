@@ -47,6 +47,19 @@ internal static class CompositionDetailsTests
             check(!CompositionDetails.Star("caffeine", ids, new[] { 999999, 1 }));
             check(!CompositionDetails.IsReagent("stabilizing_agent"));
         });
+        test("full reagent composition includes removable substances and all positive traces", () =>
+        {
+            foreach (string reagent in new[] { "acid", "base", "lipobond_agent", "reducing_agent" })
+            {
+                var ids = new[] { reagent, "water", "plant_matter", "heavy_metal", "chemical_contaminant", "microbe" };
+                var parts = new[] { 990000, 9000, 998, 0, 1, 1 };
+                var full = CompositionDetails.Rows(ids, parts, reagent, compactReagent: false);
+                check(full.Count == 5 && full[0].Main && full[0].Id == reagent);
+                check(full.Any(row => row.Id == "water") && full.Any(row => row.Id == "microbe" && row.Amount == 1));
+                check(!full.Any(row => row.Id == "heavy_metal") && Math.Abs(full.Sum(row => row.Percent) - 100) < 0.000001);
+                check(CompositionDetails.Rows(ids, parts, reagent).Count == 3);
+            }
+        });
         test("composition empty malformed and large-volume boundaries are explicit", () =>
         {
             check(CompositionDetails.Rows(new[] { "water" }, new[] { -1 }).Count == 0);

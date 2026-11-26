@@ -13,8 +13,12 @@ namespace ProbablyStolenTools
         private sealed class PinnedWindow
         {
             internal PixelWindow Window;
+            internal GameObject Panel;
             internal TextMeshProUGUI Title;
             internal TextOverflowModes Overflow;
+            internal string RawTitle, DecoratedTitle;
+            internal RectTransform Rect => Window != null ? Window.rectTransform : Panel != null ? Panel.transform as RectTransform : null;
+            internal bool Visible => Window != null ? Window.IsVisible() : Panel != null && Panel.activeInHierarchy;
         }
         // UI-only state: never add callbacks, tags or decorated titles to the captured game graph.
         private static readonly List<PinnedWindow> Pinned = new();
@@ -77,13 +81,18 @@ namespace ProbablyStolenTools
         private static void Raise(PixelWindow focused)
         {
             if (!Available || Plugin.CfgWindowPin?.Value != true || focused?.rectTransform == null) return;
+            Raise(focused.rectTransform);
+        }
+
+        private static void Raise(RectTransform focused)
+        {
+            if (!Available || Plugin.CfgWindowPin?.Value != true || focused == null) return;
             foreach (var entry in Pinned)
             {
-                var window = entry.Window;
                 // Preserve native modal layers, docking and the game's focus/visibility order.
-                if (window.IsVisible() && window.rectTransform != null
-                    && window.rectTransform.parent == focused.rectTransform.parent)
-                    window.rectTransform.SetAsLastSibling();
+                var rect = entry.Rect;
+                if (entry.Visible && rect != null && rect.parent == focused.parent)
+                    rect.SetAsLastSibling();
             }
         }
 
@@ -97,6 +106,7 @@ namespace ProbablyStolenTools
 
         private static void Decorate(PinnedWindow entry)
         {
+            if (entry.Panel != null) { DecorateTablet(entry); return; }
             var window = entry.Window;
             if (!window.hasTitle || window.rectTransform == null) return;
             if (entry.Title == null)
@@ -135,20 +145,69 @@ namespace ProbablyStolenTools
             if (entry.Title != null)
             {
                 entry.Title.overflowMode = entry.Overflow;
-                entry.Title.text = entry.Window.titleString ?? "";
-                entry.Window.Validate();
+                if (entry.Window != null)
+                {
+                    entry.Title.text = entry.Window.titleString ?? "";
+                    entry.Window.Validate();
+                }
+                else if (entry.Title.text == entry.DecoratedTitle) entry.Title.text = entry.RawTitle ?? "";
             }
         }
 
+        private static void DecorateTablet(PinnedWindow entry)
+        {
+            if (entry.Title == null) return;
+            if (entry.Title.text != entry.DecoratedTitle) entry.RawTitle = entry.Title.text;
+            string color = ColorUtility.ToHtmlStringRGB(RenderHandler.GetColorFromPalette(RenderHandler.ColorPalette.DarkOrange));
+            entry.DecoratedTitle = "<color=#" + color + ">" + WindowGestureRules.PinLabel(InspectionLocale.Code)
+                + "</color> " + (entry.RawTitle ?? "");
+            if (entry.Title.text != entry.DecoratedTitle) entry.Title.text = entry.DecoratedTitle;
+            entry.Title.overflowMode = TextOverflowModes.Ellipsis;
+        }
+
+        internal static void TabletClicked(GameObject panel, PointerEventData pointer) => Guard(() =>
+        {
+            if (!ConsumePinClick(pointer) || Plugin.CfgWindowPin?.Value != true || panel == null || !panel.activeInHierarchy) return;
+            var frame = panel.GetComponent<NegotiationTabletFrame>();
+            if (frame?.clientName == null) return;
+            var entry = Pinned.Find(p => p.Panel == panel);
+            entry ??= new PinnedWindow { Panel = panel, Title = frame.clientName, Overflow = frame.clientName.overflowMode };
+            if (WindowGestureRules.TogglePin(Pinned, entry)) DecorateTablet(entry);
+            else Restore(entry);
+            Raise(entry.Rect);
+        });
+
+        internal static void TabletFocused(UIDragHandler drag) => Guard(() =>
+        {
+            if (drag != null) Raise(drag.transform as RectTransform);
+        });
+
+        internal static void TabletRefreshed(NegociationUIManager manager) => Guard(() =>
+        {
+            if (manager == null || Plugin.CfgWindowPin?.Value != true) return;
+            var entry = Pinned.Find(p => p.Panel != null && p.Panel == manager.uiObject);
+            if (entry != null) DecorateTablet(entry);
+        });
+
         internal static void Tick() => Guard(() =>
         {
+            if (Plugin.CfgWindowPin?.Value == true)
+            {
+                var panel = NegociationUIManager.Instance?.uiObject;
+                if (panel != null && panel.GetComponent<NegotiationPinInput>() == null)
+                    panel.AddComponent<NegotiationPinInput>();
+            }
             if (_pinPressAllowed && (!Available || PinBusy || !Shift || CheckpointPanel.SuppressHotkeys))
                 _pinPressAllowed = false;
             for (int i = Pinned.Count - 1; i >= 0; i--)
             {
                 var entry = Pinned[i];
-                if (Plugin.CfgWindowPin?.Value == true && entry.Window.rectTransform != null
-                    && entry.Window.IsVisible()) continue;
+                if (Plugin.CfgWindowPin?.Value == true && entry.Rect != null && entry.Visible)
+                {
+                    if (entry.Panel != null) DecorateTablet(entry);
+                    Raise(entry.Rect);
+                    continue;
+                }
                 Pinned.RemoveAt(i);
                 Restore(entry);
             }
@@ -179,7 +238,12 @@ namespace ProbablyStolenTools
         internal static void Disable()
         {
             _pinPressAllowed = false;
-            while (Pinned.Count > 0) Closed(Pinned[Pinned.Count - 1].Window);
+            while (Pinned.Count > 0)
+            {
+                var entry = Pinned[Pinned.Count - 1];
+                Pinned.RemoveAt(Pinned.Count - 1);
+                Restore(entry);
+            }
         }
 
         private static void Guard(Action action) { try { action(); } catch (Exception e) { Report(e); } }
@@ -189,6 +253,24 @@ namespace ProbablyStolenTools
             if (_error != error) EventLog.Write("[WindowGestures] " + error);
             _error = error;
         }
+    }
+
+    internal sealed class NegotiationPinInput : MonoBehaviour, IPointerDownHandler, IPointerClickHandler
+    {
+        public void OnPointerDown(PointerEventData eventData) => NativeWindowGestures.PointerPressed(eventData);
+        public void OnPointerClick(PointerEventData eventData) => NativeWindowGestures.TabletClicked(gameObject, eventData);
+    }
+
+    [HarmonyPatch(typeof(NegociationUIManager), "RefreshClientHeader")]
+    internal static class NativeTabletHeaderPatch
+    {
+        [HarmonyPostfix] private static void Postfix(NegociationUIManager __instance) => NativeWindowGestures.TabletRefreshed(__instance);
+    }
+
+    [HarmonyPatch(typeof(UIDragHandler), nameof(UIDragHandler.MoveFront))]
+    internal static class NativePanelFrontPatch
+    {
+        [HarmonyPostfix] private static void Postfix(UIDragHandler __instance) => NativeWindowGestures.TabletFocused(__instance);
     }
 
     [HarmonyPatch(typeof(WindowsHandler), nameof(WindowsHandler.TryAddWindow))]

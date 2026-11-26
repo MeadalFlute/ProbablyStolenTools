@@ -113,6 +113,7 @@ public static partial class OfflineMonoFixture
         CheckAutomaticCheckpointGates(mod);
         CheckBrewingCompatibility(mod, game);
         CheckQualityOfLife(mod, game);
+        CheckSignboardCompatibility(mod, game);
         CheckManagedIdentities(mod);
         CheckVectorReaders(mod);
         CheckScalarComparisons(mod);

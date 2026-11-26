@@ -11,7 +11,7 @@ namespace ProbablyStolenTools
         internal static bool IsReagent(string id)
             => id == "acid" || id == "base" || id == "lipobond_agent" || id == "reducing_agent";
 
-        internal static List<Row> Rows(string[] ids, int[] parts, string main = null)
+        internal static List<Row> Rows(string[] ids, int[] parts, string main = null, bool compactReagent = true)
         {
             if (ids == null || parts == null || ids.Length != parts.Length) throw new ArgumentException("Composition length mismatch.");
             long total = 0;
@@ -24,7 +24,7 @@ namespace ProbablyStolenTools
             var rows = new List<Row>();
             if (total == 0) return rows;
             if (main == null && largest >= 0) main = ids[largest];
-            bool compact = IsReagent(main);
+            bool compact = compactReagent && IsReagent(main);
             // Retain both difficult impurities even at zero.
             for (int i = 0; i < parts.Length; i++)
             {

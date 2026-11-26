@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using TMPro;
 using UnityEngine;
 
 namespace ProbablyStolenTools
@@ -20,6 +21,22 @@ namespace ProbablyStolenTools
             (MachineHelper.GetBodyStorage(machine, index) as GameSlotInventory)?.childItem;
         private static int Performance(GameItem machine) => ChemistryData.Int(machine, "TOTAL_PERCENTAGE_PERFORMANCE_BONUS_INT");
         private static int Quality(GameItem machine) => ChemistryData.Int(machine, "TOTAL_PERCENTAGE_QUALITY_BONUS_INT");
+
+        internal static bool HasDetails(GameItem item)
+        {
+            if (item == null || Plugin.CfgChemistry?.Value != true || Plugin.CfgFacilityPreview?.Value != true
+                || Plugin.Store() == null || item.IsTag("BROKEN_MACHINE_TAG")) return false;
+            if (item.identifier == "hydroponic") return Slot(item, 3) != null;
+            if (item.identifier == "water_purifier" || item.identifier == "evaporator") return Slot(item, 2) != null;
+            if (!item.IsTag("RAS_TAG")) return false;
+            var tank = MachineRAS.GetTankGrid(item);
+            if (tank == null || MachineRAS.GetWaterSlot(item)?.childItem == null) return false;
+            foreach (var fish in tank.childItems)
+                if (fish.IsTag("FISH_ITEM_TAG") && !fish.IsTag("FISH_IS_DEAD_TAG")
+                    && FishSpecies.All.TryGetValue(ChemistryData.String(fish, "FISH_SPECIES_TAG"), out var species)
+                    && species.fishIdentifier == "gutter_tilapia") return true;
+            return false;
+        }
 
         internal static void AddTooltip(RichTextBuilder builder, GameItem item, bool warningsOnly = false)
         {
@@ -231,26 +248,29 @@ namespace ProbablyStolenTools
             if (seed == null) return;
             if (!b.WarningsOnly) HydroponicWorkWatch.Shown(machine);
             Header(b);
+            bool growing = ChemistryData.String(machine, "MACHINE_STATE_TAG") == "STATE_WORKING";
+            int health = growing ? ChemistryData.Int(seed, "PLANT_HEALTH_INT") : HydroponicHelper.GetStartingHealthPercent(seed) * 100;
+            int startingHealth = health;
             var bottle = Slot(machine, 2);
             int use = HydroponicHelper.GetWaterUsePerCycle(seed);
             var initial = ChemistryData.Parts(bottle);
             if (bottle == null || FacilityProjection.Total(initial) / 1000 < use)
             {
+                GrowthScore(b, startingHealth);
                 Warning(b, WithAmount(T("水量不足", "Insufficient water"),
                     Amount(FacilityProjection.Total(initial)) + "/" + (use * 1L).ToString(CultureInfo.InvariantCulture) + "mL"));
                 return;
             }
-            if (!CheckPower(b, machine) || b.WarningsOnly) return;
+            if (!CheckPower(b, machine) || b.WarningsOnly) { GrowthScore(b, startingHealth); return; }
             string state = ChemistryData.String(machine, "MACHINE_STATE_TAG");
-            if (state != "STATE_READY" && state != "STATE_WORKING") { Output(b, T("当前未工作", "Not processing")); return; }
-            bool growing = state == "STATE_WORKING";
+            if (state != "STATE_READY" && state != "STATE_WORKING")
+            { GrowthScore(b, startingHealth); Output(b, T("当前未工作", "Not processing")); return; }
             int progress = ChemistryData.Int(machine, "CURRENT_PROCESSING_SPEED_TAG");
             int required = growing ? ChemistryData.Int(seed, "REQUIRED_PROGRESS") : HydroponicHelper.GetRequiredProgress(seed);
             int current = growing ? ChemistryData.Int(seed, "GROWING_PROGRESS") : 0;
-            int health = growing ? ChemistryData.Int(seed, "PLANT_HEALTH_INT") : HydroponicHelper.GetStartingHealthPercent(seed) * 100;
             var parts = (int[])initial.Clone();
             int water = Index("water"), mineral = Index("mineral");
-            var damages = new[] { "heavy_metal", "chemical_contaminant", "microbe", "organic_waste", "acid", "base" };
+            var damages = FacilityProjection.PlantContaminants;
             int level = HydroponicHelper.GetNutrimentLevel(seed), range = HydroponicHelper.GetNutrimentRange(seed);
             int mineralUse = HydroponicHelper.GetMineralUseRate(seed);
             double sensitivity = HydroponicHelper.GetContaminantSensitivity(seed), effect = HydroponicHelper.GetContaminantEffect(seed);
@@ -287,6 +307,28 @@ namespace ProbablyStolenTools
                 if (mineral >= 0) removed[mineral] += nutrientUsed;
                 Removed(b, removed);
             }
+            int polluting = PlantGeneticsHelper.GetTraitRank(seed, "polluting");
+            if (polluting > 0 && water >= 0)
+            {
+                int pollution = Mathf.RoundToInt(parts[water] * PlantWaterQuality.PollutingShare(polluting));
+                int moved = 0;
+                var pollutionIds = new[] { "organic_waste", "microbe", "physical_contaminant" };
+                var shares = new[] { .5f, .35f, .15f };
+                for (int i = 0; i < pollutionIds.Length; i++)
+                {
+                    int index = Index(pollutionIds[i]);
+                    int amount = Math.Min((int)(pollution * shares[i]), parts[water] - moved);
+                    if (index < 0 || amount <= 0) continue;
+                    parts[index] = Math.Min(ChemistryData.Capacity(bottle), checked(parts[index] + amount));
+                    moved += amount;
+                }
+                parts[water] -= moved;
+            }
+            GrowthScore(b, startingHealth, health);
+            b.Builder.AddLine(T("剩余", "Remaining ") + FacilityProjection.RemainingAmount(FacilityProjection.Total(parts))
+                + T("水培营养液（", " hydroponic nutrient solution (")
+                + FacilityProjection.MineralPercent(parts, water, mineral).ToString("0.##", CultureInfo.InvariantCulture)
+                + T("%）", "%)"), color: RenderHandler.ColorPalette.LightGreen);
             int next = Math.Min(required, current + progress);
             int machineTarget = growing ? ChemistryData.Int(machine, "MACHINE_PROGRESS_TARGET_TAG") : required;
             int machineProgress = growing ? ChemistryData.Int(machine, "MACHINE_PROGRESS_CURRENT_TAG") : 0;
@@ -301,6 +343,15 @@ namespace ProbablyStolenTools
         private static int Percentage(int[] parts, int i, int water)
             => i < 0 || parts[i] <= 0 ? 0 : water < 0 || parts[water] <= 0 ? 1000000
                 : (int)Math.Min(1000000L, parts[i] * 10000L / parts[water]);
+
+        private static void GrowthScore(Preview b, int current, int? projected = null)
+        {
+            if (b.WarningsOnly) return;
+            var font = OverlayHandler.current?.GetTooltipWindow()?.handler?.GetComponentInChildren<TextMeshProUGUI>()?.font;
+            bool arrowSupported = font != null && font.HasCharacter('\u2192', true, false);
+            Values(b, T("生长评分：", "Growth score: "),
+                new[] { FacilityProjection.GrowthScore(current, projected, arrowSupported) });
+        }
 
         private static void Harvest(Preview b, GameItem machine, GameItem seed, int health)
         {
@@ -335,7 +386,49 @@ namespace ProbablyStolenTools
             }
             int minimum = plant == "coffee_bean" || plant == "bloomberry_seed" || plant == "fillerweed_seed" ? 1 : 0;
             int low = Math.Max(minimum, (int)Math.Floor(count * mult)), high = Math.Max(minimum, (int)Math.Ceiling(count * mult));
-            Output(b, WithAmount(ItemName(id), low == high ? low.ToString() : low + "-" + high));
+            var values = new List<string>();
+            void Add(string name, int min, int max)
+            {
+                if (max > 0) values.Add(WithAmount(name, min == max ? min.ToString() : min + "-" + max));
+            }
+            if (plant == "bloomberry_seed")
+            {
+                var probabilities = FacilityProjection.BerryProbabilities(health);
+                var names = new[] { T("发霉", "Moldy"), T("过熟", "Overripe"), T("正常", "Normal"), T("较小", "Small") };
+                for (int i = 0; i < probabilities.Length; i++)
+                    if (probabilities[i] > 0) values.Add(WithAmount(names[i] + T("", " ") + ItemName(id),
+                        "~" + (Math.Max(1, count) * probabilities[i]).ToString("0.##", CultureInfo.InvariantCulture)));
+                Outputs(b, values);
+                b.Builder.AddLine(T("随机品质，按期望估算", "Random quality; expected counts"), color: RenderHandler.ColorPalette.Gray);
+                return;
+            }
+            bool sized = plant == "nutrifruit_seed" || plant == "kotton_seed" && id != "kotton_fabric"
+                || plant == "dream_cap_seed" && id != "nightmare_cap";
+            if (plant == "dream_cap_seed" && Modules(machine, "farm_module_dream_cap") > 0) id = "meal_cap";
+            if (sized)
+            {
+                var lows = FacilityProjection.HarvestSizes(low, health, plant == "nutrifruit_seed", quality);
+                var highs = FacilityProjection.HarvestSizes(high, health, plant == "nutrifruit_seed", quality);
+                string[] sizes = { "small", "", "large", "huge" };
+                for (int i = 0; i < sizes.Length; i++) Add(SizedItemName(id, sizes[i]), lows[i], highs[i]);
+            }
+            else if (plant == "fillerweed_seed")
+            {
+                Add(SizedItemName(id, "small"), 1, 1);
+                Add(ItemName(id), low - 1, high - 1);
+            }
+            else Add(ItemName(id), low, high);
+            Outputs(b, values);
+        }
+
+        private static string SizedItemName(string id, string size)
+        {
+            string name = ItemName(id);
+            if (size.Length == 0) return name;
+            string en = size == "small" ? "Small {0}" : size == "large" ? "Large {0}" : "Huge {0}";
+            string zh = size == "small" ? "小型{0}" : size == "large" ? "大型{0}" : "巨型{0}";
+            var template = InspectionLocale.Label(new NativeLabel("Mechanic", "item_size_" + size + "_of", zh, en));
+            return string.Format(CultureInfo.InvariantCulture, template, name);
         }
     }
 }

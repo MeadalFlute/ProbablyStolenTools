@@ -114,6 +114,9 @@ namespace ProbablyStolenTools
         }
         internal sealed class Snapshot : IDisposable
         {
+#if MONO
+            internal SignboardCompatibility Signboards;
+#endif
             internal long Id;
             internal string Label;
             internal string DisplayName;
@@ -143,6 +146,9 @@ namespace ProbablyStolenTools
             internal ShopPhaseVisual Shop;
             public void Dispose()
             {
+#if MONO
+                Signboards = null;
+#endif
                 Graph?.Dispose(); Graph = null;
 #if MONO
                 SemanticTags?.Dispose(); SemanticTags = null;
@@ -408,7 +414,7 @@ namespace ProbablyStolenTools
                 && AdvCalendarUIManager.Instance?.UIPanel?.activeSelf != true
                 && StartOfDayUIManager.Instance?.UIPanel?.activeSelf != true;
 #endif
-            if (ReturnGate.Poll(settled, Time.unscaledTime))
+            if (ReturnGate.Poll(settled && OptionalCaptureReady(store), Time.unscaledTime))
                 Capture(store, (int)store.storeState == 0, returned: true);
             else if (!settled && Time.unscaledTime >= _returnNextLog)
             {
@@ -516,6 +522,7 @@ namespace ProbablyStolenTools
                 || StoreClientMono.Instance == null || StoreClientMono.Instance.IsMoving()
                 || !ShopPhaseVisual.IsSettled() || ItemInteractionBusy()
                 || GameFields.PhoneBusy(PhoneUIManager.Instance)) return;
+            if (!OptionalCaptureReady(store)) return;
             _morningAttemptDay = Boundary.Day;
             Capture(store, false, dayStart: true);
         }
@@ -540,7 +547,7 @@ namespace ProbablyStolenTools
                 && StoreUIManager.Instance != null && !StoreUIManager.Instance.isAboutToStartMainDialog
                 && !ItemInteractionBusy()
                 && !GameFields.PhoneBusy(PhoneUIManager.Instance);
-            if (!settled) { _settledSince = 0; return; }
+            if (!settled || !OptionalCaptureReady(store)) { _settledSince = 0; return; }
             if (_settledSince == 0) { _settledSince = Time.unscaledTime; return; }
             if (Time.unscaledTime - _settledSince < 0.5f) return;
             _closeArmed = false;
@@ -579,6 +586,9 @@ namespace ProbablyStolenTools
             if (store == null) { PanelNotice.Show("无法建立节点：商店数据未就绪", true); return; }
             if (ItemInteractionBusy())
             { PanelNotice.Show("无法建立节点：正在框选或拖拽物品", true); return; }
+            if (!OptionalCaptureReady(store))
+            { PanelNotice.Show(InspectionLocale.Text("无法建立节点：灯牌模组尚未就绪或正在忙碌，请稍后重试；若持续出现，请重新载入。",
+                "Cannot create checkpoint: signboards are not ready or busy. Retry shortly; reload if this persists."), true); return; }
             if (Time.unscaledTime - _lastManualAt < 1.5f) return;
             _lastManualAt = Time.unscaledTime;
             Observe();
@@ -591,7 +601,7 @@ namespace ProbablyStolenTools
         {
             if (!_armed || !AutoCapture || Restoring || Rewind.Restoring || Boundary.Attempted || _faulted) return;
             var store = Plugin.Store();
-            if (!IsSettled(store)) { _captureSince = 0; WatchSettle(store); return; }
+            if (!IsSettled(store) || !OptionalCaptureReady(store)) { _captureSince = 0; WatchSettle(store); return; }
             // 节点必须建立在“开场对话已经播完”之后：卖货顾客的商品是那段对话里才摆上柜台的，
             // 抢在对话前落盘，回溯后就会只剩一个空柜台（商品全部消失）。
             if (!OpeningDialogueDone(store) && Time.unscaledTime - _arrivedAt < 8f)
@@ -617,6 +627,15 @@ namespace ProbablyStolenTools
                 return blueprint == null || blueprint.isMainDialogueStarted;
             }
             catch { return true; }
+        }
+
+        private static bool OptionalCaptureReady(PlayerStore store)
+        {
+#if MONO
+            return SignboardCompatibility.CaptureReady(store);
+#else
+            return true;
+#endif
         }
 
         private static NativeStateAccess Access(PlayerStore store, out List<IntPtr> roots, bool entityBlocks = true)
@@ -645,6 +664,10 @@ namespace ProbablyStolenTools
                 rootList.Add(p);
             }
             Root(store);
+#if MONO
+            var signboardInventory = SignboardCompatibility.Root();
+            if (signboardInventory != null) Root(signboardInventory);
+#endif
             Root(StoreStation.Instance);
             // These MonoBehaviours contain business roots; Unity's native component state is excluded.
             Root(EmporiumEntry.Instance);
@@ -787,6 +810,7 @@ namespace ProbablyStolenTools
                 };
                 phase = "walk";
 #if MONO
+                candidate.Signboards = SignboardCompatibility.Capture(store);
                 long readerCompileBefore = SnapshotFieldReader.CompileTicks;
 #endif
                 candidate.Graph = StateGraph.Capture(access, roots, MaxSnapshotObjects, MaxSnapshotSlots, MaxSnapshotBytes);
@@ -1287,6 +1311,9 @@ namespace ProbablyStolenTools
                 phase = "target-preflight";
                 preflightMode = target.Graph.ValidateRestore();
 #if MONO
+                target.Signboards?.Validate();
+                if (target.Signboards == null && SignboardCompatibility.Root() != null)
+                    throw new InvalidOperationException("Proper Signboards was enabled after this checkpoint; create a new checkpoint first.");
                 // Validate independent retention before the first business write; live differences are expected here.
                 target.BlockOracle?.ValidateRetention();
 #endif
@@ -1324,6 +1351,9 @@ namespace ProbablyStolenTools
                 phase = "write";
                 Time.timeScale = 0;
                 wrote = true;
+#if MONO
+                target.Signboards?.RestoreMetadata();
+#endif
                 ++_epoch;
                 PendingCallbacks.Clear();
                 DialogueCallbacks.Clear();
@@ -1447,6 +1477,10 @@ namespace ProbablyStolenTools
                 target.SemanticEntities?.ObserveRestore(target.Id);
 #endif
                 tSemanticVerify = timing.ElapsedMilliseconds;
+#if MONO
+                phase = "signboards-save-cache";
+                target.Signboards?.RefreshSaveCache();
+#endif
                 phase = "cleanup";
                 LogItemGeometry(target, "restore-post");
                 // Only discard abandoned views after the restored business graph passes validation.

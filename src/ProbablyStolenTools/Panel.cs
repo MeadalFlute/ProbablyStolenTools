@@ -345,6 +345,7 @@ namespace ProbablyStolenTools
             NewSetting(InspectionLocale.Text("容器成分明细", "Container composition details"), Plugin.CfgShiftComposition);
             NewSetting(InspectionLocale.Text("容器自动改名", "Container auto naming"), Plugin.CfgContainerAutoRename);
             NewSetting(InspectionLocale.Text("自动搅拌", "Auto blend"), Plugin.CfgAutoBlend);
+            NewSetting(InspectionLocale.Text("智能挤出", "Smart extrusion"), Plugin.CfgSmartExtrusion);
             NewSetting(InspectionLocale.Text("快速萃取", "Rapid extraction"), Plugin.CfgAutoExtraction);
             NewSetting(InspectionLocale.Text("快速化学反应", "Rapid chemical reactions"), Plugin.CfgRapidReactions);
             NewSetting(InspectionLocale.Text("快速烧开水", "Rapid boiling"), Plugin.CfgRapidBoiling);

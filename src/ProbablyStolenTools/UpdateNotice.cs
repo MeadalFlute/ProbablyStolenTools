@@ -11,26 +11,48 @@ namespace ProbablyStolenTools
         private static readonly UpdateNoticeSchedule Schedule = new();
         private static CustomUIWindow _banner, _details;
         private static RectTransform _countdown;
-        private const float Duration = 5f;
+        private const float Duration = UpdateNoticeContent.Duration;
         private const float CountdownHeight = 6f;
         private static float _until, _retryAt;
         private static bool _savePending;
         private static long _saveRetry;
         private static string _error, _saveError;
+        private static string _loggedNotice;
         private static string T(string zh, string en) => InspectionLocale.Text(zh, en);
         private static string Title => T("QuickSL更新简报", "QuickSL update brief");
-        private static string NoticeId => Plugin.Version + ":20261125-qol-r4";
+        private static string NoticeId => Plugin.Version + UpdateNoticeContent.Revision;
 
         internal static void Tick()
         {
             try
             {
                 SavePending();
-                if (_countdown != null)
-                    _countdown.anchorMax = new Vector2(UpdateNoticeContent.Progress(Time.unscaledTime, _until, Duration), 1);
-                if (_banner != null && _banner.IsAlive && (Time.unscaledTime >= _until || !InShop()))
-                    CloseBanner();
+                if (_banner != null)
+                {
+                    bool visible = _banner.IsAlive && _banner.root != null && _banner.root.activeInHierarchy && Ready();
+                    if (!visible)
+                    {
+                        CloseBanner();
+                        Schedule.Due(NoticeId, Plugin.CfgUpdateSeen?.Value, false, Time.unscaledTime);
+                        _retryAt = Time.unscaledTime + .5f;
+                        EventLog.Write("[Updates] banner interrupted notice=" + NoticeId + "; retry if unacknowledged");
+                    }
+                    else
+                    {
+                        if (_countdown != null)
+                            _countdown.anchorMax = new Vector2(UpdateNoticeContent.Progress(Time.unscaledTime, _until, Duration), 1);
+                        if (Schedule.ConfirmVisible(true, Time.unscaledTime)) Acknowledge("active-for-2s");
+                        if (Time.unscaledTime >= _until) CloseBanner();
+                    }
+                    return;
+                }
                 if (Plugin.CfgUpdateSeen == null || Time.unscaledTime < _retryAt) return;
+                if (_loggedNotice != NoticeId)
+                {
+                    _loggedNotice = NoticeId;
+                    EventLog.Write("[Updates] notice=" + NoticeId + " persisted=" + Plugin.CfgUpdateSeen.Value
+                        + " acknowledged=" + Schedule.Acknowledged(NoticeId, Plugin.CfgUpdateSeen.Value));
+                }
                 if (Schedule.Acknowledged(NoticeId, Plugin.CfgUpdateSeen.Value)) return;
                 if (!Schedule.Due(NoticeId, Plugin.CfgUpdateSeen.Value, Ready(), Time.unscaledTime)) return;
                 _retryAt = Time.unscaledTime + 1f;
@@ -61,8 +83,7 @@ namespace ProbablyStolenTools
             var builder = CustomUIManager.Window("ProbablyStolenTools.update-banner", Title, CustomUIManager.LAYER_OVERLAY);
             if (builder == null) return;
             builder.SetSize(380f, 100f).SetDraggable(false).SetCloseOnEscape(false);
-            builder.AddLabel(T("磁吸窗口、窗口置顶、酿酒回调、机器模组槽解锁",
-                "Window snapping and pinning, wine labels restored, working-machine module access."), "summary");
+            builder.AddLabel(T(UpdateNoticeContent.SummaryChinese, UpdateNoticeContent.SummaryEnglish), "summary");
             var summary = builder.Last;
             builder.AddLabel(T("点此查看详情", "Click to view details"), "view-details");
             var footer = builder.Last;
@@ -112,8 +133,17 @@ namespace ProbablyStolenTools
             click.onClick.AddListener(OpenDetails);
             PlaceBanner();
             _until = Time.unscaledTime + Duration;
-            // Display, not click, consumes this version's one-time notice.
+            Schedule.ConfirmVisible(false, Time.unscaledTime);
+            if (_banner.root.activeInHierarchy && Ready()) Schedule.ConfirmVisible(true, Time.unscaledTime);
+            EventLog.Write("[Updates] created notice=" + NoticeId + " durationSeconds=" + Duration
+                + " morningReportClosed=true; awaiting active-for-2s or details click");
+        }
+
+        private static void Acknowledge(string reason)
+        {
+            if (Plugin.CfgUpdateSeen == null || Schedule.Acknowledged(NoticeId, Plugin.CfgUpdateSeen.Value)) return;
             Schedule.Shown(NoticeId);
+            EventLog.Write("[Updates] acknowledged notice=" + NoticeId + " reason=" + reason);
             var config = Plugin.Instance.Config;
             bool autoSave = config.SaveOnConfigSet;
             config.SaveOnConfigSet = false;
@@ -175,34 +205,7 @@ namespace ProbablyStolenTools
             }
         }
 
-        private static string DetailsText()
-        {
-            return T(
-                "磁吸窗口：\n按住Shift拖动窗口时，会尝试将窗口对齐。\n---\n"
-                + "窗口置顶：\n按住Shift并用鼠标中键点击窗口标题将其置顶，再次点击取消置顶。\n---\n"
-                + "酿酒回调：\n荧光莓标注和酿酒品质预测不再要求按住Shift。\n---\n"
-                + "机器模组槽解锁：\n解锁运行中的机器（比如水培系统）的模组槽，允许你拆卸模组。\n"
-                + "默认关闭，需要在设置中开启。\n---\n"
-                + "化学辅助：\n水质详情现在支持小容器，比如量筒和滴管。\n"
-                + "按住Shift并用鼠标中键点击物品，可以固定或取消固定详情，包括水质、化学成分和机器产物预测。\n"
-                + "按住鼠标左键或拖拽期间不会触发固定，原版中键翻转不受影响。\n"
-                + "机器产物预测中的警报信息现在会在常规tooltips中显示。\n---\n"
-                + "更新公告：\n更新公告现在会显示进度条。\n---\n"
-                + "Vanilla Brewing Expansion适配：\n安装有原版酿酒拓展 | Vanilla Brewing Expansion模组时，QuickSL会阻止营养果溶解进桶装水的操作。\n"
-                + "但在此提一嘴，这是原版机制，不是我们的BUG…",
-                "Window snapping:\nHold Shift while dragging a window to align it with nearby windows.\n---\n"
-                + "Window pinning:\nShift-middle-click a window title to pin it; repeat to unpin.\n---\n"
-                + "Wine labels restored:\nGlowberry labels and wine quality predictions no longer require Shift.\n---\n"
-                + "Machine module slots:\nUnlock module slots on running machines (such as hydroponic systems) so you can remove modules.\n"
-                + "Disabled by default; enable it in settings.\n---\n"
-                + "Chemistry assistance:\nLiquid details now support small vessels such as measuring cylinders and droppers.\n"
-                + "Shift-middle-click an item to pin or unpin its details, including water quality, composition and machine projections.\n"
-                + "Pinning is disabled while holding the left button or dragging; native middle-button flipping is preserved.\n"
-                + "Machine projection warnings now appear in ordinary tooltips.\n---\n"
-                + "Update notices:\nUpdate notices now include a countdown progress bar.\n---\n"
-                + "Vanilla Brewing Expansion compatibility:\nWhen Vanilla Brewing Expansion is installed, QuickSL prevents nutrifruit from dissolving into water jugs.\n"
-                + "A quick note: this is a vanilla game mechanic, not a QuickSL bug...");
-        }
+        private static string DetailsText() => T(UpdateNoticeContent.DetailsChinese, UpdateNoticeContent.DetailsEnglish);
 
         private static void OpenDetails()
         {
@@ -230,6 +233,8 @@ namespace ProbablyStolenTools
             }
             builder.End();
             _details = builder.Show();
+            if (_details != null && _details.IsAlive && _details.root != null && _details.root.activeInHierarchy)
+                Acknowledge("details-clicked");
             if (_details?.Rect?.parent is RectTransform parent)
             {
                 float width = Math.Min(580f, Math.Max(240f, parent.rect.width - 24f));
@@ -240,7 +245,11 @@ namespace ProbablyStolenTools
             }
         }
 
-        private static void CloseBanner() { _banner?.Close(); _banner = null; _countdown = null; }
+        private static void CloseBanner()
+        {
+            _banner?.Close(); _banner = null; _countdown = null;
+            Schedule.ConfirmVisible(false, Time.unscaledTime);
+        }
         internal static void Disable()
         {
             SavePending();

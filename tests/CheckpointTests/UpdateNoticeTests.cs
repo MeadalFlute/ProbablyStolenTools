@@ -7,22 +7,63 @@ internal static class UpdateNoticeTests
         test("replacement announcement has an independent acknowledgement and consumes once", () =>
         {
             var schedule = new UpdateNoticeSchedule();
-            const string notice = "0.9.7:20261125-qol-r4";
-            const string previous = "0.9.7:20261125-qol-r3";
+            const string notice = "0.9.9" + UpdateNoticeContent.Revision;
+            const string previous = "0.9.9:20261126-chemistry-compat-r3";
             check(!schedule.Due(notice, previous, true, 1));
             check(schedule.Due(notice, previous, true, 1.5f));
             schedule.Shown(notice);
             check(!schedule.Due(notice, "0.9.7", true, 9));
             check(new UpdateNoticeSchedule().Acknowledged(notice, notice));
         });
-        test("notice progress fills and clamps outside its five-second lifetime", () =>
+        test("current bilingual update has nine compact sections including a future split warning", () =>
         {
-            check(UpdateNoticeContent.Progress(5, 10, 5) == 0);
-            check(UpdateNoticeContent.Progress(7.5f, 10, 5) == 0.5f);
-            check(UpdateNoticeContent.Progress(11, 10, 5) == 1);
-            check(UpdateNoticeContent.Progress(0, 10, 5) == 0);
-            check(UpdateNoticeContent.Progress(float.NaN, 10, 5) == 0);
+            foreach (string text in new[] { UpdateNoticeContent.DetailsChinese, UpdateNoticeContent.DetailsEnglish })
+            {
+                var sections = UpdateNoticeContent.Sections(text);
+                check(sections.Length == 9 && sections.All(section => !section.Contains("\n\n")));
+                check(text.Contains("70%") && text.Contains("Proper Signboards") && text.Contains("*") && text.Contains("1.5%"));
+                check(!text.Contains("Vanilla Brewing Expansion") && !text.Contains("磁吸窗口"));
+            }
+            check(UpdateNoticeContent.SummaryChinese.Contains("智能挤出") && UpdateNoticeContent.SummaryEnglish.Contains("Smart extrusion"));
+            check(UpdateNoticeContent.DetailsChinese.Contains("本次更新尚未拆分")
+                && UpdateNoticeContent.DetailsEnglish.Contains("This update does not split"));
+        });
+        test("notice progress fills and clamps outside its eight-second lifetime", () =>
+        {
+            check(UpdateNoticeContent.Duration == 8);
+            check(UpdateNoticeContent.Progress(2, 10, UpdateNoticeContent.Duration) == 0);
+            check(UpdateNoticeContent.Progress(6, 10, UpdateNoticeContent.Duration) == 0.5f);
+            check(UpdateNoticeContent.Progress(11, 10, UpdateNoticeContent.Duration) == 1);
+            check(UpdateNoticeContent.Progress(0, 10, UpdateNoticeContent.Duration) == 0);
+            check(UpdateNoticeContent.Progress(float.NaN, 10, UpdateNoticeContent.Duration) == 0);
             check(UpdateNoticeContent.Progress(0, 8, 0) == 0);
+        });
+        test("notice creation does not acknowledge and interruption restarts the visible interval", () =>
+        {
+            var schedule = new UpdateNoticeSchedule();
+            check(!schedule.ConfirmVisible(true, 1));
+            check(!schedule.ConfirmVisible(true, 2.9f));
+            check(!schedule.Acknowledged("r4", "r3"));
+            check(!schedule.ConfirmVisible(false, 3));
+            check(!schedule.ConfirmVisible(true, 4));
+            check(!schedule.ConfirmVisible(true, 5.99f));
+            check(schedule.ConfirmVisible(true, 6));
+            schedule.Shown("r4");
+            check(schedule.Acknowledged("r4", "r3"));
+        });
+        test("black screen and report dismissal restart readiness before an interrupted notice retries", () =>
+        {
+            var schedule = new UpdateNoticeSchedule();
+            check(!schedule.Due("r4", "r3", false, 0));
+            check(!schedule.Due("r4", "r3", true, 10));
+            check(!schedule.Due("r4", "r3", false, 10.25f));
+            check(!schedule.Due("r4", "r3", true, 20));
+            check(schedule.Due("r4", "r3", true, 20.5f));
+            check(!schedule.ConfirmVisible(true, 20.5f));
+            check(!schedule.ConfirmVisible(false, 21));
+            check(!schedule.Due("r4", "r3", false, 21));
+            check(!schedule.Due("r4", "r3", true, 30));
+            check(schedule.Due("r4", "r3", true, 30.5f));
         });
         test("acknowledged notices skip readiness evaluation without losing session-only consumption", () =>
         {

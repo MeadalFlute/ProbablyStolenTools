@@ -37,6 +37,38 @@ namespace ProbablyStolenTools
             return volume;
         }
 
+        // Player-tuned share of the container's contents that the largest ingredient must hold for the
+        // finisher to preselect its recipe; 70% still rules out mixed dilutions while covering retail grade.
+        internal const int ExtrusionPercent = 70;
+
+        internal static string ExtrusionIngredient(string[] ids, int[] parts)
+        {
+            if (ids == null || parts == null || ids.Length != parts.Length) return null;
+            long total = 0;
+            int largest = -1;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                total += Math.Max(0, parts[i]);
+                if (parts[i] > 0 && (largest < 0 || parts[i] > parts[largest])) largest = i;
+            }
+            return total > 0 && (long)parts[largest] * 100 >= total * ExtrusionPercent ? ids[largest] : null;
+        }
+
+        // At ambient temperature these parts have no reaction with one another.
+        internal static bool CanCombineColdCoffee(string[] ids, int[] contents, int[] input, double temperature, bool heating)
+        {
+            if (heating || temperature != 26 || ids.Length != contents.Length || ids.Length != input.Length) return false;
+            bool coffee = false;
+            for (int i = 0; i < ids.Length; i++)
+            {
+                if (ids[i] == "coffee_mush" && input[i] > 0) coffee = true;
+                if (contents[i] <= 0 && input[i] <= 0) continue;
+                if (ids[i] != "water" && ids[i] != "coffee_mush" && ids[i] != "plant_matter" && ids[i] != "caffeine")
+                    return false;
+            }
+            return coffee;
+        }
+
         // Prepare every resulting amount before changing any game tags.
         internal static int[] Extract(string[] ids, int[] parts)
         {

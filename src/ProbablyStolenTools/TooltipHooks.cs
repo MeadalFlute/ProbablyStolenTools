@@ -48,6 +48,8 @@ namespace ProbablyStolenTools
             catch (Exception e) { Warn("wine", e); }
             try { if (!ItemDetailsInput.Held) FacilityPreview.AddTooltip(builder, item, true); }
             catch (Exception e) { Warn("facility-warning", e); }
+            try { DetailedCompositionTooltip.AddDetailsHint(builder, item); }
+            catch (Exception e) { Warn("details-hint", e); }
         }
 #endif
 

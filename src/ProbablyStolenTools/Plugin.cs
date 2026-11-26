@@ -7,7 +7,7 @@ using MelonLoader;
 using UnityEngine;
 
 #if !MONO
-[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "QuickSL", "0.9.8", "Probably Stolen Tools contributors")]
+[assembly: MelonInfo(typeof(ProbablyStolenTools.Plugin), "QuickSL", "0.9.9", "Probably Stolen Tools contributors")]
 [assembly: MelonLoader.HarmonyDontPatchAll]
 #endif
 
@@ -21,7 +21,7 @@ namespace ProbablyStolenTools
 #endif
     {
         public const string Guid = "dsh.probablystolen.tools";
-        public const string Version = "0.9.8";
+        public const string Version = "0.9.9";
 
         internal static ModLogger LogSource;
         internal static Plugin Instance;
@@ -44,7 +44,7 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<bool> CfgPipeComposition, CfgShiftComposition, CfgUnlockMachineModules;
         internal static ConfigEntry<bool> CfgWindowSnap, CfgWindowPin;
         internal static ConfigEntry<bool> CfgChemistryExtendedContainers, CfgEmptyContainerNames;
-        internal static ConfigEntry<bool> CfgAutoBlend, CfgAutoExtraction, CfgRapidReactions, CfgFacilityPreview, CfgRapidBoiling;
+        internal static ConfigEntry<bool> CfgAutoBlend, CfgAutoExtraction, CfgRapidReactions, CfgFacilityPreview, CfgRapidBoiling, CfgSmartExtrusion;
         internal static ConfigEntry<bool> CfgWineAppraisal;
         internal static ConfigEntry<float> CfgInspectionX, CfgInspectionY;
 
@@ -229,6 +229,7 @@ namespace ProbablyStolenTools
             UpdateNotice.Disable();
             NativeWindowGestures.Disable();
             PinnedCompositionTooltip.Disable();
+            ForcedItemTooltip.Clear();
             OverlayBootstrap.Release();
         }
         private void Initialize()
@@ -307,6 +308,8 @@ namespace ProbablyStolenTools
                 "Distinguish empty micro bottles, water pitchers, jugs and variable-capacity water tanks in tooltips.");
             CfgAutoBlend = Config.Bind("Chemistry", "AutoBlend", true,
                 "Blend compatible ingredients after player placement. Mixed-product batches leave incompatible ingredients at their source; whole-item outputs must fit.");
+            CfgSmartExtrusion = Config.Bind("Chemistry", "SmartExtrusion", true,
+                "Select the chemical finisher product when an inserted container has at least 70% of one matching recipe ingredient. Does not start production.");
             CfgAutoExtraction = Config.Bind("Chemistry", "AutoExtraction", false,
                 "Complete alcohol extraction of mushroom and coffee mush. Volume may exceed capacity; independent of RapidReactions.");
             CfgRapidReactions = Config.Bind("Chemistry", "RapidReactions", false,

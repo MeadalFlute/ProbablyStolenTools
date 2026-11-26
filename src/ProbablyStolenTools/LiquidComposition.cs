@@ -157,6 +157,12 @@ namespace ProbablyStolenTools
 
         private static bool ExtendedContainers => Plugin.CfgChemistryExtendedContainers?.Value ?? true;
 
+        internal static string NutrientName(double percentage)
+        {
+            string value = percentage.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            return InspectionLocale.Text("水培营养液（" + value + "%）", "Hydroponic nutrient solution (" + value + "%)");
+        }
+
         internal static string EmptyName(GameItem item, Analysis analysis)
         {
             if (!(Plugin.CfgEmptyContainerNames?.Value ?? true))

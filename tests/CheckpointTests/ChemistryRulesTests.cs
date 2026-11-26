@@ -4,6 +4,60 @@ internal static class ChemistryRulesTests
 {
     internal static void Run(Action<string, Action> test, Action<bool, string> check)
     {
+        test("hydroponic remaining volume uses two decimal places without changing composition tables", () =>
+        {
+            check(FacilityProjection.RemainingAmount(6333333) == "6.33L", "litres rounded");
+            check(FacilityProjection.RemainingAmount(700125) == "700.13mL", "millilitres rounded");
+            check(FacilityProjection.RemainingAmount(1) == "1.00uL", "microlitres");
+            check(FacilityProjection.RemainingAmount(0) == "0.00uL", "empty");
+            check(FacilityProjection.RemainingAmount(1000000) == "1.00L", "litre threshold");
+            check(CompositionDetails.Amount(6333333) == "6.333333L", "shared precision unchanged");
+        });
+        test("growth score is one current-to-projected line with a font-safe fallback", () =>
+        {
+            check(FacilityProjection.GrowthScore(10000, 9501, true) == "100 \u2192 95.01", "arrow");
+            check(FacilityProjection.GrowthScore(9501, 9501, false) == "95.01 --> 95.01", "unchanged and ASCII");
+            check(FacilityProjection.GrowthScore(-1, 0, false) == "-0.01 --> 0", "fractional score");
+            check(FacilityProjection.GrowthScore(5000, null, true) == "50", "no forecast when blocked");
+        });
+        test("nutrient naming uses water plus minerals and summed native plant contaminants", () =>
+        {
+            var names = new[] { "water", "mineral", "microbe", "heavy_metal", "alcohol" };
+            check(FacilityProjection.IsNutrientSolution(names, new[] { 9850, 150, 0, 0, 0 }), "inclusive 1.5 percent");
+            check(!FacilityProjection.IsNutrientSolution(names, new[] { 9851, 149, 0, 0, 0 }), "below nutrient threshold");
+            check(FacilityProjection.IsNutrientSolution(names, new[] { 9700, 200, 50, 50, 0 }), "inclusive one percent combined");
+            check(!FacilityProjection.IsNutrientSolution(names, new[] { 9699, 200, 51, 50, 0 }), "sum not each contaminant");
+            check(!FacilityProjection.IsNutrientSolution(names, new[] { 400, 500, 0, 0, 0 }), "water must dominate");
+            check(Math.Abs(FacilityProjection.MineralPercent(new[] { 9700, 300, 1000 }, 0, 1) - 3) < .000001, "exclude other liquids from mineral denominator");
+            check(!FacilityProjection.IsNutrientSolution(null, null), "null");
+            check(!FacilityProjection.IsNutrientSolution(names, new[] { 1 }), "mismatched");
+            check(FacilityProjection.MineralPercent(new[] { 0, 0 }, 0, 1) == 0, "empty");
+            check(FacilityProjection.IsNutrientSolution(names, new[] { int.MaxValue, 100000000, 0, 0, 0 }), "long denominator");
+        });
+        test("harvest quality split conserves count at all native health boundaries", () =>
+        {
+            foreach (int health in new[] { 0, 15, 16, 30, 31, 50, 51, 70, 71, 80, 81, 90, 91, 95, 96, 99, 100 })
+                foreach (bool huge in new[] { false, true })
+                    check(FacilityProjection.HarvestSizes(7, health, huge, 50).Sum() == 7, "count conservation");
+            check(FacilityProjection.HarvestSizes(6, 98, true, 50).SequenceEqual(new[] { 0, 0, 3, 3 }), "three large and three huge");
+            check(FacilityProjection.HarvestSizes(6, 98, true, 51)[3] == 6, "quality permits all huge");
+            check(FacilityProjection.HarvestSizes(6, 98, false, 51)[2] == 6, "crop without huge grade");
+            foreach (int health in new[] { 0, 25, 26, 55, 56, 85, 86, 100 })
+                check(Math.Abs(FacilityProjection.BerryProbabilities(health).Sum() - 1) < .000001, "native random quality probability mass");
+        });
+        test("smart extrusion requires inclusive 70 percent without rounding or overflow", () =>
+        {
+            var names = new[] { "water", "caffeine", "heavy_metal" };
+            check(ChemistryRules.ExtrusionIngredient(names, new[] { 30, 70, 0 }) == "caffeine", "exactly 70 percent");
+            check(ChemistryRules.ExtrusionIngredient(names, new[] { 31, 69, 0 }) == null, "below threshold");
+            check(ChemistryRules.ExtrusionIngredient(names, new[] { 0, 1, 0 }) == "caffeine", "no minimum production volume for selection");
+            check(ChemistryRules.ExtrusionIngredient(names, new[] { 0, 0, 0 }) == null, "empty");
+            check(ChemistryRules.ExtrusionIngredient(names, new[] { 0, int.MaxValue, 1 }) == "caffeine", "large volume");
+            check(ChemistryRules.ExtrusionIngredient(names, new[] { int.MaxValue, int.MaxValue, 0 }) == null, "long total");
+            check(ChemistryRules.ExtrusionIngredient(names, new[] { 0, 7000, 3001 }) == null, "include all impurities");
+            check(ChemistryRules.ExtrusionIngredient(names, new[] { 0, 0 }) == null, "malformed");
+            check(ChemistryRules.ExtrusionIngredient(null, null) == null, "missing data");
+        });
         test("purifier completion follows actual forecast removal including zero budget", () =>
         {
             var priorities = new[] { int.MaxValue, 0, int.MaxValue };
@@ -94,6 +148,35 @@ internal static class ChemistryRulesTests
         {
             check(ChemistryRules.BlendVolume(new[] { 1, 1, 3 }, 50) == 4, "per-part rounding");
             check(ChemistryRules.BlendVolume(new[] { 100 }, 100) == 0, "full loss");
+        });
+        test("cold coffee batching excludes all reactive or heated mixtures", () =>
+        {
+            var names = new[] { "water", "coffee_mush", "plant_matter", "caffeine", "alcohol", "microbe" };
+            var contents = new[] { 100, 20, 30, 1, 0, 0 };
+            var input = new[] { 0, 10, 5, 0, 0, 0 };
+            check(ChemistryRules.CanCombineColdCoffee(names, contents, input, 26, false), "ambient inert mixture");
+            check(!ChemistryRules.CanCombineColdCoffee(names, contents, input, 80, false), "hot extraction");
+            check(!ChemistryRules.CanCombineColdCoffee(names, contents, input, 26, true), "heating");
+            check(!ChemistryRules.CanCombineColdCoffee(names, contents, input, double.NaN, false), "invalid temperature");
+            contents[4] = 1;
+            check(!ChemistryRules.CanCombineColdCoffee(names, contents, input, 26, false), "trace alcohol");
+            contents[4] = 0;
+            input[5] = 1;
+            check(!ChemistryRules.CanCombineColdCoffee(names, contents, input, 26, false), "trace impurity");
+            input[5] = 0;
+            input[1] = 0;
+            check(!ChemistryRules.CanCombineColdCoffee(names, contents, input, 26, false), "not coffee");
+        });
+        test("combined coffee additions preserve ten-round native component totals", () =>
+        {
+            for (int loss = 0; loss <= 100; loss++)
+                for (int amount = 0; amount < 300; amount++)
+                {
+                    int rounded = (int)Math.Round(amount * (1.0 - loss / 100.0), MidpointRounding.AwayFromZero);
+                    int rounds = 0;
+                    for (int round = 0; round < 10; round++) rounds += rounded / 10 + (round < rounded % 10 ? 1 : 0);
+                    check(rounds == ChemistryRules.BlendVolume(new[] { amount }, loss), "native rounding and conservation");
+                }
         });
         test("one unit alcohol extracts all mush without consumption", () =>
         {

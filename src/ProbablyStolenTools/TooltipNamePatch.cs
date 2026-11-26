@@ -89,11 +89,19 @@ namespace ProbablyStolenTools
                 }
                 // 酒精最高：名字显示 酒精 / 医用酒精 / 脱水乙醇。
                 if (analysis.AlcoholTop) { __result = LiquidComposition.AlcoholLabel(analysis); return; }
+                var ids = ChemistryData.Ids();
+                var parts = ChemistryData.Parts(__instance);
+                if (FacilityProjection.IsNutrientSolution(ids, parts))
+                {
+                    __result = LiquidComposition.NutrientName(FacilityProjection.MineralPercent(parts,
+                        Array.IndexOf(ids, "water"), Array.IndexOf(ids, "mineral")));
+                    return;
+                }
                 // 水最高时保留原物品名；其它成分最高时用成分名替换。
                 if (!analysis.WaterTop && !string.IsNullOrEmpty(analysis.TopName))
                     __result = (CompositionDetails.IsReagent(analysis.TopIdentifier)
                         && CompositionDetails.Star(analysis.TopIdentifier, ChemistryData.Ids(), ChemistryData.Parts(__instance))
-                        ? "\u2B50" : "") + analysis.TopName;
+                        ? "*" : "") + analysis.TopName;
             }
             catch { }
         }

@@ -92,6 +92,8 @@ public static partial class OfflineMonoFixture
             CheckFileNodeIndex(mod, game, Setting);
             CheckFaucetTooltip(mod, game, Setting);
             CheckRapidBoiling(mod, game);
+            CheckSmartExtrusion(mod, game);
+            CheckHydroponicForecast(mod, game);
             CheckItemDetailsInput(mod, game);
             CheckMagnifierBoundary(mod, game);
             CheckSmallContainerDetails(mod, game);
@@ -102,6 +104,31 @@ public static partial class OfflineMonoFixture
         {
             for (int i = 0; i < fields.Length; i++) plugin.GetField(fields[i], All).SetValue(null, old[i]);
         }
+    }
+
+    private static void CheckHydroponicForecast(Assembly mod, Assembly game)
+    {
+        var projection = mod.GetType("ProbablyStolenTools.FacilityProjection", true);
+        var split = projection.GetMethod("HarvestSizes", All);
+        var native = game.GetType("PlantHarvest", true).GetMethod("SplitByHealth", All);
+        foreach (int count in new[] { 0, 1, 6, 17 })
+            foreach (int health in new[] { 0, 15, 16, 30, 31, 50, 51, 70, 71, 80, 81, 90, 91, 95, 96, 99, 100 })
+                foreach (bool huge in new[] { false, true })
+                    foreach (int quality in new[] { 0, 50, 51 })
+                    {
+                        var expected = native.Invoke(null, new object[] { count, health, false, huge, quality });
+                        var actual = (int[])split.Invoke(null, new object[] { count, health, huge, quality });
+                        string[] fields = { "small", "normal", "large", "huge" };
+                        for (int i = 0; i < fields.Length; i++)
+                            if (actual[i] != (int)expected.GetType().GetField(fields[i]).GetValue(expected))
+                                throw new Exception("Hydroponic size forecast diverged from native split: " + health + "/" + count);
+                    }
+        var mineral = projection.GetMethod("MineralPercent", All);
+        double percent = (double)mineral.Invoke(null, new object[] { new[] { 9700, 300, 1000 }, 0, 1 });
+        if (Math.Abs(percent - 3) > .000001) throw new Exception("Nutrient denominator includes contaminants.");
+        if (mod.GetType("ProbablyStolenTools.RewindOverlay", true).GetMethod("LateUpdate", All) == null)
+            throw new Exception("Forced tooltips must render after native drag hints, without changing drag callbacks.");
+        Console.WriteLine("PASS actual game Mono hydroponic forecast: 408 deterministic size splits match native, mineral denominator excludes contaminants; no RNG or item production invoked. Forced tooltip rendering/input requires Unity.");
     }
 
     private static void CheckMiddlePinRejections(Assembly mod)

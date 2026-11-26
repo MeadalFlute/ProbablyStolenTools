@@ -1,11 +1,73 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace ProbablyStolenTools
 {
     // Pure next-cycle arithmetic. Callers own these arrays; never runs machine callbacks or RNG.
     internal static class FacilityProjection
     {
+        internal const double NutrientMinimumPercent = 1.5;
+        internal const double NutrientContaminantMaximumPercent = 1;
+        internal static string RemainingAmount(long microlitres)
+            => microlitres < 1000 ? microlitres.ToString("0.00", CultureInfo.InvariantCulture) + "uL"
+                : microlitres < 1000000 ? (microlitres / 1000d).ToString("0.00", CultureInfo.InvariantCulture) + "mL"
+                : (microlitres / 1000000d).ToString("0.00", CultureInfo.InvariantCulture) + "L";
+
+        internal static string GrowthScore(int current, int? projected, bool arrowSupported)
+        {
+            string value = (current / 100d).ToString("0.##", CultureInfo.InvariantCulture);
+            return projected.HasValue ? value + (arrowSupported ? " \u2192 " : " --> ")
+                + (projected.Value / 100d).ToString("0.##", CultureInfo.InvariantCulture) : value;
+        }
+        internal static readonly string[] PlantContaminants =
+            { "heavy_metal", "chemical_contaminant", "microbe", "organic_waste", "acid", "base" };
+
+        internal static double MineralPercent(int[] parts, int water, int mineral)
+        {
+            if (water < 0 || mineral < 0 || water >= parts.Length || mineral >= parts.Length) return 0;
+            long carrier = Math.Max(0, parts[water]) + (long)Math.Max(0, parts[mineral]);
+            return carrier > 0 ? Math.Max(0, parts[mineral]) * 100d / carrier : 0;
+        }
+
+        internal static bool IsNutrientSolution(string[] ids, int[] parts)
+        {
+            if (ids == null || parts == null || ids.Length != parts.Length) return false;
+            int water = Array.IndexOf(ids, "water"), mineral = Array.IndexOf(ids, "mineral");
+            if (water < 0 || parts[water] <= 0 || mineral < 0) return false;
+            long contaminants = 0, total = Total(parts);
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (i != water && parts[i] >= parts[water]) return false;
+                if (Array.IndexOf(PlantContaminants, ids[i]) >= 0) contaminants += Math.Max(0, parts[i]);
+            }
+            return MineralPercent(parts, water, mineral) >= NutrientMinimumPercent
+                && contaminants * 100d <= total * NutrientContaminantMaximumPercent;
+        }
+
+        // Native SplitByHealth without its random count reduction. Call with both count bounds.
+        internal static int[] HarvestSizes(int count, int health, bool huge, int quality)
+        {
+            var result = new int[4];
+            count = Math.Max(0, count);
+            if (health <= 15) result[0] = count;
+            else if (health <= 30) { result[0] = (int)(count * .7); result[1] = count - result[0]; }
+            else if (health <= 50) { result[0] = (int)(count * .3); result[1] = count - result[0]; }
+            else if (health <= 70) result[1] = count;
+            else if (health <= 80) { result[1] = (int)(count * .8); result[2] = count - result[1]; }
+            else if (health <= 90) { result[1] = (int)(count * .3); result[2] = count - result[1]; }
+            else if (!huge || health <= 95) result[2] = count;
+            else if (health <= 99 && quality <= 50) { result[2] = (int)(count * .5); result[3] = count - result[2]; }
+            else result[3] = count;
+            return result;
+        }
+
+        internal static double[] BerryProbabilities(int health)
+            => health <= 25 ? new[] { .55, .45, 0d, 0d }
+                : health <= 55 ? new[] { .25, .45, .30, 0d }
+                : health <= 85 ? new[] { 0d, .25, .45, .30 }
+                : new[] { 0d, 0d, .40, .60 };
+
         internal static long Total(int[] parts)
         {
             long total = 0;

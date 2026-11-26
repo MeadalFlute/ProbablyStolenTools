@@ -46,8 +46,8 @@ public static partial class OfflineMonoFixture
         }
         var loadedField = game.GetType("GameItemFunc", true).GetField("<onLoaded>k__BackingField", All)
             ?? throw new Exception("Native onLoaded backing field missing.");
-        if ((bool)mod.GetType("ProbablyStolenTools.ChemistryAutomation", true).GetMethod("Compatible", All)
-            .Invoke(null, new object[] { items[0], items[1], Array.Empty<string>() }))
+        if ((bool)mod.GetType("ProbablyStolenTools.ChemistryAutomation", true).GetMethod("BlendBottleAvailable", All)
+            .Invoke(null, new object[] { items[0] }))
             throw new Exception("Automatic blending must leave marked brewing outputs alone.");
         var guard = mod.GetType("ProbablyStolenTools.BrewingIngredientDissolvePatch", true).GetMethod("Prefix", All);
         var targetGuard = mod.GetType("ProbablyStolenTools.BrewingIngredientTargetPatch", true).GetMethod("Postfix", All);

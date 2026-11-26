@@ -22,7 +22,7 @@ namespace ProbablyStolenTools
             if (item == null || item.identifier == "faucet" || !item.IsTag("LIQUID_CONTAINER_TAG")) return null;
             var analysis = LiquidComposition.AnalyzeDetails(item);
             if (analysis == null) return null;
-            return CompositionDetails.Rows(ChemistryData.Ids(), ChemistryData.Parts(item), analysis?.TopIdentifier);
+            return CompositionDetails.Rows(ChemistryData.Ids(), ChemistryData.Parts(item), analysis?.TopIdentifier, compactReagent: false);
         }
 
         internal static bool AddReagent(RichTextBuilder builder, GameItem item, string main)
@@ -110,6 +110,19 @@ namespace ProbablyStolenTools
 
         internal static bool PipeTooltipVisible(GameItem item, bool nativeVisible, bool shiftHeld)
             => nativeVisible || PipeDetailsEnabled(shiftHeld) && TryPipePurity(item, out _);
+
+        internal static void AddDetailsHint(RichTextBuilder builder, GameItem item)
+        {
+            var key = Plugin.CfgKeyDetails?.Value ?? KeyCode.LeftShift;
+            if (ShiftHeld || key == KeyCode.None || !InspectionLocale.AnnotationsReady) return;
+            bool available = item?.identifier == "faucet"
+                ? Plugin.CfgPipeComposition?.Value == true && TryPipePurity(item, out _)
+                : ShiftEnabled && LiquidComposition.SupportsDetails(item) || FacilityPreview.HasDetails(item);
+            if (!available) return;
+            string name = key == KeyCode.LeftShift || key == KeyCode.RightShift ? "Shift" : Plugin.KeyName(key);
+            builder.AddLine(InspectionLocale.Text("按住" + name + "查看详情", "Hold " + name + " for details"),
+                color: RenderHandler.ColorPalette.DarkOrange);
+        }
 
         internal static RichText Append(RichText original, RichText extra)
         {
