@@ -629,10 +629,25 @@ namespace ProbablyStolenTools
             catch { return true; }
         }
 
+        private static bool _optionalGateFaulted;
         private static bool OptionalCaptureReady(PlayerStore store)
         {
 #if MONO
-            return SignboardCompatibility.CaptureReady(store);
+            // A failed readiness probe must not break hotkeys or admit an incomplete checkpoint.
+            try
+            {
+                return SignboardCompatibility.CaptureReady(store);
+            }
+            catch (Exception e)
+            {
+                if (!_optionalGateFaulted)
+                {
+                    _optionalGateFaulted = true;
+                    EventLog.Write("[Compatibility] optional capture gate failed ("
+                        + e.GetType().Name + ": " + e.Message + "); checkpoint deferred; hotkeys remain available.");
+                }
+                return false;
+            }
 #else
             return true;
 #endif
@@ -2145,14 +2160,17 @@ namespace ProbablyStolenTools
             private readonly Vector3 _anchoredPosition, _scale;
             private readonly Vector2 _anchorMin, _anchorMax, _pivot, _size;
             private readonly Quaternion _rotation;
-            private readonly bool _active, _hasImage, _imageEnabled, _raycastTarget;
+            private readonly bool _active, _hasImage, _imageEnabled, _raycastTarget, _hadParent;
             private readonly Color _color;
             private readonly Sprite _sprite;
+            private readonly string _description;
             internal VisualState(TreeNodeRender node)
             {
                 Node = node;
                 var t = node.rectTransform;
                 _parent = t.parent; _anchoredPosition = t.anchoredPosition3D; _scale = t.localScale;
+                _hadParent = !ReferenceEquals(_parent, null);
+                _description = node.name + " parent=" + (_parent == null ? "<none>" : _parent.name);
                 _nodeParent = node.parent;
                 _rotation = t.localRotation; _active = node.gameObject.activeSelf;
                 _anchorMin = t.anchorMin; _anchorMax = t.anchorMax;
@@ -2166,9 +2184,13 @@ namespace ProbablyStolenTools
             }
             internal void Validate()
             {
-                if (Node == null || _parent == null || Node.rectTransform == null
+                // Detached native views legitimately have no parent; only a captured parent must survive.
+                if (Node == null || _hadParent && _parent == null || Node.rectTransform == null
                     || (_hasImage && Node.image == null))
-                    throw new InvalidOperationException("A checkpoint view or its parent was destroyed.");
+                    throw new InvalidOperationException("A checkpoint view or its parent was destroyed: " + _description
+                        + "; nodeAlive=" + (Node != null) + ", parentAlive=" + (_parent != null)
+                        + ", rectAlive=" + (Node != null && Node.rectTransform != null)
+                        + ", imageAlive=" + (!_hasImage || Node != null && Node.image != null));
             }
             internal void Restore()
             {

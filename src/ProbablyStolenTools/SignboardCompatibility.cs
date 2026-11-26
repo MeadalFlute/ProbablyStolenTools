@@ -17,40 +17,71 @@ namespace ProbablyStolenTools
         private static float _noticeRetryAt;
         private static class Api
         {
-            internal static readonly FieldInfo Inventory = AccessTools.Field("PawnshopBillboards.HangingStorage:Inventory");
-            internal static readonly FieldInfo Owner = AccessTools.Field("PawnshopBillboards.BillboardManager:owner");
-            internal static readonly FieldInfo Run = AccessTools.Field("PawnshopBillboards.BillboardManager:run");
-            internal static readonly FieldInfo Busy = AccessTools.Field("PawnshopBillboards.BillboardManager:busy");
-            internal static readonly FieldInfo Fault = AccessTools.Field("PawnshopBillboards.BillboardManager:fault");
-            internal static readonly FieldInfo Initialized = AccessTools.Field("PawnshopBillboards.BillboardManager:initialized");
-            internal static readonly FieldInfo Dirty = AccessTools.Field("PawnshopBillboards.BillboardManager:snapshotDirty");
-            internal static readonly FieldInfo Height = AccessTools.Field("PawnshopBillboards.BillboardManager:heightOffset");
-            internal static readonly FieldInfo Expanded = AccessTools.Field("PawnshopBillboards.BillboardManager:expanded");
-            internal static readonly FieldInfo RefreshAt = AccessTools.Field("PawnshopBillboards.BillboardManager:refreshAt");
-            internal static readonly FieldInfo Dragged = AccessTools.Field("PawnshopBillboards.BillboardManager:dragged");
-            internal static readonly FieldInfo[] Maps = {
-            AccessTools.Field("PawnshopBillboards.BillboardManager:records"),
-            AccessTools.Field("PawnshopBillboards.BillboardManager:unavailable"),
-            AccessTools.Field("PawnshopBillboards.BillboardManager:unresolved") };
-            internal static readonly FieldInfo[] Placement = {
-            AccessTools.Field("PawnshopBillboards.Placement:uid"), AccessTools.Field("PawnshopBillboards.Placement:region"),
-            AccessTools.Field("PawnshopBillboards.Placement:x"), AccessTools.Field("PawnshopBillboards.Placement:y"),
-            AccessTools.Field("PawnshopBillboards.Placement:width"), AccessTools.Field("PawnshopBillboards.Placement:height"),
-            AccessTools.Field("PawnshopBillboards.Placement:orientation"), AccessTools.Field("PawnshopBillboards.Placement:flipped"),
-            AccessTools.Field("PawnshopBillboards.Placement:id"), AccessTools.Field("PawnshopBillboards.Placement:brightness"),
-            AccessTools.Field("PawnshopBillboards.Placement:lastBrightness") };
-            internal static readonly MethodInfo ClearViews = AccessTools.Method("PawnshopBillboards.BillboardManager:SceneUnloaded");
-            internal static readonly MethodInfo Commit = AccessTools.Method("PawnshopBillboards.BillboardManager:Commit");
+            internal static FieldInfo Inventory, Owner, Run, Busy, Fault, Initialized, Dirty, Height, Expanded, RefreshAt, Dragged;
+            internal static FieldInfo[] Maps = Array.Empty<FieldInfo>(), Placement = Array.Empty<FieldInfo>();
+            internal static MethodInfo ClearViews, Commit;
+            private static bool _probed, _failed;
+            // No optional lookups in field initializers: Mono may run them before the enabled-mod guard.
+            private static void Ensure()
+            {
+                if (_probed) return;
+                _probed = true;
+                try
+                {
+                    Inventory = AccessTools.Field("PawnshopBillboards.HangingStorage:Inventory");
+                    Owner = AccessTools.Field("PawnshopBillboards.BillboardManager:owner");
+                    Run = AccessTools.Field("PawnshopBillboards.BillboardManager:run");
+                    Busy = AccessTools.Field("PawnshopBillboards.BillboardManager:busy");
+                    Fault = AccessTools.Field("PawnshopBillboards.BillboardManager:fault");
+                    Initialized = AccessTools.Field("PawnshopBillboards.BillboardManager:initialized");
+                    Dirty = AccessTools.Field("PawnshopBillboards.BillboardManager:snapshotDirty");
+                    Height = AccessTools.Field("PawnshopBillboards.BillboardManager:heightOffset");
+                    Expanded = AccessTools.Field("PawnshopBillboards.BillboardManager:expanded");
+                    RefreshAt = AccessTools.Field("PawnshopBillboards.BillboardManager:refreshAt");
+                    Dragged = AccessTools.Field("PawnshopBillboards.BillboardManager:dragged");
+                    Maps = new[] {
+                        AccessTools.Field("PawnshopBillboards.BillboardManager:records"),
+                        AccessTools.Field("PawnshopBillboards.BillboardManager:unavailable"),
+                        AccessTools.Field("PawnshopBillboards.BillboardManager:unresolved") };
+                    Placement = new[] {
+                        AccessTools.Field("PawnshopBillboards.Placement:uid"), AccessTools.Field("PawnshopBillboards.Placement:region"),
+                        AccessTools.Field("PawnshopBillboards.Placement:x"), AccessTools.Field("PawnshopBillboards.Placement:y"),
+                        AccessTools.Field("PawnshopBillboards.Placement:width"), AccessTools.Field("PawnshopBillboards.Placement:height"),
+                        AccessTools.Field("PawnshopBillboards.Placement:orientation"), AccessTools.Field("PawnshopBillboards.Placement:flipped"),
+                        AccessTools.Field("PawnshopBillboards.Placement:id"), AccessTools.Field("PawnshopBillboards.Placement:brightness"),
+                        AccessTools.Field("PawnshopBillboards.Placement:lastBrightness") };
+                    ClearViews = AccessTools.Method("PawnshopBillboards.BillboardManager:SceneUnloaded");
+                    Commit = AccessTools.Method("PawnshopBillboards.BillboardManager:Commit");
+                }
+                catch (Exception e)
+                {
+                    _failed = true;
+                    Inventory = Owner = Run = Busy = Fault = Initialized = Dirty = Height = Expanded = RefreshAt = Dragged = null;
+                    Maps = Array.Empty<FieldInfo>(); Placement = Array.Empty<FieldInfo>();
+                    ClearViews = Commit = null;
+                    EventLog.Write("[Compatibility] Proper Signboards probe failed ("
+                        + e.GetType().Name + ": " + e.Message + "); continuing without the signboard adapter.");
+                }
+            }
             internal static GameGridInventory Root()
             {
                 ValidateBuild();
                 return Inventory.GetValue(null) as GameGridInventory
                     ?? throw new InvalidOperationException("Proper Signboards hanging inventory is not initialized; retry after entering the shop.");
             }
-            internal static bool SupportedBuild => !(Inventory == null || Inventory.Module.ModuleVersionId != Supported || Owner == null || Run == null
-                    || Busy == null || Fault == null || Initialized == null || Dirty == null || Height == null
-                    || Expanded == null || RefreshAt == null || Dragged == null || !NoArgumentsStatic(ClearViews) || !NoArgumentsStatic(Commit)
-                    || Array.Exists(Maps, f => f == null) || Array.Exists(Placement, f => f == null));
+            internal static bool SupportedBuild
+            {
+                get
+                {
+                    Ensure();
+                    if (_failed) return false;
+                    return !(Inventory == null || Inventory.Module == null || Inventory.Module.ModuleVersionId != Supported
+                        || Owner == null || Run == null || Busy == null || Fault == null || Initialized == null || Dirty == null
+                        || Height == null || Expanded == null || RefreshAt == null || Dragged == null
+                        || !NoArgumentsStatic(ClearViews) || !NoArgumentsStatic(Commit)
+                        || Array.Exists(Maps, f => f == null) || Array.Exists(Placement, f => f == null));
+                }
+            }
             private static bool NoArgumentsStatic(MethodInfo method)
                 => method != null && method.IsStatic && method.GetParameters().Length == 0;
             internal static void ValidateBuild()

@@ -3,7 +3,7 @@
   <ID>dsh.probablystolen.tools</ID>
   <Name>QuickSL</Name>
   <Author>米德</Author>
-  <ModVersion>0.9.9</ModVersion>
+  <ModVersion>0.9.10</ModVersion>
   <Description><![CDATA[实时快速SL，将当铺状态切换至任意快照节点。
 
 附带功能：快速鉴定、水质标注、双击调用放大镜、快进顾客对话、酿酒标注、化学辅助。

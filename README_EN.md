@@ -4,7 +4,9 @@ Previously Probably Stolen Tools. Only the display name changes: mod ID, DLLs, i
 
 English | [中文](README.md)
 
-A helper mod for **Probably Stolen**, currently **0.9.9**. The game uses Unity 2021.3.45f2 / Mono / x64 and its own **IMod / Harmony** loader; MelonLoader and BepInEx are not required. One package contains compatibility data for both **stable 0.46D** and **beta 1.0.0.16** and selects automatically at startup.
+A helper mod for **Probably Stolen**, currently **0.9.10**. The game uses Unity 2021.3.45f2 / Mono / x64 and its own **IMod / Harmony** loader; MelonLoader and BepInEx are not required. One package contains compatibility data for both **stable 0.46D** and **beta 1.0.0.16** and selects automatically at startup.
+
+0.9.10 hotfix: fixes F9/automatic checkpoints failing when the optional signboard mod is inactive, and rewind incorrectly rejecting native views captured without a parent. The feature split is not included.
 
 ## Game Beta Branch
 

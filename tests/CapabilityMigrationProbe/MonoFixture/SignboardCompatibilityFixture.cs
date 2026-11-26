@@ -5,15 +5,53 @@ using System.Reflection;
 
 public static partial class OfflineMonoFixture
 {
+    public static void RunSignboardProbe(string path)
+    {
+        var mod = Assembly.LoadFrom(path);
+        var game = Assembly.Load("Assembly-CSharp");
+        CheckSignboardCompatibility(mod, game);
+    }
+
     private static void CheckSignboardCompatibility(Assembly mod, Assembly game)
     {
         var bridge = mod.GetType("ProbablyStolenTools.SignboardCompatibility", true);
-        if (bridge.GetMethod("Root", All).Invoke(null, null) != null)
-            throw new Exception("Absent signboard mod must leave vanilla roots unchanged.");
+        void CheckInactive()
+        {
+            // CaptureReady, unlike Root, directly references Api fields and triggered Mono's eager initializer.
+            if (!(bool)bridge.GetMethod("CaptureReady", All).Invoke(null, new object[] { null })
+                || !(bool)mod.GetType("ProbablyStolenTools.CustomerCheckpoint", true)
+                    .GetMethod("OptionalCaptureReady", All).Invoke(null, new object[] { null })
+                || bridge.GetMethod("Root", All).Invoke(null, null) != null
+                || bridge.GetMethod("Capture", All).Invoke(null, new object[] { null }) != null)
+                throw new Exception("Inactive signboard mod must leave capture readiness and vanilla roots unchanged.");
+            bridge.GetMethod("Tick", All).Invoke(null, null);
+        }
+        CheckInactive();
+        var mods = (IList)game.GetType("ModLoader").GetField("mods", All).GetValue(null);
+        var optional = mod.GetType("ProbablyStolenTools.OptionalModCompatibility", true);
+        var cachedMods = optional.GetField("_mods", All);
+        object oldCache = cachedMods.GetValue(null);
+        var fake = Activator.CreateInstance(game.GetType("LoadedMod"));
+        var manifest = Activator.CreateInstance(game.GetType("ModManifest"));
+        manifest.GetType().GetField("ID", All).SetValue(manifest, "PawnshopBillboards");
+        fake.GetType().GetField("Manifest", All).SetValue(fake, manifest);
+        fake.GetType().GetField("IsEnabled", All).SetValue(fake, false);
+        mods.Add(fake);
+        cachedMods.SetValue(null, null);
+        try { CheckInactive(); }
+        finally { mods.Remove(fake); cachedMods.SetValue(null, oldCache); }
+        var api = bridge.GetNestedType("Api", All);
+        if ((bool)api.GetField("_probed", All).GetValue(null))
+            throw new Exception("Absent/disabled signboards must never resolve optional types.");
         string path = Environment.GetEnvironmentVariable("PSTOOLS_TEST_SIGNBOARDS_DLL");
         if (string.IsNullOrEmpty(path))
         {
-            Console.WriteLine("PASS vanilla signboard compatibility is inactive without optional mod registration.");
+            // Probe missing types too: a bad optional API must be unsupported, never a poisoned type initializer.
+            for (int i = 0; i < 2; i++)
+                if ((bool)api.GetProperty("SupportedBuild", All).GetValue(null))
+                    throw new Exception("Absent signboard API cannot be supported.");
+            CheckInactive();
+            Console.WriteLine("PASS absent/disabled signboards: direct readiness, capture gate, root, capture, tick; no eager probe; repeated missing-API probe is safe.");
             return;
         }
         var external = Assembly.LoadFrom(path);
@@ -21,15 +59,7 @@ public static partial class OfflineMonoFixture
         var storage = external.GetType("PawnshopBillboards.HangingStorage", true);
         var placement = external.GetType("PawnshopBillboards.Placement", true);
         object Data(string name) => System.Runtime.Serialization.FormatterServices.GetUninitializedObject(game.GetType(name, true));
-        var mods = (IList)game.GetType("ModLoader").GetField("mods", All).GetValue(null);
-        var fake = Activator.CreateInstance(game.GetType("LoadedMod"));
-        var manifest = Activator.CreateInstance(game.GetType("ModManifest"));
-        manifest.GetType().GetField("ID", All).SetValue(manifest, "PawnshopBillboards");
-        fake.GetType().GetField("Manifest", All).SetValue(fake, manifest);
         fake.GetType().GetField("IsEnabled", All).SetValue(fake, true);
-        var optional = mod.GetType("ProbablyStolenTools.OptionalModCompatibility", true);
-        var cachedMods = optional.GetField("_mods", All);
-        object oldCache = cachedMods.GetValue(null);
         var saved = new Dictionary<FieldInfo, object>();
         void Set(Type type, string name, object value)
         {
