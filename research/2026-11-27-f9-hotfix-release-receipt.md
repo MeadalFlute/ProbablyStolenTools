@@ -35,12 +35,25 @@ Date: 2026-11-27 (Asia/Hong_Kong).
 
 ## Publication Status
 
-GitHub remote inspection failed with `Could not resolve host: github.com`. The configured Windows
-proxy at 127.0.0.1:7890 is not listening either. Package and local commit are ready; do not interpret
-a local commit or deployed DLL as a successful remote push or Workshop upload.
+Published on 2026-11-27 00:36 (Asia/Hong_Kong) through the local proxy `127.0.0.1:7890`:
 
-Workshop upload has not been executed. Use the prepared mod-content directory, not the whole
-artifact directory (which includes test provenance and publishing materials).
+- Push `5726538..5566873` to `main`, plus branch `hotfix/0.9.10-f9` and tag `v0.9.10`.
+- GitHub Release `https://github.com/MeadalFlute/ProbablyStolenTools/releases/tag/v0.9.10`,
+  asset `ProbablyStolenTools.zip` 606118 bytes; GitHub reported
+  `sha256:b49247075f14531c20042171a0042b75343b06d39dc7b651cea162b03c5fa9aa`, matching the local ZIP.
+- Release body documents the manual overwrite path
+  (`Steam\steamapps\common\Probably Stolen\Mods\ProbablyStolenTools\`) and Workshop item `3829188627`
+  (appid 4348910), because the Workshop submission is still under review.
+
+Workshop: not uploaded in this run. The local subscribed copy under
+`steamapps\workshop\content\4348910\3829188627` is still 0.9.8 (`2AD3445D...`), and the uploader
+state records the earlier 0.9.9-only submission (`C100CAC3...`, LastUploadedUtc 2026-11-26T15:56:38Z)
+as the pending edit. A 0.9.10 upload from `out/quicksl-0.9.10-universal/ProbablyStolenTools/` is
+still required before claiming the Workshop carries this build.
+
+Runtime evidence collected after deployment (0.9.10, `PSTools.log`): `CAPTURE ... client=手动` and
+`RESTORE OK ... diff=0` at 00:28 on game 0.46D and at 00:30 on game 1.0.0.16; `PSTools_errors.log`
+has no entry after 23:49. This is player-run gameplay evidence, not a full Unity acceptance pass.
 
 This documentation receipt is written after packaging. Its later commit does not change the
 runtime source; rebuild reproducibility must use the recorded build commit, not a later docs HEAD.

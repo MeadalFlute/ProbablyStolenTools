@@ -14,6 +14,14 @@
 > Unity 实机验收，beta 1.0.0.16 复用已发布静态 profile，不能写成本轮双版本实机通过。
 > 构建和打包需使用同一干净提交；通用包必须含两 profile，禁止只发本机单版本 helper。
 
+> 2026-11-27 00:36 **0.9.10 已发布**：`main` 由 `5726538` 快进到 `5566873`，标签 `v0.9.10`，
+> GitHub Release `releases/tag/v0.9.10`，资产 `ProbablyStolenTools.zip` 606118 bytes /
+> `B4924707…`（GitHub 回读 digest 一致）。工坊**尚未上传 0.9.10**：本地订阅副本仍是 0.9.8
+> （`2AD3445D…`），23:56 提交的 `C100CAC3…`（只含校验修复、版本仍 0.9.9）仍待审核，
+> 需要用 0.9.10 包重新提交。实机日志证据：`PSTools.log` 00:28（0.46D）与 00:30（1.0.0.16）
+> 均出现 `CAPTURE … client=手动` 与 `RESTORE OK … diff=0`；`PSTools_errors.log` 自 23:49
+> 起无新增。该日志来自本机玩家实测，不得表述为完整 Unity 验收或工坊线上可见性证明。
+
 > 适用源码：正式版 **0.9.9**（2026-11-26）。平台为游戏自带 **Mono / IMod / Harmony**；MelonLoader / IL2CPP 路径已弃用，`#if !MONO` 分支只保证能编译，不再维护。
 > 旧版本文档（0.2.1–0.6.0、Demo、早期性能优化过程）归档在 `research/archive/AGENT-0.6.0-history.md`，**不要**按它描述的环境或版本操作。
 
