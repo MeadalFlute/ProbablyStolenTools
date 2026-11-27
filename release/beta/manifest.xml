@@ -3,7 +3,7 @@
   <ID>dsh.probablystolen.tools</ID>
   <Name>QuickSL</Name>
   <Author>米德</Author>
-  <ModVersion>0.9.10</ModVersion>
+  <ModVersion>1.0.0</ModVersion>
   <Description><![CDATA[实时快速SL，将当铺状态切换至任意快照节点。
 
 辅助功能已拆分至独立模组Shift工具箱；两者可单独使用，双装时共用功能面板。
