@@ -34,7 +34,7 @@ public static partial class OfflineMonoFixture
         }
         row.GetType().GetField("panels", All).SetValue(row, panels);
         window.GetType().GetProperty("childElement", All).SetValue(window, row);
-        var automation = mod.GetType("ProbablyStolenTools.ChemistryAutomation", true);
+        var automation = mod.GetType("ShiftToolbox.ChemistryAutomation", true);
         var accepts = automation.GetMethod("IsExtrusionSlot", All);
         bool Accept(object slot) => (bool)accepts.Invoke(null, new[] { machine, slot });
         var body = game.GetType("MachineHelper", true).GetMethod("GetBodyStorage", All);

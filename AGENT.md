@@ -1,5 +1,54 @@
 # Probably Stolen Tools — 交接文档
 
+> **2026-11-27 1.0.0 拆分线（当前源码，`main`）**：从 0.9.9 拆出的 QuickSL，只保留实时回溯/快照，
+> 回溯外的业务全部迁到独立仓库 `ShiftToolbox`（`shift.toolbox`）。已移植已发布 0.9.10 的 F9
+> 热修复（灯牌可选 API 一次性延迟探测、可选兼容异常不再永久禁键）与无父节点视图判定修复，
+> 并包含中英模糊搜索、跨 Mod 输入门控、默认免 Shift 磁吸与标题栏双击置顶等候选改动。
+> 完整版停在 0.9.10，保留为分支 `Full`（含工坊 0.9.9-h2 提交记录）；拆分线自 1.0.0 起，
+> 规则：工坊推送后中间位+1、小版本归零，本地每轮小版本+1，GitHub release 与工坊推送同步发布，
+> 便于玩家回退。统一交接与哈希：`research/2026-11-27-split-window-settings-handoff.md`。
+> 本机 beta 1.0.0.16；通用包 helper 为双版本合并表，勿用单 beta 表覆盖。
+
+> **2026-11-26 功能拆分开发候选，覆盖下方旧版功能归属说明。** 当前工作区基于已发布
+> 0.9.9（HEAD `5726538`），尚未正式升版/推送。回溯外的全部业务已迁至独立仓库
+> `D:\Program\GameProject\ShiftToolbox`（`shift.toolbox` / 0.0.1 / 米德）。QuickSL 保留旧
+> ID、DLL、配置、安装目录和静态表；不引用工具箱，工具箱也不引用 QuickSL/helper。
+> 单装可运行，双装通过 `IServiceProvider` 协议共享面板。`ToolboxBridge.cs` 为唯一协作入口；
+> 回溯前清理工具箱临时状态，读档/回溯和改键期间有跨 Mod 门控。小型 UI/日志/语言辅助源码
+> 各自保有，不新增公共前置或权限。旧 PSTools 工具设置保留，工具箱首次只读白名单导入，
+> 已有新设置优先，之后各自保存；不迁移旧 F8、面板位置、回溯或公告设置。
+>
+> 两仓库常规开发各自一个对话，协议/迁移变更由协调对话同时修改并联合测试，不依赖兄弟
+> 仓库路径构建。旧发布版0.9.9无协议时，工具箱暂停重复业务，不影响原版旧包；不能按同号
+> 推断能力。QuickSL 480 参考套中工具规则移到 `tests/PreSplitToolRules` 历史fixture，现行工具
+> 由工具箱56规则/原生Contracts/独立Mono验证；不要把480全算作现行工具箱测试。
+> `scripts/Test-SplitMono.ps1 -QuickOnly` 验证单装，双装传显式 `-ToolboxDll`。一次性迁移脚本
+> 已删除，避免以后重跑覆盖开发。通用helper仍须在最终扫描/部署前恢复合并表。
+> 本轮审查与实机验收入口：`research/2026-11-26-feature-split-handoff.md`。
+
+> 2026-11-26 23:28 拆分候选续修：回溯预检将“捕获时本就没有父 Transform”的
+> 原生视图误判为父对象已销毁，现记录 `_hadParent` 区分，仍拒绝真正丢失的父对象/视图。
+> 新增托管 Unity wrapper 模型回归（不等同真实 Unity 销毁测试）。23:32-23:33 实机日志
+> 已有四次 RESTORE OK，含跨顾客/晨间，diff=0、releaseOk=True、474-578ms；贴图仍待玩家确认。
+> 工具箱默认 F8，主菜单可开；共享 F8 只消费一次，业务键冲突仍拒绝。协议v1可选增加
+> panelKey/actionKeys，QuickSL legacySettings 仅导出工具白名单，工具箱已有值/用户修改优先。
+> 工具箱改用官方 ModData 专属接口，Capabilities 为空，配置/日志位于
+> `<persistentDataPath>/ModData/shift_toolbox/`；备份为最近有效 XML，不是原子替换。
+> 主DLL `977E9E6D...`、helper `6129A2D3...`、工具箱 `1EA02591...` 已部署且与构建一致。
+> 快照/权限扫描、单装/双装游戏Mono离线回归通过；单装工具箱F8/原生齿轮仍待实机。
+> 未提交/升版/推送；21:05清理段及玩家既有修改保留。
+
+> 2026-11-26 审查准备更新：玩家回报基本单装/双装未见明显问题，日志累计8次恢复
+> diff=0/releaseOk=True（474-612ms），包括23:43单装QuickSL晨间/手动往返。
+> 统一code review入口：`research/2026-11-26-feature-split-review-handoff.md`，需审两个仓库全部源码，
+> 工具箱初始提交已经包含迁入代码，不能只看dirty差异。改键交换后的跨Mod冲突、QuickSL拒绝
+> 改键后成功toast、默认配置落盘后跨重启迁移列为已知待审边界，未在本轮擅加生产修改。
+> 本轮复跑规则/原生扫描/工具箱全套通过，未部署/提交/升版/推送。
+> 扫描说明纠正：QuickSL仅files但存在files类Pending，HardFlags/Error空、无退役能力；
+> 工具箱Capabilities/Findings/Pending/HardFlags/Error均空，不能写两包Pending都为空。
+> 当前游戏目录QuickSL已恢复旧发布DLL `DF901AB7...`，与仓库候选 `977E9E6D...` 不同；
+> manifest也为旧版，来源未确认，本轮未覆盖。工具箱/helper仍为前述哈希。
+
 > 2026-11-27 **0.9.10 紧急修复候选**：本目录是旧版 0.9.9 的独立 hotfix，分支
 > `hotfix/0.9.10-f9`，基于已发布 `5726538`，不含 Shift Toolbox 拆分代码。
 > 正式版原 DLL 已在游戏自带 Mono 的直接 CaptureReady 入口复现灯牌 Api 静态初始化异常；
@@ -33,6 +82,8 @@
 本文只写当前仍成立的事实。实现细节以源码为准，阶段记录与实验数据看 `research/`。
 
 2026-11-26 19:52 **0.9.9 发布**（当前正式源码，覆盖下方全部候选与 0.9.8 记录）：玩家验收本批（智能挤出、灯牌适配、强制详情提示、水培预测、营养液改名、平板置顶标记、试剂 `*` 与完整详情、自动搅拌优化、8 秒九节公告）后按惯例升版推送。版本 0.9.9 同步三份 manifest、`Plugin.Version` 与 `MelonInfo`；480 参考、22 可选兼容、原版与真实灯牌+VBE Mono 夹具（各 29 PASS，含 408 组确定品质分配与原生一致）、105 挂点/76 字段/仅 `files` 扫描均通过，HardFlags/Error 空。打包 `out/quicksl-0.9.9-universal`（ZIP `3CCEF4BD…` 605445 bytes、主 DLL `DF901AB7…`、双 profile helper `6129A2D3…`/808448 bytes、通用包额外布局来源 `CBB8F36A…`/683008 bytes、打包提交 `5b49ced`）；部署 `out/full-release-deploy-20261126-195207/deployment.json`（95 个存档目录文件不变、设置未导入、未启动游戏、`InGameValidated=false`）。推送 `main` `817af11..5b49ced`。工坊材料 `out/workshop_changes_0.9.9_zh.bbcode`、`out/workshop_changes_0.9.9_en.bbcode`、`out/workshop_description_0.9.9_zh.bbcode`、`out/workshop_description_0.9.9_en.bbcode`；公告只列相对 0.9.8 的新增与可见变化，开发期间的修复/调整不对外记录。命名维持 **快速SL / QuickSL**（工坊中英标题分别本地化），拆分只在公告预告、本次未实施。r4 横幅可见性与本批新 UI 的实机表现仍以玩家验收为准。
+
+2026-11-26 21:05 清理临时产物（约 39.2 GB）：删除 `out/` 下 0.9.9 之前的部署/打包/实验目录与 11-26 之前的日志（保留 `out/quicksl-0.9.9-universal`、`out/full-release-deploy-20261126-195207`、`out/morning-perf-before-20261115`、`out/beta-old-helper-rejection-20261116`、`out/20261126-fixes-merged`、`out/20261126-review-deployed`、`out/20261126-tooltip-native`、`out/20261126-notice-native`、`out/save-recovery-day94-*` 与 0.9.9 工坊文本），删除 `dump/`、`cpp2il_cs`、`cpp2il_isil`、`cpp2il_out`（IL2CPP 时代产物）与 `tools/bepinex`、`tools/bepinex.zip`、`tools/Cpp2IL`、`tools/Il2CppDumper`，并清空各项目 `bin/obj`。**因此下一次构建/测试/部署前必须重新构建**（主 DLL、MonoFixture、MonoHost、CheckpointTests 等二进制已不存在）；主项目构建仍会生成单 beta helper，打包前需按上文恢复合并表。上文历史条目里指向已删除 `out/` 的路径只作记录；`backup_save/`、`decompiled/`、`research/` 未动。
 
 2026-11-26 r4命名审查通过：`research/2026-11-26-notice-r4-naming-review-ds.md`无阻断项，DS复建主DLL与19:06部署DC98C74D…一致。处理回执`research/2026-11-26-notice-r4-naming-review-receipt.md`；本次仅文档，无重建/部署/公告重置/提交/升版/推送。玩家最终确定保留“快速SL / QuickSL”，不采纳旧回执的“快速回溯”改名建议；未来工具箱“Shift工具箱 / Shift Toolbox”，旧身份由回溯部分继承，本次未拆分。搜索观察不等同平台索引规则；不据此擅改标题或声称线上材料已上传。r4可见性仍待明确实机验收。
 

@@ -112,7 +112,15 @@ public static partial class OfflineMonoFixture
         var unity = Assembly.Load("UnityEngine.CoreModule");
         CheckAutomaticCheckpointGates(mod);
         CheckBrewingCompatibility(mod, game);
-        CheckQualityOfLife(mod, game);
+        var toolboxPath = Environment.GetEnvironmentVariable("SHIFT_TOOLBOX_TEST_DLL");
+        if (!string.IsNullOrEmpty(toolboxPath))
+        {
+            var toolbox = Assembly.LoadFrom(toolboxPath);
+            toolbox.GetType("ShiftToolbox.Plugin", true).GetField("Enabled", All).SetValue(null, true);
+            CheckQualityOfLife(toolbox, game);
+        }
+        CheckFileNodeIndex(mod, game, value => mod.GetType("ProbablyStolenTools.ConfigEntry`1", true)
+            .MakeGenericType(typeof(bool)).GetConstructors(All)[0].Invoke(new object[] { value, null, "index-fixture" }));
         CheckSignboardCompatibility(mod, game);
         CheckManagedIdentities(mod);
         CheckVectorReaders(mod);

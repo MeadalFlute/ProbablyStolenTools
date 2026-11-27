@@ -15,18 +15,16 @@ internal static class UpdateNoticeTests
             check(!schedule.Due(notice, "0.9.7", true, 9));
             check(new UpdateNoticeSchedule().Acknowledged(notice, notice));
         });
-        test("current bilingual update has nine compact sections including a future split warning", () =>
+        test("split announcement explains independent ownership migration and shared panel in both languages", () =>
         {
             foreach (string text in new[] { UpdateNoticeContent.DetailsChinese, UpdateNoticeContent.DetailsEnglish })
             {
                 var sections = UpdateNoticeContent.Sections(text);
-                check(sections.Length == 9 && sections.All(section => !section.Contains("\n\n")));
-                check(text.Contains("70%") && text.Contains("Proper Signboards") && text.Contains("*") && text.Contains("1.5%"));
-                check(!text.Contains("Vanilla Brewing Expansion") && !text.Contains("磁吸窗口"));
+                check(sections.Length == 2 && sections.All(section => !section.Contains("\n\n")));
+                check(text.Contains("QuickSL") && text.Contains("shift.toolbox"));
             }
-            check(UpdateNoticeContent.SummaryChinese.Contains("智能挤出") && UpdateNoticeContent.SummaryEnglish.Contains("Smart extrusion"));
-            check(UpdateNoticeContent.DetailsChinese.Contains("本次更新尚未拆分")
-                && UpdateNoticeContent.DetailsEnglish.Contains("This update does not split"));
+            check(UpdateNoticeContent.SummaryChinese.Contains("Shift工具箱") && UpdateNoticeContent.SummaryEnglish.Contains("Shift Toolbox"));
+            check(UpdateNoticeContent.DetailsChinese.Contains("只读导入") && UpdateNoticeContent.DetailsEnglish.Contains("without changing"));
         });
         test("notice progress fills and clamps outside its eight-second lifetime", () =>
         {

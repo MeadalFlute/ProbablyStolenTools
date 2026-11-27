@@ -25,6 +25,8 @@
 
   <ItemGroup Condition="'$(GameRuntime)' == 'Mono'">
     <Compile Remove="NativeStateAccess.cs;ModConfig.cs" />
+    <!-- Historical utility sources may remain locally; only the toolbox owns these features. -->
+    <Compile Remove="AppraisalPatch.cs;BlendBatchPlan.cs;ChemistryAutomation.cs;ChemistryData.cs;ChemistryRapidReactions.cs;ChemistryRules.cs;CompositionDetails.cs;DetailedCompositionTooltip.cs;DialogueSkip.cs;DoubleClickInspectionPatch.cs;FacilityPreview.cs;FacilityProjection.cs;ForcedItemTooltip.cs;HydroponicWorkWatch.cs;InspectionChecks.cs;ItemDetailsInput.cs;LiquidComposition.cs;MachineModuleUnlock.cs;NativeWindowGestures.cs;PinnedCompositionTooltip.cs;QuickInspectionPatch.cs;RapidBoiling.cs;ReactionCompletion.cs;TooltipHooks.cs;TooltipNamePatch.cs;WaterQualityPatch.cs;WindowSnap.cs;WineAppraisal.cs" />
     <Reference Include="Assembly-CSharp" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Assembly-CSharp.dll" Private="false" />
     <Reference Include="Assembly-CSharp-firstpass" HintPath="$(GameDir)\Probably Stolen_Data\Managed\Assembly-CSharp-firstpass.dll" Private="false" />
     <Reference Include="DOTween" HintPath="$(GameDir)\Probably Stolen_Data\Managed\DOTween.dll" Private="false" />

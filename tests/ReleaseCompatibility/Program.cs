@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.Loader;
 using System.Xml.Linq;
 using System.Globalization;
@@ -43,6 +43,34 @@ var mod = AssemblyLoadContext.Default.LoadFromAssemblyPath(dll);
 var types = mod.GetTypes();
 var plugin = types.Single(t => t.GetInterfaces().Any(i => i.Name == "IMod"));
 Console.WriteLine("IMod entry: " + plugin.FullName);
+// Model Unity's live managed wrappers without invoking native engine transforms.
+{
+    const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+    var unity = Assembly.Load("UnityEngine.CoreModule");
+    var objectType = unity.GetType("UnityEngine.Object", true);
+    object Live(Type type)
+    {
+        object value = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(type);
+        objectType.GetField("m_CachedPtr", all).SetValue(value, new IntPtr(1));
+        return value;
+    }
+    var viewType = mod.GetType("ProbablyStolenTools.CustomerCheckpoint+VisualState", true);
+    var node = Live(game.GetType("TreeNodeRender", true));
+    node.GetType().GetField("<rectTransform>k__BackingField", all).SetValue(node, Live(unity.GetType("UnityEngine.RectTransform", true)));
+    var view = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(viewType);
+    viewType.GetField("Node", all).SetValue(view, node);
+    var validate = viewType.GetMethod("Validate", all);
+    validate.Invoke(view, null);
+    viewType.GetField("_hadParent", all).SetValue(view, true);
+    try { validate.Invoke(view, null); throw new Exception("Lost captured parent was accepted"); }
+    catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    viewType.GetField("_parent", all).SetValue(view, Live(unity.GetType("UnityEngine.Transform", true)));
+    validate.Invoke(view, null);
+    viewType.GetField("Node", all).SetValue(view, null);
+    try { validate.Invoke(view, null); throw new Exception("Lost view was accepted"); }
+    catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException) { }
+    Console.WriteLine("PASS visual preflight permits originally detached roots but rejects a missing captured parent/view (modeled wrappers)");
+}
 var logFlags = BindingFlags.NonPublic | BindingFlags.Static;
 var verboseSetting = plugin.GetField("CfgVerboseLog", logFlags);
 var developmentSetting = plugin.GetField("CfgSemanticDevelopmentChecks", logFlags);
@@ -112,20 +140,9 @@ foreach (var type in types)
     Console.WriteLine("HOOK " + target.Name + "." + name);
     hooks++;
 }
-var rapidRecipes = types.Where(t => t.Name.StartsWith("Rapid", StringComparison.Ordinal) && t.Name.EndsWith("Patch", StringComparison.Ordinal))
-    .Select(t => t.GetCustomAttributesData().Single(a => a.AttributeType.FullName == "HarmonyLib.HarmonyPatch"))
-    .Select(a => (string)a.ConstructorArguments.Single(v => v.ArgumentType == typeof(string)).Value).ToHashSet();
-if (!rapidRecipes.SetEquals(new[] { "HandleNomoreReaction", "HandleMicrobeAlcohol", "HandleOrganicWasteMineralization",
-    "HandleAcidBaseMicrobeKill", "HandleStabilizingAgentSedimentation", "HandleProteinPrecipitation",
-    "HandleLipobondAgentSedimentation", "HandleAcidBaseNeutralization", "HandleChlorine" }))
-    throw new Exception("Rapid reaction boundary changed: thermal dispatcher/degradation must never be accelerated.");
-Console.WriteLine("PASS explicit nonthermal rapid-reaction allowlist; thermal dispatcher, heat extraction and degradation excluded");
-var hotplatePatch = mod.GetType("ProbablyStolenTools.HotplateRapidBoilingPatch", true)
-    .GetCustomAttributesData().Single(a => a.AttributeType.FullName == "HarmonyLib.HarmonyPatch");
-if ((Type)hotplatePatch.ConstructorArguments[0].Value != game.GetType("MachineHeatingPlate", true)
-    || (string)hotplatePatch.ConstructorArguments[1].Value != "HandleHeating")
-    throw new Exception("Optional rapid boiling escaped the native hotplate boundary.");
-Console.WriteLine("PASS separate opt-in rapid boiling hooks only native hotplate heating");
+if (mod.GetType("ProbablyStolenTools.ChemistryAutomation") != null || mod.GetType("ProbablyStolenTools.TooltipHooks") != null)
+    throw new Exception("QuickSL must not ship toolbox business patches after the split.");
+Console.WriteLine("PASS QuickSL no longer contains toolbox business patches");
 var nativeTag = game.GetType("TagState", true);
 var integerTag = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(nativeTag);
 nativeTag.GetField("valueInt").SetValue(integerTag, 13);
@@ -236,7 +253,7 @@ if (!((IEnumerable<string>)manifestType.GetField("GameVersions").GetValue(parsed
     || (string)manifestType.GetField("ID").GetValue(parsedManifest) != "dsh.probablystolen.tools")
     throw new Exception("Native metadata parsing changed display name, identity or supported versions.");
 string description = (string)manifestType.GetField("Description").GetValue(parsedManifest);
-if (!description.Contains("实时快速SL") || !description.Contains("English") || !description.Contains("chemistry"))
+if (!description.Contains("实时快速SL") || !description.Contains("English") || !description.Contains("Shift Toolbox"))
     throw new Exception("Native description must retain both Chinese and English text.");
 Console.WriteLine("PASS native manifest parser: QuickSL display, stable ID, bilingual description and versions "
     + string.Join(", ", declaredVersions));
@@ -270,32 +287,6 @@ foreach (string retiring in new[] { "reflection-external", "dynamic-code", "nati
 foreach (string capability in detected)
     if (!declared.Contains(capability)) throw new Exception("Undeclared capability: " + capability);
 Console.WriteLine("PASS official mod scanner and manifest capabilities");
-
-var scopeType = mod.GetType("ProbablyStolenTools.TooltipNameScope", true);
-var scopeFlags = BindingFlags.NonPublic | BindingFlags.Static;
-var activeScope = scopeType.GetProperty("Active", scopeFlags);
-foreach (string patchName in new[] { "TooltipNameScopePatch", "TooltipNameScopeUsePatch", "TooltipNameScopeInsertPatch" })
-{
-    var patch = mod.GetType("ProbablyStolenTools." + patchName, true);
-    var enter = patch.GetMethod("Prefix", scopeFlags);
-    var exit = patch.GetMethod("Finalizer", scopeFlags);
-    if (exit == null || !exit.GetCustomAttributesData().Any(a => a.AttributeType.Name == "HarmonyFinalizer"))
-        throw new Exception("Tooltip scope must exit even when native localization throws: " + patchName);
-    for (int i = 0; i < 12; i++)
-    {
-        object[] state = { false };
-        enter.Invoke(null, state);
-        if (!(bool)state[0]) throw new Exception("Tooltip prefix did not record its own scope entry.");
-    }
-    exit.Invoke(null, new object[] { false });
-    for (int i = 0; i < 11; i++) exit.Invoke(null, new object[] { true });
-    if (!(bool)activeScope.GetValue(null)) throw new Exception("Nested tooltip scope ended too early.");
-    try { throw new InvalidOperationException("Modeled native localization failure"); }
-    catch (InvalidOperationException) { }
-    finally { exit.Invoke(null, new object[] { true }); }
-    if ((bool)activeScope.GetValue(null)) throw new Exception("Tooltip scope leaked after native error.");
-}
-Console.WriteLine("PASS three tooltip exception finalizers and deep nesting do not leak name-replacement scope");
 
 string testPath = Path.Combine(AppContext.BaseDirectory, "PSTools-config-" + Guid.NewGuid().ToString("N") + ".xml");
 var configType = mod.GetType("ProbablyStolenTools.ModConfig", true);
@@ -331,7 +322,7 @@ finally
 }
 
 // Allocate only plain data objects without constructors, Unity callbacks or save APIs.
-ChemistryNativeTests.Run(mod, game);
+
 var dataFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 object Data(string name) => System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(game.GetType(name, true));
 var player = Data("PlayerStore");

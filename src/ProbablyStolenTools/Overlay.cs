@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using HarmonyLib;
 #if !MONO
 using Il2CppInterop.Runtime.Injection;
@@ -59,7 +59,7 @@ namespace ProbablyStolenTools
         internal static void Release()
         {
             CustomerCheckpoint.Shutdown();
-            QuickInspectionPatch.HideAndRelease();
+
             if (_go != null) UnityEngine.Object.Destroy(_go);
             _go = null;
             CustomerCheckpoint.PatchesReady = false;

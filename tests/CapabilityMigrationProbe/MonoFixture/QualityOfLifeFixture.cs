@@ -9,8 +9,8 @@ public static partial class OfflineMonoFixture
     private static void CheckQualityOfLife(Assembly mod, Assembly game)
     {
         object Data(string name) => System.Runtime.Serialization.FormatterServices.GetUninitializedObject(game.GetType(name, true));
-        var plugin = mod.GetType("ProbablyStolenTools.Plugin", true);
-        var boolType = mod.GetType("ProbablyStolenTools.ConfigEntry`1", true).MakeGenericType(typeof(bool));
+        var plugin = mod.GetType("ShiftToolbox.Plugin", true);
+        var boolType = mod.GetType("ShiftToolbox.ConfigEntry`1", true).MakeGenericType(typeof(bool));
         object Setting(bool value) => boolType.GetConstructors(All)[0].Invoke(new object[] { value, null, "qol-fixture" });
         string[] fields = { "CfgUnlockMachineModules", "CfgCompositionCurrent", "CfgCompositionExpected", "CfgCompositionGrade" };
         var old = new object[fields.Length];
@@ -18,7 +18,7 @@ public static partial class OfflineMonoFixture
         void Set(string field, bool value) => plugin.GetField(field, All).SetValue(null, Setting(value));
         try
         {
-            var component = mod.GetType("ProbablyStolenTools.InspectionText", true).GetMethod("Component", All);
+            var component = mod.GetType("ShiftToolbox.InspectionText", true).GetMethod("Component", All);
             for (int mask = 0; mask < 8; mask++)
             {
                 Set("CfgCompositionCurrent", (mask & 1) != 0);
@@ -60,7 +60,7 @@ public static partial class OfflineMonoFixture
             grid.GetType().GetField("childElements", All).SetValue(grid, elements);
             inventoryType.GetField("overrideLockInsert", All).SetValue(bay, true);
             inventoryType.GetField("overrideLockRemove", All).SetValue(bay, true);
-            var allows = mod.GetType("ProbablyStolenTools.MachineModuleUnlock", true).GetMethod("Allows", All);
+            var allows = mod.GetType("ShiftToolbox.MachineModuleUnlock", true).GetMethod("Allows", All);
             bool Allowed(object inv) => (bool)allows.Invoke(null, new[] { inv });
             Set("CfgUnlockMachineModules", false);
             if (Allowed(bay)) throw new Exception("Module unlock must be opt-in.");
@@ -68,7 +68,7 @@ public static partial class OfflineMonoFixture
             if (!Allowed(bay) || Allowed(battery) || Allowed(null)) throw new Exception("Module unlock escaped bay identity boundary.");
             foreach (string patch in new[] { "MachineModuleInsertUnlockPatch", "MachineModuleRemoveUnlockPatch" })
             {
-                var method = mod.GetType("ProbablyStolenTools." + patch, true).GetMethod("Postfix", All);
+                var method = mod.GetType("ShiftToolbox." + patch, true).GetMethod("Postfix", All);
                 object[] arguments = { bay, true };
                 method.Invoke(null, arguments);
                 if ((bool)arguments[1]) throw new Exception("Module lock query was not bypassed.");
@@ -77,7 +77,7 @@ public static partial class OfflineMonoFixture
                 if (!(bool)arguments[1]) throw new Exception("Battery lock was bypassed.");
             }
             object[] result = { machine };
-            mod.GetType("ProbablyStolenTools.MachineModuleDragUnlockPatch", true).GetMethod("Postfix", All).Invoke(null, result);
+            mod.GetType("ShiftToolbox.MachineModuleDragUnlockPatch", true).GetMethod("Postfix", All).Invoke(null, result);
             if (result[0] != null) throw new Exception("Explicit native module drag blocker was not bypassed.");
             CheckModuleAdmission(mod, game, bay);
             tagType.GetField("valueEnabled", All).SetValue(tag, false);
@@ -89,7 +89,7 @@ public static partial class OfflineMonoFixture
                 || !(bool)tagType.GetField("valueEnabled", All).GetValue(tag) || dict.Count != 1)
                 throw new Exception("Module query override mutated native lock state.");
             Console.WriteLine("PASS actual game Mono QoL: all eight composition display combinations; exact working-module bay identity, insertion/removal/drag bypass, battery and non-working exclusion, immediate disable and unchanged native lock fields/tags.");
-            CheckFileNodeIndex(mod, game, Setting);
+
             CheckFaucetTooltip(mod, game, Setting);
             CheckRapidBoiling(mod, game);
             CheckSmartExtrusion(mod, game);
@@ -108,7 +108,7 @@ public static partial class OfflineMonoFixture
 
     private static void CheckHydroponicForecast(Assembly mod, Assembly game)
     {
-        var projection = mod.GetType("ProbablyStolenTools.FacilityProjection", true);
+        var projection = mod.GetType("ShiftToolbox.FacilityProjection", true);
         var split = projection.GetMethod("HarvestSizes", All);
         var native = game.GetType("PlantHarvest", true).GetMethod("SplitByHealth", All);
         foreach (int count in new[] { 0, 1, 6, 17 })
@@ -126,14 +126,14 @@ public static partial class OfflineMonoFixture
         var mineral = projection.GetMethod("MineralPercent", All);
         double percent = (double)mineral.Invoke(null, new object[] { new[] { 9700, 300, 1000 }, 0, 1 });
         if (Math.Abs(percent - 3) > .000001) throw new Exception("Nutrient denominator includes contaminants.");
-        if (mod.GetType("ProbablyStolenTools.RewindOverlay", true).GetMethod("LateUpdate", All) == null)
+        if (mod.GetType("ShiftToolbox.ToolboxRuntime", true).GetMethod("LateUpdate", All) == null)
             throw new Exception("Forced tooltips must render after native drag hints, without changing drag callbacks.");
         Console.WriteLine("PASS actual game Mono hydroponic forecast: 408 deterministic size splits match native, mineral denominator excludes contaminants; no RNG or item production invoked. Forced tooltip rendering/input requires Unity.");
     }
 
     private static void CheckMiddlePinRejections(Assembly mod)
     {
-        var gestures = mod.GetType("ProbablyStolenTools.NativeWindowGestures", true);
+        var gestures = mod.GetType("ShiftToolbox.NativeWindowGestures", true);
         var pressed = gestures.GetMethod("PointerPressed", All);
         var clicked = gestures.GetMethod("ConsumePinClick", All);
         var armed = gestures.GetField("_pinPressAllowed", All);
@@ -169,7 +169,7 @@ public static partial class OfflineMonoFixture
 
     private static void CheckPinnedCompositionLifecycle(Assembly mod, Assembly game)
     {
-        var pinned = mod.GetType("ProbablyStolenTools.PinnedCompositionTooltip", true);
+        var pinned = mod.GetType("ShiftToolbox.PinnedCompositionTooltip", true);
         var entries = (IList)pinned.GetField("Entries", All).GetValue(null);
         if (entries.Count != 0) throw new Exception("Pinned-composition fixture requires initially empty UI state.");
         var type = pinned.GetNestedType("Entry", All);
@@ -225,7 +225,7 @@ public static partial class OfflineMonoFixture
         var itemFilter = game.GetType("GameItemFunc", true).GetProperty("mayInventoryAddItemFunc", All);
         Delegate Filter(Type type, string name) => Delegate.CreateDelegate(type,
             typeof(OfflineMonoFixture).GetMethod(name, All));
-        var patch = mod.GetType("ProbablyStolenTools.MachineModuleAdmissionUnlockPatch", true).GetMethod("Postfix", All);
+        var patch = mod.GetType("ShiftToolbox.MachineModuleAdmissionUnlockPatch", true).GetMethod("Postfix", All);
         bool Apply(object inventory, object candidate)
         {
             object[] args = { inventory, candidate, false };
@@ -265,8 +265,8 @@ public static partial class OfflineMonoFixture
         tags.GetType().GetField("<dict>k__BackingField", All).SetValue(tags, dict);
         itemType.GetProperty("modifiedState", All).SetValue(item, tags);
         Tag("LIQUID_CONTAINER_TAG", 1);
-        var supports = mod.GetType("ProbablyStolenTools.LiquidComposition", true).GetMethod("SupportsDetails", All);
-        var noRename = mod.GetType("ProbablyStolenTools.LiquidComposition", true).GetMethod("NoRename", All);
+        var supports = mod.GetType("ShiftToolbox.LiquidComposition", true).GetMethod("SupportsDetails", All);
+        var noRename = mod.GetType("ShiftToolbox.LiquidComposition", true).GetMethod("NoRename", All);
         foreach (string marker in new[] { "LIQUID_CONTAINER_DROPPER_TAG", "GRADUATED_CONTAINER_TAG" })
         {
             Tag(marker, 1);
@@ -291,7 +291,7 @@ public static partial class OfflineMonoFixture
 
     private static void CheckItemDetailsInput(Assembly mod, Assembly game)
     {
-        var input = mod.GetType("ProbablyStolenTools.ItemDetailsInput", true).GetMethod("Matches", All);
+        var input = mod.GetType("ShiftToolbox.ItemDetailsInput", true).GetMethod("Matches", All);
         var keyType = input.GetParameters()[0].ParameterType;
         bool Held(string key, bool primary, bool alternate) => (bool)input.Invoke(null,
             new object[] { Enum.Parse(keyType, key), primary, alternate });
@@ -324,7 +324,7 @@ public static partial class OfflineMonoFixture
         itemType.GetProperty("modifiedState", All).SetValue(tool, state);
         var candidates = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType));
         candidates.Add(tool);
-        var find = mod.GetType("ProbablyStolenTools.DoubleClickInspectionPatch", true).GetMethod("FindMagnifier", All);
+        var find = mod.GetType("ShiftToolbox.DoubleClickInspectionPatch", true).GetMethod("FindMagnifier", All);
         object Find(object item) => find.Invoke(null, new[] { candidates, item });
         // Native labelers also carry MAGNIFYING_GLASS. These rejections must not
         // reach MayTarget/CanTarget (which need a live GameMaster in Unity).
@@ -350,7 +350,7 @@ public static partial class OfflineMonoFixture
         var stationType = game.GetType("StoreStation", true);
         var playerField = playerType.GetField("instance", All);
         var stationField = stationType.GetField("instance", All);
-        var option = mod.GetType("ProbablyStolenTools.Plugin", true).GetField("CfgPipeComposition", All);
+        var option = mod.GetType("ShiftToolbox.Plugin", true).GetField("CfgPipeComposition", All);
         object oldPlayer = playerField.GetValue(null), oldStation = stationField.GetValue(null), oldOption = option.GetValue(null);
         try
         {
@@ -375,7 +375,7 @@ public static partial class OfflineMonoFixture
             game.GetType("GameItem", true).GetProperty("modifiedState", All).SetValue(faucet, tagSystem);
             if ((bool)faucet.GetType().GetMethod("HasTooltip", All).Invoke(faucet, null))
                 throw new Exception("Native hidden faucet regression setup did not reproduce.");
-            var details = mod.GetType("ProbablyStolenTools.DetailedCompositionTooltip", true);
+            var details = mod.GetType("ShiftToolbox.DetailedCompositionTooltip", true);
             var purity = details.GetMethod("TryPipePurity", All);
             int Read()
             {
@@ -426,66 +426,4 @@ public static partial class OfflineMonoFixture
         }
     }
 
-    private static void CheckFileNodeIndex(Assembly mod, Assembly game, Func<bool, object> setting)
-    {
-        var rewind = mod.GetType("ProbablyStolenTools.Rewind", true);
-        var points = (IList)rewind.GetField("Points", All).GetValue(null);
-        var previousPoints = new object[points.Count];
-        points.CopyTo(previousPoints, 0);
-        string[] stateFields = { "_indexedStore", "_indexedDay", "<PointRevision>k__BackingField" };
-        var oldState = new object[stateFields.Length];
-        for (int i = 0; i < stateFields.Length; i++) oldState[i] = rewind.GetField(stateFields[i], All).GetValue(null);
-        var preference = mod.GetType("ProbablyStolenTools.Plugin", true).GetField("CfgKeepPreviousDay", All);
-        var oldPreference = preference.GetValue(null);
-        var catalog = rewind.GetField("Catalog", All).GetValue(null);
-        var entries = catalog.GetType().GetField("_entries", All);
-        var oldEntries = entries.GetValue(catalog);
-        string root = Path.Combine(Path.GetDirectoryName(mod.Location), "qol-index-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        try
-        {
-            var store = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(game.GetType("PlayerStore", true));
-            store.GetType().GetField("saveSlotId", All).SetValue(store, 2);
-            store.GetType().GetField("runID", All).SetValue(store, "qol-fixture");
-            void Add(int stamp, int day, int slot = 2, string run = "qol-fixture", int state = 2)
-            {
-                File.WriteAllText(Path.Combine(root, "202611" + stamp.ToString("D2") + "_120000_0000000_day.es3"),
-                    "{\"storeStation\":{\"value\":{\"dayCounter\":" + day + "}},\"playerStore\":{\"value\":{\"playerCash\":100,\"storeState\":"
-                    + state + ",\"saveSlotId\":" + slot + ",\"runID\":\"" + run + "\"}}}");
-            }
-            Add(1, 95); Add(2, 94); Add(3, 93); Add(4, 95, slot: 3); Add(5, 95, run: "foreign"); Add(6, 95, state: 1);
-            string largePath = Path.Combine(root, "20261101_120000_0000000_day.es3");
-            string largeText = File.ReadAllText(largePath);
-            File.WriteAllText(largePath, "{\"padding\":\"" + new string('x', 21 * 1024 * 1024) + "\"," + largeText.Substring(1));
-            var index = rewind.GetMethod("IndexDayStartPoints", All);
-            points.Clear();
-            preference.SetValue(null, setting(true));
-            index.Invoke(null, new[] { store, (object)95, root });
-            if (points.Count != 2) throw new Exception("Disabled-memory file index did not isolate current and retained previous morning.");
-            foreach (var point in points)
-            {
-                var type = point.GetType();
-                if (!(bool)type.GetField("IsDayStart", All).GetValue(point) || (int)type.GetField("State", All).GetValue(point) != 2
-                    || (string)type.GetField("Label", All).GetValue(point) != "开业前") throw new Exception("Indexed morning file lost display metadata.");
-            }
-            index.Invoke(null, new[] { store, (object)95, root });
-            if (points.Count != 2 || Directory.GetFiles(root).Length != 6) throw new Exception("File indexing duplicated nodes or wrote saves.");
-            points.Clear();
-            preference.SetValue(null, setting(false));
-            index.Invoke(null, new[] { store, (object)95, root });
-            if (points.Count != 1 || (int)points[0].GetType().GetField("Day", All).GetValue(points[0]) != 95)
-                throw new Exception("File index ignored disabled previous-day retention.");
-            Console.WriteLine("PASS actual game Mono QoL: existing morning files indexed read-only; day/slot/run/state boundaries, retained yesterday opt-out, display metadata and repeat deduplication.");
-        }
-        finally
-        {
-            points.Clear();
-            foreach (var point in previousPoints) points.Add(point);
-            for (int i = 0; i < stateFields.Length; i++) rewind.GetField(stateFields[i], All).SetValue(null, oldState[i]);
-            preference.SetValue(null, oldPreference);
-            entries.SetValue(catalog, oldEntries);
-            // Only remove files from the unique fixture-owned directory created above.
-            Directory.Delete(root, true);
-        }
-    }
 }

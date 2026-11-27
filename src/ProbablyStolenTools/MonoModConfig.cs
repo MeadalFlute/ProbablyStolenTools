@@ -13,6 +13,7 @@ namespace ProbablyStolenTools
         private T _value;
         private readonly ModConfig _owner;
         private readonly string _key;
+        internal string Key => _key;
         internal ConfigEntry(T value, ModConfig owner, string key)
         { _value = value; _owner = owner; _key = key; }
         internal T Value
@@ -54,6 +55,8 @@ namespace ProbablyStolenTools
             }
         }
         internal void Set(string key, string value) => _values[key] = value;
+        internal IDictionary<string, string> Export(Func<string, bool> include)
+            => _values.Where(pair => include(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         internal ConfigEntry<T> Bind<T>(string section, string key, T defaultValue, string description)
         {
             string fullKey = section + "." + key;

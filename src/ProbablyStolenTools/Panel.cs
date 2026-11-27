@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 #if !MONO
 using Il2CppInterop.Runtime.Attributes;
@@ -43,9 +43,16 @@ namespace ProbablyStolenTools
         private float _retryAt;
         private RectTransform _settingsButton, _foldButton, _headerControls;
         private bool _settingsOpen;
-        private readonly List<(RectTransform Rect, Toggle Toggle, ConfigEntry<bool> Config)> _settings = new();
-        private RectTransform _chemistryTop, _chemistryBottom;
-        private int _chemistryStart, _chemistryEnd;
+        private bool _toolboxOpen, _toolboxMounted, _hadToolbox;
+        private GameObject _tabs, _toolboxGo;
+        private static bool _openToolboxRequested;
+        internal static void OpenToolbox() { OpenOptions(); _openToolboxRequested = true; }
+        private readonly List<(RectTransform Rect, Toggle Toggle, ConfigEntry<bool> Config, string Keywords)> _settings = new();
+        private GameObject _settingsSearchBar;
+        private TMP_InputField _settingsSearch;
+        private string _settingsQuery = "";
+        private TextMeshProUGUI _actionsHeading, _diagnosticsHeading, _noSettings;
+        private static bool SearchFocused;
         private readonly List<(RectTransform Rect, TextMeshProUGUI Label, CustomUIElement Element,
             Plugin.HotkeyBinding Binding)> _keyRows = new();
         private TextMeshProUGUI _optionsHeading, _keysHeading, _storageUsage;
@@ -62,7 +69,7 @@ namespace ProbablyStolenTools
         /// <summary>正在等待玩家按新键：此时所有 mod 热键都必须让路。</summary>
         internal static bool CapturingKey { get; private set; }
         private static int _captureEndedFrame = -1;
-        internal static bool SuppressHotkeys => CapturingKey || Time.frameCount == _captureEndedFrame;
+        internal static bool SuppressHotkeys => CapturingKey || SearchFocused || Time.frameCount == _captureEndedFrame;
         private RectTransform _canvasRect, _panelRect, _viewport, _content;
         private RawImage _resize;
         private TextMeshProUGUI _title, _hint, _fold, _empty, _toastText;
@@ -133,7 +140,11 @@ namespace ProbablyStolenTools
         {
             try
             {
+                SearchFocused = _settingsSearch != null && _settingsSearch.gameObject.activeInHierarchy && _settingsSearch.isFocused;
                 bool inGame = IsInGame();
+                ToolboxBridge.Refresh();
+                if (_toolboxOpen && !ToolboxBridge.Available) { _toolboxOpen = false; _settingsOpen = true; }
+                if (_built && _hadToolbox != ToolboxBridge.Available) ReleaseWindow();
                 if (inGame) _menuAccess = false;
                 if (CheckpointPicker.RevealPanel)
                 {
@@ -141,11 +152,20 @@ namespace ProbablyStolenTools
                     _visible = true;
                     _folded = false;
                     _settingsOpen = false;
+                    _toolboxOpen = false;
                     if (_built) Layout();
                 }
                 bool capturingAtStart = CapturingKey;
                 if (capturingAtStart) CaptureStep();
-                if (!capturingAtStart && Plugin.Down(Plugin.CfgKeyPanel)) _visible = !_visible;
+                if (!capturingAtStart && Plugin.Down(Plugin.CfgKeyPanel))
+                {
+                    if (inGame || _menuAccess && _visible) _visible = !_visible;
+                    else
+                    {
+                        _openOptionsRequested = true;
+                        _openToolboxRequested = ToolboxBridge.Available;
+                    }
+                }
                 bool stale = _built && (_manager == null || _window == null || !_window.IsAlive
                     || Id(CustomUIManager.Instance) != Id(_manager) || _localeCode != InspectionLocale.Code);
                 if (stale) ReleaseWindow();
@@ -155,6 +175,8 @@ namespace ProbablyStolenTools
                     _menuAccess = !inGame;
                     _visible = true;
                     _settingsOpen = true;
+                    _toolboxOpen = _openToolboxRequested;
+                    _openToolboxRequested = false;
                     _folded = false;
                     if (_built) Layout();
                 }
@@ -166,6 +188,7 @@ namespace ProbablyStolenTools
                 bool show = accessible && _visible;
                 if (!show && CapturingKey) EndCapture(null);
                 _panelGo.SetActive(show);
+                SearchFocused = _settingsSearch != null && _settingsSearch.gameObject.activeInHierarchy && _settingsSearch.isFocused;
                 if (_window.frame?.closeButton != null) _window.frame.closeButton.gameObject.SetActive(_menuAccess);
                 if (show) HandleGeometry();
                 if (_canvasRect.rect.width != _screenW || _canvasRect.rect.height != _screenH)
@@ -192,7 +215,7 @@ namespace ProbablyStolenTools
                     hint = InspectionLocale.Text("最近节点建立失败，旧节点仍保留；请查看日志", "Latest capture failed; earlier nodes retained. See log.");
                 if (CheckpointPicker.Active) hint = CheckpointPicker.Hint;
                 if (_hint.text != hint) _hint.text = hint;
-                if (_settingsOpen)
+                if (_settingsOpen && !_toolboxOpen)
                 {
                     string usage = _storageText.Get(Rewind.DiskUsage, Rewind.MaxDiskBytes, _localeCode);
                     if (_storageUsage.text != usage) _storageUsage.text = usage;
@@ -200,10 +223,7 @@ namespace ProbablyStolenTools
                     {
                         var setting = _settings[index];
                         setting.Toggle.SetIsOnWithoutNotify(setting.Config.Value);
-                        setting.Toggle.interactable = setting.Config != Plugin.CfgAutoSubmit
-                            && setting.Config != Plugin.CfgAlwaysOverwrite || Plugin.CfgAutoAppraisal.Value;
-                        if (index > _chemistryStart && index < _chemistryEnd)
-                            setting.Toggle.interactable = ChemistrySettingEnabled(setting.Config);
+                        setting.Toggle.interactable = true;
                     }
                 }
             }
@@ -242,6 +262,7 @@ namespace ProbablyStolenTools
         private void Build()
         {
             _localeCode = InspectionLocale.Code;
+            _hadToolbox = ToolboxBridge.Available;
             _bounds = new PanelBounds(Plugin.CfgPanelX.Value, Plugin.CfgPanelY.Value,
                 Plugin.CfgPanelWidth.Value, Plugin.CfgPanelHeight.Value);
             _folded = !_settingsOpen && Plugin.CfgPanelFolded.Value;
@@ -273,13 +294,25 @@ namespace ProbablyStolenTools
             {
                 EndCapture(null);
                 ObserveWindowPosition();
-                _settingsOpen = !_settingsOpen;
+                _settingsOpen = _toolboxOpen || !_settingsOpen;
+                _toolboxOpen = false;
                 _folded = false;
                 _click.Reset();
                 Layout();
                 Persist();
             });
             _settingsButton = settingsButton.Rect;
+            if (_hadToolbox)
+            {
+                _tabs = NewObject("quicksl-toolbox-tabs", _nativeContent);
+                var rewindTab = NativeButton(_tabs.GetComponent<RectTransform>(), InspectionLocale.Text("回溯", "Rewind"),
+                    () => { EndCapture(null); _settingsOpen = false; _toolboxOpen = false; Layout(); });
+                var quickTab = NativeButton(_tabs.GetComponent<RectTransform>(), InspectionLocale.Text("QuickSL设置", "QuickSL options"),
+                    () => { EndCapture(null); _settingsOpen = true; _toolboxOpen = false; Layout(); });
+                var toolboxTab = NativeButton(_tabs.GetComponent<RectTransform>(), InspectionLocale.Text("Shift工具箱", "Shift Toolbox"),
+                    () => { EndCapture(null); _settingsOpen = true; _toolboxOpen = true; Layout(); });
+                _toolboxGo = NewObject("toolbox-host", _nativeContent);
+            }
             _body = NewObject("body", _nativeContent);
             _hint = Text("status", _body.transform, 12, new Color(0.45f, 0.72f, 0.90f));
             _hint.enableAutoSizing = true;
@@ -325,42 +358,20 @@ namespace ProbablyStolenTools
             _settingsScroll.movementType = ScrollRect.MovementType.Clamped;
             _settingsScroll.scrollSensitivity = RowH;
             _optionsHeading = Text("options-heading", _settingsContent, 13, new Color(0.55f, 0.85f, 1f));
-            _optionsHeading.text = InspectionLocale.Text("辅助功能", "Options");
-            NewSetting(InspectionLocale.Text("自动鉴定报价", "Auto appraisal quote"), Plugin.CfgAutoAppraisal);
-            NewSetting(InspectionLocale.Text("自动提交鉴定", "Auto-submit appraisal"), Plugin.CfgAutoSubmit);
-            NewSetting(InspectionLocale.Text("始终覆盖鉴定报价", "Always replace appraisal quote"), Plugin.CfgAlwaysOverwrite);
-            NewSetting(InspectionLocale.Text("双击物品快速鉴定", "Double-click to inspect"), Plugin.CfgDoubleClickInspection);
-            NewSetting(InspectionLocale.Text("显示快速鉴定摘要", "Show quick inspection summary"), Plugin.CfgQuickInspection);
-            NewSetting(InspectionLocale.Text("跳过顾客对话", "Skip customer dialogue"), Plugin.CfgSkipCustomerDialogue);
-            NewSetting(InspectionLocale.Text("水质标注", "Water quality labels"), Plugin.CfgWaterQuality);
-            NewSetting(InspectionLocale.Text("水管成分明细", "Tap composition details"), Plugin.CfgPipeComposition);
-            NewSetting(InspectionLocale.Text("酿酒标注", "Wine annotations"), Plugin.CfgWineAppraisal);
-            _chemistryStart = _settings.Count;
-            _chemistryTop = Raw("chemistry-divider-top", _settingsContent, new Color(0.42f, 0.62f, 0.72f, 0.6f)).rectTransform;
-            NewSetting(InspectionLocale.Text("化学辅助", "Chemistry assist"), Plugin.CfgChemistry);
-            NewSetting(InspectionLocale.Text("化学成分标注", "Composition labels"), Plugin.CfgChemistryLabels);
-            NewSetting(InspectionLocale.Text("显示当前占比", "Show current percentage"), Plugin.CfgCompositionCurrent);
-            NewSetting(InspectionLocale.Text("显示预期纯度", "Show expected purity"), Plugin.CfgCompositionExpected);
-            NewSetting(InspectionLocale.Text("显示评分", "Show grade"), Plugin.CfgCompositionGrade);
-            NewSetting(InspectionLocale.Text("容器成分明细", "Container composition details"), Plugin.CfgShiftComposition);
-            NewSetting(InspectionLocale.Text("容器自动改名", "Container auto naming"), Plugin.CfgContainerAutoRename);
-            NewSetting(InspectionLocale.Text("自动搅拌", "Auto blend"), Plugin.CfgAutoBlend);
-            NewSetting(InspectionLocale.Text("智能挤出", "Smart extrusion"), Plugin.CfgSmartExtrusion);
-            NewSetting(InspectionLocale.Text("快速萃取", "Rapid extraction"), Plugin.CfgAutoExtraction);
-            NewSetting(InspectionLocale.Text("快速化学反应", "Rapid chemical reactions"), Plugin.CfgRapidReactions);
-            NewSetting(InspectionLocale.Text("快速烧开水", "Rapid boiling"), Plugin.CfgRapidBoiling);
-            NewSetting(InspectionLocale.Text("机器产物预览", "Machine output preview"), Plugin.CfgFacilityPreview);
-            _chemistryEnd = _settings.Count;
-            _chemistryBottom = Raw("chemistry-divider-bottom", _settingsContent, new Color(0.42f, 0.62f, 0.72f, 0.6f)).rectTransform;
-            NewSetting(InspectionLocale.Text("解锁运行中机器模组槽", "Unlock working machine modules"), Plugin.CfgUnlockMachineModules);
-            NewSetting(InspectionLocale.Text("Shift拖动窗口磁吸", "Shift-drag window snapping"), Plugin.CfgWindowSnap);
-            NewSetting(InspectionLocale.Text("Shift＋中键窗口置顶", "Shift + middle-click window pinning"), Plugin.CfgWindowPin);
-            NewSetting(InspectionLocale.Text("禁用内存节点", "Disable memory checkpoints"), Plugin.CfgDisableMemoryCheckpoints);
-            NewSetting(InspectionLocale.Text("自动建立节点", "Automatic checkpoints"), Plugin.CfgAutoCheckpoints);
-            NewSetting(InspectionLocale.Text("保留上一天节点", "Keep previous day checkpoints"), Plugin.CfgKeepPreviousDay);
-            NewSetting(InspectionLocale.Text("整日回退使用内存", "Use memory for whole-day rewind"), Plugin.CfgWholeDayMemory);
-            NewSetting(InspectionLocale.Text("整日回退需确认", "Confirm whole-day rewind"), Plugin.CfgConfirmWholeDay);
-            NewSetting(InspectionLocale.Text("详细诊断日志", "Verbose diagnostics"), Plugin.CfgVerboseLog);
+            _optionsHeading.text = InspectionLocale.Text("回溯与节点", "Rewind & Checkpoints");
+            NewSetting("禁用内存节点", "Disable memory checkpoints", Plugin.CfgDisableMemoryCheckpoints);
+            NewSetting("自动建立节点", "Automatic checkpoints", Plugin.CfgAutoCheckpoints);
+            NewSetting("保留上一天节点", "Keep previous day checkpoints", Plugin.CfgKeepPreviousDay);
+            NewSetting("整日回退使用内存", "Use memory for whole-day rewind", Plugin.CfgWholeDayMemory);
+            NewSetting("整日回退需确认", "Confirm whole-day rewind", Plugin.CfgConfirmWholeDay);
+            NewSetting("详细诊断日志", "Verbose diagnostics", Plugin.CfgVerboseLog);
+            _actionsHeading = Text("actions-heading", _settingsContent, 13, new Color(.55f, .85f, 1f));
+            _actionsHeading.text = InspectionLocale.Text("存档操作", "Save Actions");
+            _diagnosticsHeading = Text("diagnostics-heading", _settingsContent, 13, new Color(.55f, .85f, 1f));
+            _diagnosticsHeading.text = InspectionLocale.Text("诊断与存储", "Diagnostics & Storage");
+            _noSettings = Text("no-settings", _settingsContent, 13, new Color(.82f, .86f, .9f));
+            _noSettings.text = InspectionLocale.Text("没有匹配的设置", "No matching settings");
+            BuildSettingsSearch();
             _saveActions.Add(NativeButton(_settingsContent, InspectionLocale.Text("快速重载存档", "Quick reload save"),
                 GameSaveActions.RequestReload).Rect);
             _saveActions.Add(NativeButton(_settingsContent, InspectionLocale.Text("重掷随机数", "Reroll random"),
@@ -454,27 +465,102 @@ namespace ProbablyStolenTools
 #if !MONO
         [HideFromIl2Cpp]
 #endif
-        private void NewSetting(string label, ConfigEntry<bool> config)
+        private void NewSetting(string zh, string en, ConfigEntry<bool> config)
         {
             Il2CppSystem.Action<bool> callback = new Action<bool>(value =>
             {
                 config.Value = value;
                 Plugin.Instance.Config.Save();
-                if (config == Plugin.CfgAutoAppraisal && value)
-                    AppraisalPatch.Postfix(InspectionUIManager.Instance);
             });
             _callbacks.Add(callback);
             var builder = new CustomUIBuilder(_manager, _window, _settingsContent);
-            builder.AddToggle(label, config.Value, callback, null);
+            builder.AddToggle(InspectionLocale.Text(zh, en), config.Value, callback, null);
             var element = builder.Last;
             ManualRect(element.Rect);
-            _settings.Add((element.Rect, element.toggle, config));
+            if (element.text != null) { element.text.fontSize = 13; element.text.enableWordWrapping = true; }
+            string keywords = zh + " " + en;
+#if MONO
+            keywords += " " + config.Key;
+#endif
+            _settings.Add((element.Rect, element.toggle, config, keywords));
         }
 
-        private static bool ChemistrySettingEnabled(ConfigEntry<bool> config)
-            => config == Plugin.CfgShiftComposition || Plugin.CfgChemistry.Value
-                && ((config != Plugin.CfgCompositionCurrent && config != Plugin.CfgCompositionExpected && config != Plugin.CfgCompositionGrade)
-                    || Plugin.CfgChemistryLabels.Value);
+        private void BuildSettingsSearch()
+        {
+            _settingsSearchBar = NewObject("settings-search", _nativeContent);
+            var root = Instantiate(_manager.inputFieldPrefab, _settingsSearchBar.transform, false);
+            var element = CustomUIElement.Bind(root, null);
+            ManualRect(element.Rect);
+            _settingsSearch = element.input;
+            if (_settingsSearch == null) throw new InvalidOperationException("Native search input prefab is unavailable.");
+            if (_settingsSearch.placeholder is TMP_Text placeholder) placeholder.text = InspectionLocale.Text("搜索设置…", "Search settings…");
+            _settingsSearch.text = _settingsQuery;
+            _settingsSearch.characterLimit = 256;
+            var font = LocalePolicy.IsLanguage(InspectionLocale.Code, "zh") ? FontLoader.Instance?.simplifiedChineseFont : null;
+            if (font != null)
+            {
+                _settingsSearch.textComponent.font = font;
+                if (_settingsSearch.placeholder is TMP_Text text) text.font = font;
+            }
+            _settingsSearch.onValueChanged.AddListener(value =>
+            {
+                _settingsQuery = value;
+                _settingsContent.anchoredPosition = Vector2.zero;
+                if (_built) Layout();
+            });
+            var clear = NativeButton(_settingsSearchBar.GetComponent<RectTransform>(), "X", () => _settingsSearch.text = "");
+            clear.SetTooltip(InspectionLocale.Text("清除搜索", "Clear search"));
+        }
+
+        private void LayoutSettings(float width, float viewportHeight)
+        {
+            var columns = new PanelSettingsLayout(width, 0, 0);
+            bool Match(params string[] text) => SettingsSearch.Matches(_settingsQuery, text);
+            var options = _settings.FindAll(s => s.Config != Plugin.CfgVerboseLog
+                && Match(s.Keywords, "回溯 节点 Rewind Checkpoints"));
+            var keys = _keyRows.FindAll(k => Match(k.Binding.Label, HotkeyEnglish(k.Binding), k.Binding.Id, "快捷键 Hotkeys"));
+            string[] actionKeys = { "快速重载存档 Quick reload save", "重掷随机数 Reroll random" };
+            bool anyActions = false;
+            for (int i = 0; i < _saveActions.Count; i++) anyActions |= Match(actionKeys[i], "存档操作 Save Actions");
+            bool reset = Match("恢复默认快捷键 Reset hotkeys"), log = Match("查看日志 Open log", "诊断 Diagnostics");
+            bool storage = Match("磁盘占用 检查点存储 Disk usage Checkpoint storage", "诊断 Diagnostics");
+            var diagnostics = _settings.FindAll(s => s.Config == Plugin.CfgVerboseLog && Match(s.Keywords, "诊断 Diagnostics"));
+            foreach (var setting in _settings) setting.Rect.gameObject.SetActive(false);
+            float y = 4;
+            int count = 0;
+            void Row(RectTransform rect, bool visible, float height = 34)
+            {
+                rect.gameObject.SetActive(visible);
+                if (!visible) return;
+                Place(rect, 4, -y, columns.RowWidth, height - 2); y += height; count++;
+            }
+            void Section(TextMeshProUGUI heading, bool visible)
+            {
+                if (visible && y > 4) y += 10;
+                Row(heading.rectTransform, visible, 28);
+            }
+            Section(_optionsHeading, options.Count > 0);
+            foreach (var setting in options) Row(setting.Rect, true);
+            Section(_actionsHeading, anyActions);
+            for (int i = 0; i < _saveActions.Count; i++) Row(_saveActions[i], Match(actionKeys[i], "存档操作 Save Actions"));
+            Section(_keysHeading, keys.Count > 0 || reset);
+            foreach (var key in _keyRows) key.Rect.gameObject.SetActive(false);
+            foreach (var key in keys)
+            {
+                Row(key.Rect, true);
+                Place(key.Label.rectTransform, 0, 0, columns.LabelWidth, 32);
+                Place(key.Element.Rect, columns.KeyX - 4, 0, columns.KeyWidth, 32);
+            }
+            Row(_resetKeys, reset);
+            Section(_diagnosticsHeading, diagnostics.Count > 0 || log || storage);
+            foreach (var setting in diagnostics) Row(setting.Rect, true);
+            Row(_openLog, log);
+            Row(_storageUsage.rectTransform, storage, 68);
+            Row(_noSettings.rectTransform, count == 0);
+            float height = y + 4;
+            float offset = Math.Max(0, Math.Min(_settingsContent.anchoredPosition.y, Math.Max(0, height - viewportHeight)));
+            Place(_settingsContent, 0, offset, width, height);
+        }
 
         // ---------------- 快捷键改键 ----------------
 
@@ -485,14 +571,16 @@ namespace ProbablyStolenTools
                     ? "Shift" : Plugin.KeyName(binding.Config.Value);
 
         private static string HotkeyLabel(Plugin.HotkeyBinding binding)
-            => InspectionLocale.Text(binding.Label, binding.Id == "prev" ? "Select previous checkpoint"
+            => InspectionLocale.Text(binding.Label, HotkeyEnglish(binding));
+        private static string HotkeyEnglish(Plugin.HotkeyBinding binding)
+            => binding.Id == "prev" ? "Select previous checkpoint"
                 : binding.Id == "day" ? "Start of this day" : binding.Id == "prevday" ? "Previous day"
                 : binding.Id == "panel" ? "Show / hide panel" : binding.Id == "manual" ? "Manual checkpoint"
                 : binding.Id == "newer" ? "Select newer checkpoint" : binding.Id == "newerAlt" ? "Select newer (alternate)"
                 : binding.Id == "older" ? "Select older checkpoint" : binding.Id == "olderAlt" ? "Select older (alternate)"
                 : binding.Id == "confirmNode" ? "Confirm checkpoint rewind"
                 : binding.Id == "details" ? "Show item details (hold)"
-                : binding.Id == "reload" ? "Quick reload save" : binding.Id == "reroll" ? "Reroll random" : binding.Label);
+                : binding.Id == "reload" ? "Quick reload save" : binding.Id == "reroll" ? "Reroll random" : binding.Label;
 
 #if !MONO
         [HideFromIl2Cpp]
@@ -753,48 +841,31 @@ namespace ProbablyStolenTools
             float w = Math.Max(1, _nativeContent.rect.width);
             float contentH = Math.Max(1, _nativeContent.rect.height);
             Place(_body.GetComponent<RectTransform>(), 0, 0, w, contentH);
-            _body.SetActive(!_settingsOpen);
-            _settingsGo.SetActive(_settingsOpen);
-            float settingsHeight = Math.Max(1, contentH - 24);
-            Place(_settingsViewport, 0, 0, w, settingsHeight);
-            var settingsLayout = new PanelSettingsLayout(w, _settings.Count, _keyRows.Count, _chemistryStart, _chemistryEnd, _saveActions.Count);
-            float scrollOffset = settingsLayout.ScrollOffset(_settingsContent.anchoredPosition.y, settingsHeight);
-            Place(_settingsContent, 0, scrollOffset, w, settingsLayout.ContentHeight);
-            Place(_optionsHeading.rectTransform, PanelSettingsLayout.Padding, -PanelSettingsLayout.Padding,
-                settingsLayout.RowWidth, PanelSettingsLayout.SectionHeight);
-            Place(_keysHeading.rectTransform, PanelSettingsLayout.Padding, -settingsLayout.HotkeySectionY,
-                settingsLayout.RowWidth, PanelSettingsLayout.SectionHeight);
-            for (int i = 0; i < _settings.Count; i++)
+            float tabHeight = _tabs != null ? 32 : 0;
+            if (_tabs != null)
             {
-                var setting = _settings[i];
-                Place(setting.Rect, settingsLayout.Toggle(i));
-                if (i > _chemistryStart && i < _chemistryEnd)
-                {
-                    var bounds = settingsLayout.Toggle(i);
-                    Place(setting.Rect, new PanelBounds(bounds.X + 16, bounds.Y, bounds.Width - 16, bounds.Height));
-                }
-                setting.Toggle.interactable = i != 1 && i != 2 || Plugin.CfgAutoAppraisal.Value;
-                if (i > _chemistryStart && i < _chemistryEnd)
-                    setting.Toggle.interactable = ChemistrySettingEnabled(setting.Config);
+                Place(_tabs.GetComponent<RectTransform>(), 0, 0, w, 30);
+                for (int i = 0; i < _tabs.transform.childCount; i++)
+                    Place(_tabs.transform.GetChild(i).GetComponent<RectTransform>(), i * w / 3, 0, w / 3 - 4, 28);
             }
-            Place(_chemistryTop, PanelSettingsLayout.Padding, -settingsLayout.DividerY(_chemistryStart), settingsLayout.RowWidth, 1);
-            Place(_chemistryBottom, PanelSettingsLayout.Padding, -settingsLayout.DividerY(_chemistryEnd), settingsLayout.RowWidth, 1);
-            for (int i = 0; i < _saveActions.Count; i++) Place(_saveActions[i], settingsLayout.Action(i));
-            for (int i = 0; i < _keyRows.Count; i++)
+            contentH = Math.Max(1, contentH - tabHeight);
+            Place(_body.GetComponent<RectTransform>(), 0, -tabHeight, w, contentH);
+            _body.SetActive(!_settingsOpen && !_toolboxOpen);
+            _settingsGo.SetActive(_settingsOpen && !_toolboxOpen);
+            if (_toolboxGo != null)
             {
-                var row = _keyRows[i];
-                Place(row.Rect, settingsLayout.Key(i));
-                Place(row.Label.rectTransform, 0, 0, settingsLayout.LabelWidth, PanelSettingsLayout.RowHeight - 2);
-                Place(row.Element.Rect, settingsLayout.KeyX - PanelSettingsLayout.Padding, 0,
-                    settingsLayout.KeyWidth, PanelSettingsLayout.RowHeight - 2);
+                Place(_toolboxGo.GetComponent<RectTransform>(), 0, -tabHeight, w, contentH);
+                _toolboxGo.SetActive(_toolboxOpen);
+                if (_toolboxOpen && !_toolboxMounted) _toolboxMounted = ToolboxBridge.Mount(_window, _toolboxGo.GetComponent<RectTransform>());
             }
-            Place(_resetKeys, settingsLayout.KeyX, -settingsLayout.ResetY, settingsLayout.KeyWidth,
-                PanelSettingsLayout.RowHeight - 2);
-            Place(_openLog, PanelSettingsLayout.Padding, -settingsLayout.LogY, settingsLayout.RowWidth,
-                PanelSettingsLayout.RowHeight - 2);
-            Place(_storageUsage.rectTransform, PanelSettingsLayout.Padding, -settingsLayout.StorageY,
-                settingsLayout.RowWidth, PanelSettingsLayout.RowHeight * 2);
-            LayoutRebuilder.ForceRebuildLayoutImmediate(_settingsContent);
+            bool settingsVisible = _settingsOpen && !_toolboxOpen;
+            _settingsSearchBar.SetActive(settingsVisible);
+            Place(_settingsSearchBar.GetComponent<RectTransform>(), 0, -tabHeight, w, 38);
+            Place(_settingsSearchBar.transform.GetChild(0).GetComponent<RectTransform>(), 4, -2, Math.Max(1, w - 48), 34);
+            Place(_settingsSearchBar.transform.GetChild(1).GetComponent<RectTransform>(), w - 40, -2, 34, 34);
+            float settingsHeight = Math.Max(1, contentH - 42);
+            Place(_settingsViewport, 0, -tabHeight - 42, w, settingsHeight);
+            LayoutSettings(w, settingsHeight);
             Place(_hint.rectTransform, 4, -2, Math.Max(1, w - 16), 20);
             float labelW = w - 76 - 72 - 54 - 32;
             float[] xs = { 12, 88, 88 + labelW, w - 66 };
@@ -893,6 +964,10 @@ namespace ProbablyStolenTools
 
         private void ReleaseWindow()
         {
+            ToolboxBridge.Unmount();
+            _toolboxMounted = false;
+            _tabs = null;
+            _toolboxGo = null;
             EndCapture(null);
             _built = false;
             _click.Reset();
@@ -914,6 +989,7 @@ namespace ProbablyStolenTools
             _callbacks.Clear();
             _settingsOpen = false;
             _settingsScroll = null;
+            _settingsSearch = null; _settingsSearchBar = null; SearchFocused = false;
         }
 
         private static void DisableLayout(RectTransform rect)

@@ -166,7 +166,7 @@ namespace ProbablyStolenTools
             Observe();
             if (Boundary.Client == IntPtr.Zero || Boundary.Attempted) return;
             var intent = Plugin.Store().currentClientInstance.GetClientBlueprint().clientIntent;
-            if (!DialogueSkip.Ordinary(intent))
+            if (!CustomerIntent.Ordinary(intent))
             {
                 // 对话/剧情类顾客不建立节点，但不能连累当天已经存在的节点：
                 // 之前这里走 Invalidate() → Clear()，一来剧情顾客就把整天的节点清空了，
@@ -313,9 +313,6 @@ namespace ProbablyStolenTools
                     SettleLog.Reset();
                     Failures.Clear();
                     _failureRevision++;
-#if MONO
-                    ChemistryAutomation.Reset();
-#endif
                 }
                 else
                 {
@@ -323,7 +320,7 @@ namespace ProbablyStolenTools
                     if (ClosedNode?.Day != day) ClosedNode = null;
                 }
                 if (!nextDay) ReturnGate.Reset();
-                AppraisalPatch.Reset();
+                ToolboxBridge.Reset();
                 _faulted = false;
             }
             if (Plugin.CfgKeepPreviousDay?.Value != true && History.Items.Any(node => node.Day != day))
@@ -460,7 +457,6 @@ namespace ProbablyStolenTools
         {
             if (Restoring) return;
 #if MONO
-            ChemistryAutomation.Reset();
             _semanticShadowAttempted = false;
             _entityBoundaryAttempted = false;
             EntitySamples.Reset();
@@ -493,7 +489,7 @@ namespace ProbablyStolenTools
             PendingCallbacks.Clear();
             DialogueCallbacks.Clear();
             Boundary.Reset();
-            AppraisalPatch.Reset();
+            ToolboxBridge.Reset();
             Status = "Waiting for a new customer";
         }
 
@@ -1299,7 +1295,7 @@ namespace ProbablyStolenTools
             try
             {
 #if MONO
-                PinnedCompositionTooltip.Disable();
+                ToolboxBridge.Reset();
 #endif
                 // Preflight before any mutation, including current objects created since the checkpoint.
                 foreach (var view in target.Visuals) view.Validate();
@@ -1353,7 +1349,6 @@ namespace ProbablyStolenTools
                 tPreflight = timing.ElapsedMilliseconds;
                 phase = "selection-reset";
 #if MONO
-                ChemistryAutomation.Reset();
                 // Native selectedHomes and ghost offsets belong to the abandoned timeline.
                 // Active gestures were refused above; Cancel here only clears a static selection.
                 var selection = ItemMultiSelectHandler.current;
@@ -1526,7 +1521,7 @@ namespace ProbablyStolenTools
                     ?? History.Items.LastOrDefault(node => node.IsClosed && !node.IsManual && !node.IsReturn);
                 Boundary.MarkReady();
                 RebuildRetainedItems();
-                AppraisalPatch.Reset();
+                ToolboxBridge.Reset();
                 // The recorder is a view of dialogHistory; refresh it without treating
                 // an optional UI failure as a partially failed native restore.
                 try { RecorderUIManager.Instance?.RefreshUI(); }
@@ -1832,7 +1827,7 @@ namespace ProbablyStolenTools
                 EventLog.Write($"[Customer] CLEAR reason={reason} nodes={History.Items.Count} day={Boundary.Day}");
             _visualProbe = null;
 #if MONO
-            ChemistryAutomation.Reset();
+            ToolboxBridge.Reset();
             _semanticShadowAttempted = false;
             _entityBoundaryAttempted = false;
             EntitySamples.Reset();

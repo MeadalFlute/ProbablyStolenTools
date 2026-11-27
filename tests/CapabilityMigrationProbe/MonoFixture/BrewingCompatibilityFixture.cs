@@ -46,11 +46,16 @@ public static partial class OfflineMonoFixture
         }
         var loadedField = game.GetType("GameItemFunc", true).GetField("<onLoaded>k__BackingField", All)
             ?? throw new Exception("Native onLoaded backing field missing.");
-        if ((bool)mod.GetType("ProbablyStolenTools.ChemistryAutomation", true).GetMethod("BlendBottleAvailable", All)
+        string toolboxPath = Environment.GetEnvironmentVariable("SHIFT_TOOLBOX_TEST_DLL");
+        Assembly toolbox = string.IsNullOrEmpty(toolboxPath) ? null : Assembly.LoadFrom(toolboxPath);
+        if (toolbox != null)
+        {
+        toolbox.GetType("ShiftToolbox.Plugin", true).GetField("Enabled", All).SetValue(null, true);
+        if ((bool)toolbox.GetType("ShiftToolbox.ChemistryAutomation", true).GetMethod("BlendBottleAvailable", All)
             .Invoke(null, new object[] { items[0] }))
             throw new Exception("Automatic blending must leave marked brewing outputs alone.");
-        var guard = mod.GetType("ProbablyStolenTools.BrewingIngredientDissolvePatch", true).GetMethod("Prefix", All);
-        var targetGuard = mod.GetType("ProbablyStolenTools.BrewingIngredientTargetPatch", true).GetMethod("Postfix", All);
+        var guard = toolbox.GetType("ShiftToolbox.BrewingIngredientDissolvePatch", true).GetMethod("Prefix", All);
+        var targetGuard = toolbox.GetType("ShiftToolbox.BrewingIngredientTargetPatch", true).GetMethod("Postfix", All);
         itemType.GetProperty("identifier", All).SetValue(items[1], "water_jug");
         foreach (string ingredient in new[] { "nutrifruit", "dream_cap" })
         {
@@ -65,6 +70,7 @@ public static partial class OfflineMonoFixture
         if (!(bool)guard.Invoke(null, new object[] { items[0], items[1] }))
             throw new Exception("Unrelated native dissolution was blocked.");
         Console.WriteLine("PASS actual game Mono VBE recipe guards: nutrifruit/dream-cap target and dissolution skipped, unrelated ingredient unchanged; no callbacks invoked.");
+        }
         object[] callbacks = { loadedField.GetValue(items[0]), loadedField.GetValue(items[1]) };
         var accessType = mod.GetType("ProbablyStolenTools.ManagedStateAccess", true);
         var graphType = mod.GetType("ProbablyStolenTools.StateGraph", true);
@@ -104,7 +110,7 @@ public static partial class OfflineMonoFixture
                         if ((int)tagType.GetField("valueInt", All).GetValue(maps[i][name]) != 1
                             || (double)tagType.GetField("valueDouble", All).GetValue(maps[i][name]) != 3.5)
                             throw new Exception("Brewing tag lost: " + name);
-                    if (!(bool)mod.GetType("ProbablyStolenTools.LiquidComposition", true)
+                    if (toolbox != null && !(bool)toolbox.GetType("ShiftToolbox.LiquidComposition", true)
                         .GetMethod("NoRename", All).Invoke(null, new[] { items[i] }))
                         throw new Exception("Marked brewing item was renamed.");
                 }

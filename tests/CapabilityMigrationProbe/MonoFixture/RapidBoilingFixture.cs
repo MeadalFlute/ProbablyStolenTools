@@ -5,7 +5,7 @@ public static partial class OfflineMonoFixture
 {
     private static void CheckRapidBoiling(Assembly mod, Assembly game)
     {
-        var rules = mod.GetType("ProbablyStolenTools.RapidBoilingRules", true).GetMethod("Remove", All);
+        var rules = mod.GetType("ShiftToolbox.RapidBoilingRules", true).GetMethod("Remove", All);
         bool Remove(string id, double temp, bool evaporative, double boiling)
             => (bool)rules.Invoke(null, new object[] { id, temp, evaporative, boiling });
         // Liquid registration requires a live Unity localization database. Check the
@@ -23,12 +23,12 @@ public static partial class OfflineMonoFixture
         if (Remove("microbe", 69.999, false, 0) || !Remove("microbe", 70, false, 0)
             || Remove("dream_cap_extract", 160, true, 0))
             throw new Exception("Rapid boiling disinfection/reaction isolation failed");
-        var plugin = mod.GetType("ProbablyStolenTools.Plugin", true);
-        var runtime = mod.GetType("ProbablyStolenTools.RapidBoiling", true);
+        var plugin = mod.GetType("ShiftToolbox.Plugin", true);
+        var runtime = mod.GetType("ShiftToolbox.RapidBoiling", true);
         var chemistry = plugin.GetField("CfgChemistry", All);
         var boilingConfig = plugin.GetField("CfgRapidBoiling", All);
         object oldChemistry = chemistry.GetValue(null), oldBoiling = boilingConfig.GetValue(null);
-        var settingType = mod.GetType("ProbablyStolenTools.ConfigEntry`1", true).MakeGenericType(typeof(bool));
+        var settingType = mod.GetType("ShiftToolbox.ConfigEntry`1", true).MakeGenericType(typeof(bool));
         object Setting(bool value) => settingType.GetConstructors(All)[0].Invoke(new object[] { value, null, "boiling-fixture" });
         try
         {

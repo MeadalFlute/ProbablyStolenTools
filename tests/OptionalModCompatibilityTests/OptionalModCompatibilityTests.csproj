@@ -7,6 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../src/ProbablyStolenTools/OptionalModCompatibility.cs" Link="OptionalModCompatibility.cs" />
-    <Compile Include="../../src/ProbablyStolenTools/WineAppraisal.cs" Link="WineAppraisal.cs" />
+    <Compile Include="../PreSplitToolRules/WineAppraisal.cs" Link="WineAppraisal.cs" />
   </ItemGroup>
 </Project>

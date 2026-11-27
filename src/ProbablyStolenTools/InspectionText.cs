@@ -31,10 +31,7 @@ namespace ProbablyStolenTools
         internal static string Component(string name, double percent, double purity, string grade, string gradeColor)
         {
             var parts = new System.Collections.Generic.List<string>(3);
-            if (Plugin.CfgCompositionCurrent?.Value ?? true) parts.Add(Number(percent) + "%");
-            if (Plugin.CfgCompositionExpected?.Value == true)
-                parts.Add(InspectionLocale.Label(AnnotationLabels.PurityHeading) + " " + Number(purity) + "%");
-            if (Plugin.CfgCompositionGrade?.Value == true) parts.Add($"<color={gradeColor}>{Plain(grade)}</color>");
+            parts.Add(Number(percent) + "%");
             return $"<color={ComponentColor}>{Plain(name)}</color>" + (parts.Count == 0 ? "" : " (" + string.Join(" | ", parts) + ")");
         }
 

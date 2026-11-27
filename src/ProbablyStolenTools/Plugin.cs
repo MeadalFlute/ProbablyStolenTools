@@ -15,7 +15,7 @@ namespace ProbablyStolenTools
 {
     public class Plugin :
 #if MONO
-        IMod
+        IMod, IServiceProvider
 #else
         MelonMod
 #endif
@@ -29,24 +29,6 @@ namespace ProbablyStolenTools
         internal static ModManifest Manifest;
 #endif
         internal ModConfig Config { get; private set; }
-
-        // ---- auto appraisal ----
-        internal static ConfigEntry<bool> CfgAutoAppraisal;
-        internal static ConfigEntry<bool> CfgAutoSubmit;
-        internal static ConfigEntry<bool> CfgAlwaysOverwrite;
-        internal static ConfigEntry<bool> CfgSkipCustomerDialogue;
-        internal static ConfigEntry<bool> CfgDoubleClickInspection;
-        internal static ConfigEntry<bool> CfgQuickInspection;
-        internal static ConfigEntry<bool> CfgWaterQuality;
-        internal static ConfigEntry<bool> CfgChemistry;
-        internal static ConfigEntry<bool> CfgChemistryLabels, CfgContainerAutoRename;
-        internal static ConfigEntry<bool> CfgCompositionCurrent, CfgCompositionExpected, CfgCompositionGrade;
-        internal static ConfigEntry<bool> CfgPipeComposition, CfgShiftComposition, CfgUnlockMachineModules;
-        internal static ConfigEntry<bool> CfgWindowSnap, CfgWindowPin;
-        internal static ConfigEntry<bool> CfgChemistryExtendedContainers, CfgEmptyContainerNames;
-        internal static ConfigEntry<bool> CfgAutoBlend, CfgAutoExtraction, CfgRapidReactions, CfgFacilityPreview, CfgRapidBoiling, CfgSmartExtrusion;
-        internal static ConfigEntry<bool> CfgWineAppraisal;
-        internal static ConfigEntry<float> CfgInspectionX, CfgInspectionY;
 
         // ---- rewind / checkpoints ----
         internal static ConfigEntry<bool> CfgRewind;
@@ -77,7 +59,6 @@ namespace ProbablyStolenTools
         internal static ConfigEntry<KeyCode> CfgKeyDay;
         internal static ConfigEntry<KeyCode> CfgKeyPrevDay;
         internal static ConfigEntry<KeyCode> CfgKeyQuickReload, CfgKeyReroll;
-        internal static ConfigEntry<KeyCode> CfgKeyDetails;
         internal static ConfigEntry<string> CfgUpdateSeen;
         internal static ConfigEntry<bool> CfgConfirmWholeDay;
         internal static ConfigEntry<bool> CfgRepairStuckShutter;
@@ -136,13 +117,17 @@ namespace ProbablyStolenTools
         /// <summary>改键：若目标键已被本 mod 的另一动作占用，两者交换，避免两个功能共用一键。</summary>
         internal static void SetHotkey(ConfigEntry<KeyCode> target, KeyCode key)
         {
+            if (ToolboxBridge.PeerKeyUsed(key, target == CfgKeyPanel))
+            {
+                PanelNotice.Show(InspectionLocale.Text("此按键已被Shift工具箱使用，请选择其他按键。", "This key is used by Shift Toolbox. Choose another key."), true);
+                return;
+            }
             HotkeyBinding self = null;
             HotkeyBinding clash = null;
             foreach (var binding in Hotkeys)
             {
                 if (binding.Config == target) { self = binding; continue; }
-                if (binding.Config.Value == key || (target == CfgKeyDetails || binding.Config == CfgKeyDetails)
-                    && IsShift(key) && IsShift(binding.Config.Value)) clash = binding;
+                if (binding.Config.Value == key) clash = binding;
             }
             if (self == null) return;
 
@@ -182,17 +167,23 @@ namespace ProbablyStolenTools
         }
         internal static void ResetHotkeys()
         {
-            foreach (var binding in Hotkeys) binding.Config.Value = binding.Default;
+            bool conflict = false;
+            foreach (var binding in Hotkeys)
+            {
+                bool used = ToolboxBridge.PeerKeyUsed(binding.Default, binding.Config == CfgKeyPanel);
+                binding.Config.Value = used ? KeyCode.None : binding.Default;
+                conflict |= used;
+            }
             Instance.Config.Save();
             LogSource?.LogInfo("[Keys] all hotkeys reset to defaults");
+            if (conflict) PanelNotice.Show(InspectionLocale.Text("被Shift工具箱占用的默认按键已留空，请手动选择其他按键。", "Default keys already used by Shift Toolbox were left unbound. Choose other keys."), true);
         }
 
         internal static bool HotkeyInUse(KeyCode key, ConfigEntry<KeyCode> except)
         {
             if (key == KeyCode.None) return false;
             foreach (var binding in Hotkeys)
-                if (binding.Config != except && (binding.Config.Value == key
-                    || (except == CfgKeyDetails || binding.Config == CfgKeyDetails) && IsShift(key) && IsShift(binding.Config.Value))) return true;
+                if (binding.Config != except && binding.Config.Value == key) return true;
             return false;
         }
 
@@ -221,15 +212,11 @@ namespace ProbablyStolenTools
 #endif
         }
         public void OnEnable() => Initialize();
+        public object GetService(Type type) => type == typeof(IDictionary<string, object>) && CustomerCheckpoint.PatchesReady ? ToolboxBridge.Services : null;
         public void OnDisable()
         {
             NativeSnapshotSettings.Disable();
-            ChemistryAutomation.Reset();
-            TooltipHooks.Disable();
             UpdateNotice.Disable();
-            NativeWindowGestures.Disable();
-            PinnedCompositionTooltip.Disable();
-            ForcedItemTooltip.Clear();
             OverlayBootstrap.Release();
         }
         private void Initialize()
@@ -253,76 +240,6 @@ namespace ProbablyStolenTools
             }
 #endif
             Config = new ModConfig();
-
-            CfgAutoAppraisal = Config.Bind("AutoAppraisal", "Enabled", true,
-                "Auto-fill the appraisal quote with the game's correct value.");
-            CfgAutoSubmit = Config.Bind("AutoAppraisal", "AutoSubmit", false,
-                "Submit the quote automatically (no confirm click needed).");
-            CfgAlwaysOverwrite = Config.Bind("AutoAppraisal", "AlwaysOverwrite", false,
-                "Rewrite the quote on every panel refresh (otherwise only once per item).");
-            CfgSkipCustomerDialogue = Config.Bind("Dialogue", "SkipCustomerDialogue", false,
-                "Advance ordinary customer dialogue through the original recorder path. Choices and special encounters are not skipped.");
-            CfgDoubleClickInspection = Config.Bind("Inspection", "DoubleClickToInspect", true,
-                "Double-click an inspectable item to apply an owned magnifying glass. Other items keep their original double-click actions.");
-            CfgQuickInspection = Config.Bind("Inspection", "ShowQuickInspection", true,
-                "Show the draggable read-only quick inspection summary on the native inspection page.");
-            CfgInspectionX = Config.Bind("Inspection", "SummaryPositionX", 1f,
-                "Quick inspection horizontal position within its available travel, from 0 (left) to 1 (right).");
-            CfgInspectionY = Config.Bind("Inspection", "SummaryPositionY", 1f,
-                "Quick inspection vertical position within its available travel, from 0 (top) to 1 (bottom).");
-            CfgQuickInspection.SettingChanged += (_, _) => QuickInspectionPatch.SettingsChanged();
-            CfgWaterQuality = Config.Bind("WaterQuality", "Enabled", true,
-                "Show water-quality names and mismatch highlights on liquid containers.");
-            CfgWaterQuality.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
-            CfgPipeComposition = Config.Bind("WaterQuality", "PipeComposition", true,
-                "Hold the item-details key to show all nonzero tap-water constituents using today's native purity and distribution, without drawing random numbers.");
-            CfgShiftComposition = Config.Bind("Chemistry", "ShiftComposition", true,
-                "Hold the item-details key over a liquid container to replace its tooltip with read-only composition details.");
-            CfgUnlockMachineModules = Config.Bind("Machines", "UnlockWorkingModules", false,
-                "Bypass running-machine module-bay locks only. Does not change lock fields, work tags or ingredient/battery locks.");
-            CfgWindowSnap = Config.Bind("Windows", "ShiftSnap", true,
-                "Hold either physical Shift key while dragging native movable windows to align adjacent edges.");
-            CfgWindowPin = Config.Bind("Windows", "ShiftPin", true,
-                "Shift-middle-click a native movable window title/background to toggle pinning. Disabled while holding the left button or dragging; most recently pinned stays highest.");
-            CfgChemistry = Config.Bind("Chemistry", "Enabled", true,
-                "Master switch for chemistry annotations, tooltip naming, automatic blending, rapid extraction, rapid chemical reactions and facility previews.");
-            CfgChemistry.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
-            CfgChemistryLabels = Config.Bind("Chemistry", "CompositionLabels", true,
-                "Show chemical composition, share, purity and grade annotations.");
-            CfgChemistryLabels.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
-            CfgCompositionCurrent = Config.Bind("Chemistry", "ShowCurrentShare", true,
-                "Include current percentage in chemistry composition labels.");
-            CfgCompositionExpected = Config.Bind("Chemistry", "ShowExpectedPurity", false,
-                "Include predicted purified percentage in chemistry composition labels.");
-            CfgCompositionGrade = Config.Bind("Chemistry", "ShowGrade", false,
-                "Include predicted grade in chemistry composition labels.");
-            CfgCompositionCurrent.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
-            CfgCompositionExpected.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
-            CfgCompositionGrade.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
-            CfgContainerAutoRename = Config.Bind("Chemistry", "ContainerAutoRename", true,
-                "Rename liquid containers and seeded hydroponic machines in tooltips only.");
-            CfgChemistryExtendedContainers = Config.Bind("Chemistry", "ExtendedContainers", true,
-                "Include containers from 150 mL with no upper capacity limit. Droppers and measuring vessels remain excluded from component naming.");
-            CfgChemistryExtendedContainers.SettingChanged += (_, _) => WaterQualityPatch.SettingsChanged();
-            CfgEmptyContainerNames = Config.Bind("Chemistry", "EmptyContainerNames", true,
-                "Distinguish empty micro bottles, water pitchers, jugs and variable-capacity water tanks in tooltips.");
-            CfgAutoBlend = Config.Bind("Chemistry", "AutoBlend", true,
-                "Blend compatible ingredients after player placement. Mixed-product batches leave incompatible ingredients at their source; whole-item outputs must fit.");
-            CfgSmartExtrusion = Config.Bind("Chemistry", "SmartExtrusion", true,
-                "Select the chemical finisher product when an inserted container has at least 70% of one matching recipe ingredient. Does not start production.");
-            CfgAutoExtraction = Config.Bind("Chemistry", "AutoExtraction", false,
-                "Complete alcohol extraction of mushroom and coffee mush. Volume may exceed capacity; independent of RapidReactions.");
-            CfgRapidReactions = Config.Bind("Chemistry", "RapidReactions", false,
-                "Complete the nine supported non-thermal reagent reactions. Independent of AutoExtraction; preserve native conditions, bounded progress and thermal rates.");
-            CfgRapidBoiling = Config.Bind("Chemistry", "RapidBoiling", false,
-                "On a hotplate only, fully remove lipobond agent, alcohol, water and microbes once their native temperature conditions are met. Other thermal reactions are unchanged.");
-            CfgFacilityPreview = Config.Bind("Chemistry", "FacilityPreview", true,
-                "Show read-only next-cycle projections for aquaculture, purifiers, hydroponics and evaporators.");
-            CfgWineAppraisal = Config.Bind("Wine", "Enabled", true,
-                "Show glowberry condition and unfermented-bottle quality annotations.");
-            CfgAutoAppraisal.SettingChanged += (_, _) => AppraisalPatch.Reset();
-            CfgAutoSubmit.SettingChanged += (_, _) => AppraisalPatch.Reset();
-            CfgAlwaysOverwrite.SettingChanged += (_, _) => AppraisalPatch.Reset();
 
             CfgRewind = Config.Bind("Rewind", "Enabled", true,
                 "Record a checkpoint before opening the shop and whenever a new client arrives.");
@@ -395,8 +312,6 @@ namespace ProbablyStolenTools
                 "If the shutter stays locked for 10s with no dialog, movement or shootout in progress, clear the lock so the shop can be closed again.");
             CfgKeyPanel = Config.Bind("Rewind", "KeyTogglePanel", KeyCode.F8,
                 "Show / hide the checkpoint panel.");
-            CfgKeyDetails = Config.Bind("Inspection", "KeyItemDetails", KeyCode.LeftShift,
-                "Hold to show item composition and machine projections. Wine annotations are always visible when enabled. Either Shift works when bound to Shift; None disables details.");
             CfgUpdateSeen = Config.Bind("Updates", "LastShownVersion", "",
                 "QuickSL version whose update banner has already been displayed, independent of whether it was clicked.");
 
@@ -409,7 +324,6 @@ namespace ProbablyStolenTools
                 new HotkeyBinding("reload", "快速重载存档", CfgKeyQuickReload, KeyCode.None),
                 new HotkeyBinding("reroll", "重掷随机数", CfgKeyReroll, KeyCode.None),
                 new HotkeyBinding("panel", "显示 / 隐藏面板", CfgKeyPanel, KeyCode.F8),
-                new HotkeyBinding("details", "展示物品详细信息", CfgKeyDetails, KeyCode.LeftShift),
                 new HotkeyBinding("newer", "选择较新节点", CfgKeyNewer, KeyCode.UpArrow),
                 new HotkeyBinding("newerAlt", "选择较新节点（备用）", CfgKeyNewerAlt, KeyCode.W),
                 new HotkeyBinding("older", "选择较旧节点", CfgKeyOlder, KeyCode.DownArrow),
@@ -490,8 +404,6 @@ namespace ProbablyStolenTools
             {
                 LogSource.LogError($"Overlay bootstrap failed: {e}");
             }
-
-            TooltipHooks.Enable();
 #if STATIC_SNAPSHOT_LAYOUTS
             const string layoutBackend = "static-token-v1";
 #else
@@ -509,7 +421,7 @@ namespace ProbablyStolenTools
         {
             try
             {
-                if (CheckpointPanel.SuppressHotkeys || entry.Value == KeyCode.None) return false;
+                if (CheckpointPanel.SuppressHotkeys || ToolboxBridge.PeerCapturing || entry.Value == KeyCode.None) return false;
                 return Input.GetKeyDown(entry.Value);
             }
             catch { return false; }

@@ -885,10 +885,6 @@ namespace ProbablyStolenTools
         public RewindOverlay(IntPtr ptr) : base(ptr) { }
 #endif
 
-#if MONO
-        private void LateUpdate() => ForcedItemTooltip.Tick();
-#endif
-
         private void Update()
         {
             try
@@ -897,16 +893,12 @@ namespace ProbablyStolenTools
 #if MONO
                 SignboardCompatibility.Tick();
                 UpdateNotice.Tick();
-                NativeWindowGestures.Tick();
-                PinnedCompositionTooltip.Tick();
 #endif
                 RunSelfTest();
                 MenuReloadStep();
                 PostLoadResume();
                 Rewind.Tick();
                 Rewind.TickPending();
-                QuickInspectionPatch.Tick();
-                DialogueSkip.Tick();
                 CustomerCheckpoint.Tick();
                 Transaction.Tick();
                 CashWatchdog.Tick();
@@ -921,7 +913,7 @@ namespace ProbablyStolenTools
             }
 
             if (_inputBroken) return;
-            if (CheckpointPanel.CapturingKey) return;   // 正在改键：这一帧的所有热键都让路
+            if (CheckpointPanel.SuppressHotkeys || ToolboxBridge.PeerCapturing) return;
             try
             {
                 if (CheckpointPicker.TickInput()) return;
