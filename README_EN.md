@@ -75,3 +75,7 @@ Release packages must come from unmodified source and merge both game-version la
 `release/manifest.xml` is the version source of truth; all three manifests and `Plugin.Version` must match.
 No shared prerequisite DLLs, no shipping of build tools or test hosts. Offline passes do not prove in-game acceptance.
 Maintenance boundaries, the cross-mod protocol and further rules live in `AGENT.md`.
+
+## License
+
+Released under the [GNU Affero General Public License v3.0](LICENSE). You may use, modify and redistribute it; if you distribute a modified version, or offer one over a network, you must publish the corresponding source under the same license.

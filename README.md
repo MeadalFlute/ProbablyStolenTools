@@ -75,3 +75,7 @@ dotnet run --project tests\OptionalModCompatibilityTests -c Release
 发布版本号以 `release/manifest.xml` 为准，三份 manifest 与 `Plugin.Version` 必须一致。
 不新增公共前置 DLL、不分发构建工具或测试宿主；离线通过不等于实机验收。
 维护边界、协议与更详细的约定见 `AGENT.md`。
+
+## 许可证
+
+本项目以 [AGPL-3.0](LICENSE) 发布。可以自由使用、修改和再分发；如果分发修改版，或以网络服务形式提供，需要按同一许可公开对应的完整源码。
