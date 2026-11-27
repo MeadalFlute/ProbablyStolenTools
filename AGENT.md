@@ -9,6 +9,13 @@
 > 便于玩家回退。统一交接与哈希：`research/2026-11-27-split-window-settings-handoff.md`。
 > 本机 beta 1.0.0.16；通用包 helper 为双版本合并表，勿用单 beta 表覆盖。
 
+> 2026-11-27 10:39 **1.0.0 GitHub 预发布**：`main` 由 `aee6915` 快进到 `90f0fe9`（拆分提交
+> `2d40284` + 版本提交 `90f0fe9`），新分支 `Full`=`aee6915` 保存完整版 0.9.10；标签 `v1.0.0`
+> 与 Release `releases/tag/v1.0.0`（pre-release，资产 `ProbablyStolenTools.zip` 558219 bytes /
+> `272CCA94…`，GitHub 回读 digest 一致）。未推送工坊，工坊仍服务 0.9.x 完整版；正式拆分延后
+> 约 3 天，期间准备新素材与内测。本机已部署 1.0.0（主 DLL `7815D975…`、helper `051D390E…`、
+> `VerifiedSaveFiles=111`、`GameStarted=False`）供内测。
+
 > **2026-11-26 功能拆分开发候选，覆盖下方旧版功能归属说明。** 当前工作区基于已发布
 > 0.9.9（HEAD `5726538`），尚未正式升版/推送。回溯外的全部业务已迁至独立仓库
 > `D:\Program\GameProject\ShiftToolbox`（`shift.toolbox` / 0.0.1 / 米德）。QuickSL 保留旧
